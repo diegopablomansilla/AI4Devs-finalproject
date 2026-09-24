@@ -1,0 +1,25 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Editor / IDE (local)
+.idea/
+*.swp
+*.swo
+*~
+
+# Secrets and local env
+.env
+.env.*
+!.env.example
+
+# Rust / Node (future)
+/target/
+node_modules/
+dist/
+
+# Cursor: ignore local state; keep project rules
+.cursor/*
+!.cursor/rules/
+!.cursor/rules/**
