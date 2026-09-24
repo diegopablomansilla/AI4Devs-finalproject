@@ -1,0 +1,11 @@
+---
+description: Never read or use prompts.md when answering user requests
+alwaysApply: true
+---
+
+# Ignore prompts.md
+
+- Do **not** read `prompts.md` (repo root or any path named `prompts.md`).
+- Do **not** use its contents as context, guidance, instructions, or constraints for any user request.
+- Do **not** open, search, cite, summarize, or follow anything from that file unless the user explicitly asks to work on `prompts.md` itself.
+- Treat other project docs and source code as the source of truth; ignore `prompts.md` entirely for normal tasks.
