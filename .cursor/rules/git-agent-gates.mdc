@@ -1,0 +1,34 @@
+---
+description: No git commit or PR without explicit user authorization
+alwaysApply: true
+---
+
+# Git agent gates
+
+Canonical detail: [docs/desarrollo-git-openspec.md](docs/desarrollo-git-openspec.md).
+
+## Commit timing on spec branches (`T-XX-YY-ZZ`)
+
+- **Do not** run `git commit` (or amend) on a spec branch until **`openspec archive`** has completed for that change.
+- TDD work stays **uncommitted** until then; staging for review is OK.
+- If the user asks to commit before archive, **refuse**, cite [docs/desarrollo-git-openspec.md](docs/desarrollo-git-openspec.md) (regla de commit), and offer archive first (tests green + user OK for archive).
+
+## Forbidden without explicit user authorization
+
+- `git commit`, `git commit --amend`, or any commit that stages and commits in one flow (on spec branches: only **after** archive, per above)
+- Creating or merging Pull Requests (`gh pr create`, etc.)
+- Pushing a branch **for the purpose of opening a PR** the user did not request
+
+Staging files for the user's review is allowed unless the user forbids it.
+
+## Authorization
+
+- Treat authorization as **explicit in the current conversation** (e.g. "hacé el commit", "abrí el PR").
+- When in doubt, ask; do not assume prior messages authorize a new commit or PR.
+
+## After authorization
+
+- Proposed and actual commit messages MUST follow [Conventional Commits 1.0.0](https://www.conventionalcommits.org/en/v1.0.0/) per [docs/desarrollo-git-openspec.md](docs/desarrollo-git-openspec.md) § 7.
+- Use scope `(T-XX-YY-ZZ)` matching the branch; footer `Refs: T-XX-YY` for the parent ticket when helpful.
+- PR titles should use the same convention as the primary commit subject.
+- Never force-push to `main` unless the user explicitly requests it.

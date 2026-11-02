@@ -1,0 +1,46 @@
+schema: spec-driven
+
+context: |
+  Proyecto Vectra / Vortex Core: Local-First, Rust (Axum, Tokio), PWA vanilla,
+  SurrealDB embebido, Meilisearch y Ollama como sidecars. Backlog en docs/7-tickets.md
+  (tickets T-XX-YY). Cada ticket puede tener varias specs de implementación T-XX-YY-ZZ
+  (ZZ = 01, 02, …). Un change OpenSpec activo = una rama Git con el mismo nombre.
+  Ramas de trabajo salen de develop; integración vía PR a develop.
+  Metodología: SDD (spec desde el ticket) + TDD (tests happy y unhappy path).
+  DoD: docs/6-historias.md — tests, openapi.yaml, tracing, accesibilidad en UI.
+  Flujo humano canónico: docs/desarrollo-git-openspec.md
+  Commits: Conventional Commits 1.0.0 (https://www.conventionalcommits.org/en/v1.0.0/);
+  scope recomendado = T-XX-YY-ZZ; footer Refs: T-XX-YY para ticket padre.
+
+rules:
+  proposal:
+    - El change MUST llamarse T-XX-YY-ZZ e incluir el ticket padre T-XX-YY.
+    - Derivar alcance de Hace / Listo cuando / No hace del ticket en 7-tickets.md.
+    - Incluir sección Non-goals acotada a lo que este ZZ no cubre (otros ZZ u otros tickets).
+    - Alcance ~2 h; si excede, dividir en otro ZZ antes de implementar.
+  spec:
+    - Citar ticket padre T-XX-YY y el ID del change T-XX-YY-ZZ.
+    - Escenarios verificables en Gherkin o equivalente; incluir camino no feliz (errores de dominio, 4xx, validación).
+    - Listar tests concretos previstos (crate, módulo, tipo de test) antes de la fase apply.
+    - Endpoints nuevos o cambios deben alinearse con docs/openapi.yaml; no implementar fuera del contrato.
+  tasks:
+    - "Tareas ordenadas: tests (red) → implementación (green) → refactor."
+    - Cada tarea trazable a un escenario de la spec o a un test nombrado.
+    - No mezclar specs distintas (otro ZZ) en el mismo change.
+
+operations:
+  apply:
+    guidance:
+      - Seguir TDD estricto respecto a la spec del change; no implementar comportamiento no especificado.
+      - Escribir o actualizar tests antes o en el mismo paso que el código que los satisface.
+      - Mantener visible el ciclo red-green; unhappy path obligatorio cuando la spec lo declare.
+      - Respetar convenciones del workspace Rust cuando exista (fmt, clippy -D warnings).
+      - No hacer git commit en la rama T-XX-YY-ZZ durante apply; TDD en working tree hasta archive.
+  archive:
+    guidance:
+      - No archivar hasta que la suite acordada esté en verde (happy + unhappy path de esta spec).
+      - Ejecutar openspec validate sobre el change antes de archive.
+      - Cuando exista CI (T-09-01), los mismos checks que el workflow deben pasar en local.
+      - Comandos de referencia cargo fmt --check, clippy -D warnings, cargo test --workspace.
+      - Git commit en rama de spec solo después de archive (nunca antes); luego el maintainer autoriza commit o el agente propone si está autorizado.
+      - "Mensaje propuesto: Conventional Commits; type acorde al cambio (feat, fix, test, docs, …); scope (T-XX-YY-ZZ); footer Refs: ticket padre."

@@ -1,0 +1,26 @@
+---
+description: Gitflow main/develop and branch naming T-XX-YY-ZZ
+alwaysApply: true
+---
+
+# Git workflow (Vectra)
+
+Canonical detail: [docs/desarrollo-git-openspec.md](docs/desarrollo-git-openspec.md).
+
+## Branches
+
+- **`main`**: stable line; do not commit directly unless the user explicitly asks.
+- **`develop`**: integration branch; **create all work branches from `develop`**.
+- **Work branch name**: `T-XX-YY-ZZ` only (no `feature/` prefix). Same name as the OpenSpec change.
+
+## Flow
+
+1. Update `develop`, then `git checkout -b T-XX-YY-ZZ`.
+2. One OpenSpec change = one spec = one branch.
+3. Merge into **`develop`** via Pull Request (target `develop`, not `main`).
+4. Updates to **`main`** come from `develop` when the user decides (milestones/delivery).
+
+## Ticket traceability
+
+- `T-XX-YY` = ticket in [docs/7-tickets.md](docs/7-tickets.md).
+- `ZZ` = spec index within that ticket (`01`, `02`, …).

@@ -1,0 +1,32 @@
+---
+description: OpenSpec SDD+TDD, archive gate, propose commit only after archive
+alwaysApply: true
+---
+
+# OpenSpec, TDD, and delivery gates
+
+Canonical detail: [docs/desarrollo-git-openspec.md](docs/desarrollo-git-openspec.md). OpenSpec config: [openspec/config.yaml](openspec/config.yaml).
+
+## One spec, one branch
+
+- Change name and Git branch: **`T-XX-YY-ZZ`**, derived from ticket **`T-XX-YY`** in [docs/7-tickets.md](docs/7-tickets.md).
+- Multiple specs per ticket are normal; do not combine two ZZ values in one change or branch.
+
+## SDD + TDD
+
+- Create the OpenSpec change from the ticket (**Hace** / **Listo cuando**).
+- Define tests (happy + **unhappy path**) in the change before or alongside implementation.
+- Apply **Red → Green → Refactor**; DoD from [docs/6-historias.md](docs/6-historias.md) applies.
+- **No git commits** during TDD on the spec branch; changes remain local until archive (see `git-agent-gates.mdc`).
+
+## Archive and commit
+
+- Run the agreed test suite; **all relevant tests must be green** before suggesting archive.
+- Run `openspec validate` on the change when applicable.
+- **`openspec archive`**: only when tests are green; execute only if the user explicitly authorizes (otherwise recommend the user run it).
+- **Only after archive**: you may **propose** the **first** commit for that spec branch (Conventional Commits; see [docs/desarrollo-git-openspec.md](docs/desarrollo-git-openspec.md) § 7). Never propose or run `git commit` before archive.
+- Do **not** run `git commit` until the user authorizes (see `git-agent-gates.mdc`).
+
+## Verification commands (when Rust workspace exists)
+
+`cargo fmt --all -- --check`, `cargo clippy --workspace -- -D warnings`, `cargo test --workspace` — align with CI when [T-09-01](docs/7-tickets.md) exists.
