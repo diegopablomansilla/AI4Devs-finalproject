@@ -42,5 +42,5 @@ operations:
       - Ejecutar openspec validate sobre el change antes de archive.
       - Cuando exista CI (T-09-01), los mismos checks que el workflow deben pasar en local.
       - Comandos de referencia cargo fmt --check, clippy -D warnings, cargo test --workspace.
-      - Git commit en rama de spec solo después de archive (nunca antes); luego el maintainer autoriza commit o el agente propone si está autorizado.
+      - Git commit en rama de spec solo después de archive (nunca antes); el agente debe proponer commit y luego PR a develop; el maintainer autoriza cada acción.
       - "Mensaje propuesto: Conventional Commits; type acorde al cambio (feat, fix, test, docs, …); scope (T-XX-YY-ZZ); footer Refs: ticket padre."

@@ -1,5 +1,5 @@
 ---
-description: No git commit or PR without explicit user authorization
+description: Propose commits and PRs proactively; execute only with explicit user OK
 alwaysApply: true
 ---
 
@@ -21,9 +21,38 @@ Canonical detail: [docs/desarrollo-git-openspec.md](docs/desarrollo-git-openspec
 
 Staging files for the user's review is allowed unless the user forbids it.
 
+## Proactive proposals (required)
+
+When gates are met, **always propose** the next Git action; do **not** wait for the user to ask.
+
+**Commit proposal** (include in the message):
+
+- List of paths to stage (or confirm `git status` summary).
+- Full suggested message ([Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/), see doc § 7).
+- One-line rationale.
+- Explicit question: e.g. *¿Autorizás que ejecute este commit?*
+
+**When to propose a commit**
+
+- Spec branch `T-XX-YY-ZZ`: only **after** `openspec archive` (see commit timing above).
+- Legacy / entrega branches (e.g. `feature/entrega-1-DPM`): when a coherent slice of work is done and the tree has changes worth versioning.
+- Never propose a commit that violates post-archive rules on spec branches.
+
+**PR proposal** (after the branch has the commit(s) to integrate, or will after the proposed commit):
+
+- **Base:** `develop` (unless the user specifies otherwise).
+- **Head:** current branch name.
+- Suggested **title** (Conventional Commits, aligned with main commit).
+- Short **body** (ticket/spec, archive status, tests run) per doc § 9.
+- Note if **`git push -u origin HEAD`** is needed first; propose push only with separate authorization unless the user bundles it with PR approval.
+- Explicit question: e.g. *¿Autorizás que cree el PR (y push si hace falta)?*
+
+Do **not** run `git commit`, `git push`, or `gh pr create` until the user answers yes to that proposal.
+
 ## Authorization
 
-- Treat authorization as **explicit in the current conversation** (e.g. "hacé el commit", "abrí el PR").
+- Treat authorization as **explicit in the current conversation** (e.g. "sí, hacé el commit", "abrí el PR").
+- A prior "yes" does not authorize a **different** commit message or PR than the one proposed.
 - When in doubt, ask; do not assume prior messages authorize a new commit or PR.
 
 ## After authorization

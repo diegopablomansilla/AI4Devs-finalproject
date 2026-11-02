@@ -13,7 +13,7 @@ Router for AI assistants (Cursor, OpenSpec, etc.). **Mandatory behavior** is enf
 | Rule | Topic |
 |------|--------|
 | [git-workflow.mdc](.cursor/rules/git-workflow.mdc) | Branch model and naming |
-| [git-agent-gates.mdc](.cursor/rules/git-agent-gates.mdc) | No commit / PR without explicit user OK |
+| [git-agent-gates.mdc](.cursor/rules/git-agent-gates.mdc) | Propose commit & PR proactively; execute only with explicit user OK |
 | [openspec-tdd-delivery.mdc](.cursor/rules/openspec-tdd-delivery.mdc) | One spec per branch, TDD, archive → propose commit |
 | [ignore-prompts-md.mdc](.cursor/rules/ignore-prompts-md.mdc) | Do not use `prompts.md` |
 
@@ -33,5 +33,6 @@ Change name **must equal** the Git branch name (`T-XX-YY-ZZ`).
 ## Quick gates
 
 - **Spec branches `T-XX-YY-ZZ`:** no `git commit` until **`openspec archive`** is done (TDD uncommitted until then).
-- **Commit / PR:** only when the user explicitly asks — and on spec branches, commit **only after** archive.
-- **Archive:** only when tests are green (happy + unhappy path); then **propose** commit (Conventional Commits, scope `T-XX-YY-ZZ`), do not commit automatically.
+- **Commit / PR:** agent **must propose** (message, files, PR title/body) when ready; user **authorizes** before any `git commit`, `push`, or `gh pr create`.
+- **Spec branches:** commit proposal **only after** archive; then PR proposal → `develop`.
+- **Archive:** only when tests are green (happy + unhappy path); then **propose** commit (Conventional Commits, scope `T-XX-YY-ZZ`), never commit automatically.

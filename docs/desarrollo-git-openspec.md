@@ -84,8 +84,8 @@ La DoD común de historias ([6.1](6-historias.md)) aplica: conformidad con `open
 6. Ejecutar la **suite completa** relevante (local; cuando exista CI, los mismos comandos que GitHub Actions — ver ticket T-09-01).
 7. `openspec validate` sobre el change (si aplica).
 8. **`openspec archive <change-name>`** solo con tests en verde (happy + unhappy). Quien archiva: el maintainer o el agente **solo con autorización explícita**.
-9. **Solo después del paso 8:** el agente puede **proponer** un commit con mensaje [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) (§ 7); **no ejecuta** `git commit` sin tu OK.
-10. Abrir PR hacia **`develop`** cuando autorices; el agente **no** crea PRs sin tu OK. El título del PR sigue la misma convención que el subject del commit.
+9. **Solo después del paso 8:** el agente **debe proponerte** un commit (archivos, mensaje [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) § 7, pregunta de autorización). **No ejecuta** `git commit` hasta que respondas que sí.
+10. Con el commit en la rama (o listo para commitear), el agente **debe proponerte** un PR hacia **`develop`** (título, cuerpo, base/head, push si aplica). **No** crea el PR hasta tu OK. El título sigue la misma convención que el subject del commit.
 
 ### Regla de commit en ramas `T-XX-YY-ZZ`
 
@@ -197,9 +197,22 @@ Refs: T-09-01
 ## 8. Agente Cursor (resumen)
 
 - En ramas **`T-XX-YY-ZZ`**: **ningún** `git commit` hasta **`openspec archive`** completado (TDD sin commits intermedios).
-- Sin **commit**, **amend**, ni **PR** sin instrucción explícita del maintainer (y commit solo **después** de archive en ramas de spec).
-- Tras **archive** + tests green: **proponer** commit, no aplicarlo.
+- **Proponer** commit y PR de forma **proactiva** cuando corresponda; **ejecutar** solo con tu autorización explícita a esa propuesta concreta.
+- Tras **archive** + tests green: **obligatorio** proponer commit; tras commit en rama lista: **obligatorio** proponer PR → `develop`.
 - Detalle ejecutable: `.cursor/rules/git-workflow.mdc`, `git-agent-gates.mdc`, `openspec-tdd-delivery.mdc` y [AGENTS.md](../AGENTS.md).
+
+### 8.1. Propuesta de commit (lo que debe mostrarte el agente)
+
+1. Resumen de `git status` (qué se incluiría).
+2. Mensaje completo propuesto (subject + body/footer si aplica).
+3. Pregunta clara: *¿Autorizás que ejecute este commit?*
+
+### 8.2. Propuesta de PR (lo que debe mostrarte el agente)
+
+1. `base` → `develop`, `head` → rama actual.
+2. Título y cuerpo (plantilla § 9).
+3. Si falta push al remoto, indicarlo y pedir OK aparte o junto al PR.
+4. Pregunta clara: *¿Autorizás que cree el PR (y push si hace falta)?*
 
 ---
 
