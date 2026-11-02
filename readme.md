@@ -7,7 +7,8 @@
 4. [Especificación de la API](#4-especificación-de-la-api)
 5. [Historias de usuario](#5-historias-de-usuario)
 6. [Tickets de trabajo](#6-tickets-de-trabajo)
-7. [Pull requests](#7-pull-requests)
+7. [Flujo de desarrollo (Git, OpenSpec, TDD)](#7-flujo-de-desarrollo-git-openspec-tdd)
+8. [Pull requests](#8-pull-requests)
 
 ---
 
@@ -198,9 +199,19 @@ Desglose técnico de las historias en tickets `T-XX-YY` (~2 h, orden lineal, cri
 
 ---
 
-## 7. Pull Requests
+## 7. Flujo de desarrollo (Git, OpenSpec, TDD)
+
+Integración en **`develop`**; ramas de trabajo **`T-XX-YY-ZZ`** (spec OpenSpec + ticket padre `T-XX-YY` en [docs/7-tickets.md](docs/7-tickets.md)). Metodología **SDD + TDD**; commits y títulos de PR según [Conventional Commits 1.0.0](https://www.conventionalcommits.org/en/v1.0.0/) (detalle en [docs/desarrollo-git-openspec.md § 7](docs/desarrollo-git-openspec.md#7-mensajes-de-commit-conventional-commits)); archivar el change en OpenSpec solo con tests en verde.
+
+Documentación completa: **[docs/desarrollo-git-openspec.md](docs/desarrollo-git-openspec.md)** · Instrucciones para agentes: **[AGENTS.md](AGENTS.md)**
+
+---
+
+## 8. Pull Requests
 
 > Documenta 3 de las Pull Requests realizadas durante la ejecución del proyecto
+
+Al documentar cada PR, incluir: rama `T-XX-YY-ZZ`, ticket padre, change OpenSpec archivado y tests ejecutados (happy + unhappy path). Plantilla en [docs/desarrollo-git-openspec.md § 9](docs/desarrollo-git-openspec.md#9-plantilla-mínima-de-pull-request).
 
 **Pull Request 1**
 
