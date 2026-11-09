@@ -195,6 +195,16 @@ Escenario: El dominio no depende de motores
 
 **Referencias:** [2.8](2-arquitectura.md#28-estructura-de-repositorio), [3.2](3-componentes.md#32-mapa-de-crates-y-regla-de-dependencias).
 
+**Specs** (ticket [T-00-01](7-tickets.md); orden `01 → 02 → 03`):
+
+| ZZ | Título | Esfuerzo | Cubre |
+|---|---|---|---|
+| T-00-01-01 | Toolchain, rustfmt y `.gitignore` | ~0,5 h | `rust-toolchain.toml`, `rustfmt.toml`, `.gitignore` (`models/`, `target/`, datos locales). Sin workspace ni `cargo`. |
+| T-00-01-02 | Workspace, lints, dependencias fijadas y crates lib vacíos | ~1 h | `vortex-core/Cargo.toml`, `[workspace.lints]`, `[workspace.dependencies]`, libs de [2.8](2-arquitectura.md#28-estructura-de-repositorio) (sin `bin/vortex`). `cargo build` / `test` / `clippy -D warnings` en esos libs. |
+| T-00-01-03 | Binario `bin/vortex` vacío y cierre del ticket | ~0,5 h | Miembro `bin/vortex` (`fn main() {}`). Cierra el **Listo cuando** del ticket sobre todo el workspace. |
+
+Orden: `T-00-01-01` → `T-00-01-02` → `T-00-01-03`. Después del ticket completo: T-09-01, T-00-03, T-00-04, T-00-05. Fuera de estas specs: código funcional, CI (T-09-01) y verificación automática de `domain` (T-00-02).
+
 ### HU-00-02 — SurrealDB embebido con migraciones versionadas
 
 *Como* equipo de desarrollo, *quiero* que Vortex Core abra SurrealDB embebido y aplique las migraciones al arrancar, *para* tener un esquema consistente y reproducible en cada instalación.
