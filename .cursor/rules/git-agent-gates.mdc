@@ -58,6 +58,13 @@ Do **not** run `git commit`, `git push`, or `gh pr create` until the user answer
 ## After authorization
 
 - Proposed and actual commit messages MUST follow [Conventional Commits 1.0.0](https://www.conventionalcommits.org/en/v1.0.0/) per [docs/desarrollo-git-openspec.md](docs/desarrollo-git-openspec.md) § 7.
-- Use scope `(T-XX-YY-ZZ)` matching the branch; footer `Refs: T-XX-YY` for the parent ticket when helpful.
+- Use scope `(T-XX-YY-ZZ)` matching the branch; footer `Refs: T-XX-YY, HU-XX-YY` with the parent ticket and the HU(s) it enables (column «HU» in [docs/7-tickets.md](docs/7-tickets.md)).
 - PR titles should use the same convention as the primary commit subject.
+- PR body references each HU issue (`Part of #N`, or `Closes #N` when the PR completes the HU) and sets the hito milestone (doc § 9, § 11).
+
+## Releases and tags
+
+- No branches or tags per HU; HU tracking uses GitHub issues + milestones (doc § 11).
+- Tags only on `main`, annotated, SemVer, after a `develop → main` PR: `v0.N.0` per course delivery, `v1.0.0` = H1, `v1.1.0`–`v1.3.0` = H2–H4 (doc § 10).
+- When a delivery or hito is complete, **propose** the release PR, tag and `gh release create`; run `git tag`, `git push origin <tag>` or `gh release create` only with explicit authorization.
 - Never force-push to `main` unless the user explicitly requests it.

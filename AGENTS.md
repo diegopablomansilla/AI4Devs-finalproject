@@ -35,4 +35,5 @@ Change name **must equal** the Git branch name (`T-XX-YY-ZZ`).
 - **Spec branches `T-XX-YY-ZZ`:** no `git commit` until **`openspec archive`** is done (TDD uncommitted until then).
 - **Commit / PR:** agent **must propose** (message, files, PR title/body) when ready; user **authorizes** before any `git commit`, `push`, or `gh pr create`.
 - **Spec branches:** commit proposal **only after** archive; then PR proposal → `develop`.
-- **Archive:** only when tests are green (happy + unhappy path); then **propose** commit (Conventional Commits, scope `T-XX-YY-ZZ`), never commit automatically.
+- **Archive:** only when tests are green (happy + unhappy path); then **propose** commit (Conventional Commits, scope `T-XX-YY-ZZ`, footer `Refs: T-XX-YY, HU-XX-YY`), never commit automatically.
+- **Releases:** annotated SemVer tags only on `main` per delivery/hito (`v0.N.0`, H1 = `v1.0.0`); no HU branches or tags — HUs are GitHub issues in a hito milestone ([docs/desarrollo-git-openspec.md](docs/desarrollo-git-openspec.md) § 10–11).

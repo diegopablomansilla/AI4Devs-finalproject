@@ -18,7 +18,8 @@ Canonical detail: [docs/desarrollo-git-openspec.md](docs/desarrollo-git-openspec
 1. Update `develop`, then `git checkout -b T-XX-YY-ZZ`.
 2. One OpenSpec change = one spec = one branch.
 3. Merge into **`develop`** via Pull Request (target `develop`, not `main`).
-4. Updates to **`main`** come from `develop` when the user decides (milestones/delivery).
+4. Updates to **`main`** come from `develop` at each course delivery or hito, followed by an annotated SemVer tag (see doc § 10).
+5. No HU branches (`develop → hu → spec` is not used); HUs are tracked with GitHub issues and milestones (doc § 11).
 
 ## Ticket traceability
 

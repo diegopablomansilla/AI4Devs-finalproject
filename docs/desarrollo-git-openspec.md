@@ -30,7 +30,8 @@ flowchart TB
 
 - Crear la rama desde `develop` actualizado: `git checkout develop && git pull && git checkout -b T-02-14-01`.
 - Integrar en **`develop`** mediante Pull Request (no merge directo a `main` desde ramas de spec).
-- **`main`** se actualiza desde `develop` cuando corresponda a un hito o entrega (criterio del equipo).
+- **`main`** se actualiza desde `develop` al cerrar una entrega del curso o un hito, y cada actualización lleva un tag de versión (ver § 10).
+- No hay ramas por historia (HU): el seguimiento de cada HU se hace con issues y milestones de GitHub (ver § 11).
 
 Ramas con convención antigua (p. ej. `feature/entrega-1-DPM`) no usan `T-XX-YY-ZZ`. Integrarlas en `develop` vía PR cuando corresponda; **desde entonces** abrir specs y ramas con el formato nuevo.
 
@@ -153,7 +154,7 @@ Seguimos [Conventional Commits 1.0.0](https://www.conventionalcommits.org/en/v1.
 
 - **Subject:** imperativo, minúsculas en la descripción (salvo nombres propios), sin punto final, ~72 caracteres.
 - **Scope (recomendado):** ID de la spec en curso, p. ej. `(T-02-14-01)`. Alternativa: crate o área (`api`, `catalog`) si el commit es transversal dentro de la misma rama.
-- **Footer (recomendado):** `Refs: T-02-14` para el ticket padre cuando el scope es la spec.
+- **Footer (recomendado):** `Refs: T-02-14, HU-02-04` con el ticket padre y la(s) historia(s) que habilita (columna «HU» de [7-tickets.md](7-tickets.md)). Permite `git log --grep HU-02-04`.
 
 ### Tipos habituales en Vectra
 
@@ -175,19 +176,19 @@ Seguimos [Conventional Commits 1.0.0](https://www.conventionalcommits.org/en/v1.
 ```
 feat(T-00-02-01): add check-domain-deps script
 
-Refs: T-00-02
+Refs: T-00-02, HU-00-01
 ```
 
 ```
 test(T-03-13-01): cover search 400 invalid query
 
-Refs: T-03-13
+Refs: T-03-13, HU-03-03, HU-03-04
 ```
 
 ```
 docs(T-09-01-01): document CI workflow in readme
 
-Refs: T-09-01
+Refs: T-09-01, HU-00-01, HU-09-01
 ```
 
 **Un commit de cierre por spec archivada** en la rama `T-XX-YY-ZZ` (implementación + tests + artefactos OpenSpec archivados). Partir en varios commits **solo post-archive** si el maintainer lo pide explícitamente; mismo **scope** (`T-XX-YY-ZZ`).
@@ -199,6 +200,7 @@ Refs: T-09-01
 - En ramas **`T-XX-YY-ZZ`**: **ningún** `git commit` hasta **`openspec archive`** completado (TDD sin commits intermedios).
 - **Proponer** commit y PR de forma **proactiva** cuando corresponda; **ejecutar** solo con tu autorización explícita a esa propuesta concreta.
 - Tras **archive** + tests green: **obligatorio** proponer commit; tras commit en rama lista: **obligatorio** proponer PR → `develop`.
+- Al cerrar una entrega o hito: proponer PR `develop → main`, tag y release (§ 10); ejecutar solo con autorización.
 - Detalle ejecutable: `.cursor/rules/git-workflow.mdc`, `git-agent-gates.mdc`, `openspec-tdd-delivery.mdc` y [AGENTS.md](../AGENTS.md).
 
 ### 8.1. Propuesta de commit (lo que debe mostrarte el agente)
@@ -222,7 +224,58 @@ Usar al integrar `T-XX-YY-ZZ` → `develop`:
 
 - **Rama:** `T-XX-YY-ZZ`
 - **Ticket padre:** `T-XX-YY` (enlace o sección en 7-tickets)
+- **Historia(s):** `Part of #N` con el issue de cada HU; `Closes #N` si es el último spec de esa HU (§ 11)
+- **Milestone:** el del hito de la HU (`H1`, `H2`, …)
 - **Change OpenSpec:** archivado (`openspec archive` completado)
 - **Tests:** comandos ejecutados y resultado (green, incl. unhappy path)
 - **Título del PR:** Conventional Commits, p. ej. `feat(T-02-14-01): …` (alinear con el commit principal)
 - **Notas:** cambios en `openapi.yaml` / modelo si aplica
+
+---
+
+## 10. Releases y tags
+
+Los tags marcan versiones y **solo se crean en `main`**, después de mergear `develop → main`. `develop` y las ramas de spec no llevan tags.
+
+| Momento | Versión | Ejemplo |
+|---------|---------|---------|
+| Entrega intermedia del curso | `v0.N.0` | `v0.1.0`, `v0.2.0` |
+| H1 — Buscador inteligente (MVP del curso) | `v1.0.0` | — |
+| H2 — Asistente IA | `v1.1.0` | — |
+| H3 — Manos libres | `v1.2.0` | — |
+| H4 — Extensiones condicionadas | `v1.3.0` | — |
+| Corrección sobre una versión publicada | patch | `v1.0.1` |
+
+- Versionado [SemVer](https://semver.org/lang/es/). Sin release candidates.
+- Tags **anotados** (`git tag -a`), nunca ligeros.
+- Cada tag tiene un GitHub Release con notas generadas desde los PRs.
+- Un hito se cierra cuando todas las HUs de su milestone están cerradas y los e2e de EP-09 pasan en `develop`.
+
+### Procedimiento
+
+1. PR `develop → main` titulado `chore(release): vX.Y.Z` con el hito o la entrega en el cuerpo.
+2. Tras el merge:
+
+```bash
+git checkout main && git pull
+git tag -a vX.Y.Z -m "H1 — Buscador inteligente (MVP del curso)"
+git push origin vX.Y.Z
+gh release create vX.Y.Z --generate-notes
+```
+
+El PR, el tag, el push del tag y el release requieren autorización explícita (igual que commits y PRs, § 8).
+
+---
+
+## 11. Seguimiento de historias (HU)
+
+Las HUs no tienen rama ni tag. Su estado vive en GitHub:
+
+| Elemento | Convención |
+|----------|------------|
+| **Milestone** | Uno por hito: `H1 — Buscador inteligente`, `H2 — Asistente IA`, … |
+| **Issue** | Uno por HU, título `HU-XX-YY <título>` (de [6-historias.md](6-historias.md) § 6.3.1), en el milestone de su hito. Cuerpo: checklist de tickets `T-XX-YY` según [7-tickets.md](7-tickets.md) § 7.18. |
+| **PR de spec** | `Part of #N` por cada HU que habilita; `Closes #N` en el PR que completa la HU. |
+| **Commit** | Footer `Refs: T-XX-YY, HU-XX-YY` (§ 7). |
+
+HUs con alcance **MVP parcial**: el issue se cierra en H1 con los escenarios del MVP; lo pendiente se abre como issue nuevo (`HU-XX-YY (v2) <título>`) en el milestone del hito v2 correspondiente.
