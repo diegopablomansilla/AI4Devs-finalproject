@@ -46,34 +46,36 @@
 
 ## 5.2. Mapa de endpoints
 
-| Método y ruta | Operación | Componente | Épica |
-|---|---|---|---|
-| `GET /api/v1/products` | Listar productos (admin) | Catalog & Inventory | EP-02 |
-| `POST /api/v1/products` | Crear producto (con stock inicial opcional) | Catalog & Inventory | EP-02 |
-| `GET /api/v1/products/{productId}` | Ficha completa | Catalog & Inventory | EP-02 |
-| `PATCH /api/v1/products/{productId}` | Modificar (bloqueo optimista) | Catalog & Inventory | EP-02 |
-| `DELETE /api/v1/products/{productId}` | Baja lógica | Catalog & Inventory | EP-02 |
-| `GET /api/v1/products/{productId}/stock-movements` | Historial del ledger | Catalog & Inventory | EP-02 |
-| `POST /api/v1/products/{productId}/stock-movements` | Ingreso o ajuste | Catalog & Inventory | EP-02 |
-| `POST /api/v1/products/{productId}/images` | Subir imagen de catálogo | Catalog & Inventory | EP-02 |
-| `DELETE /api/v1/products/{productId}/images/{imageId}` | Eliminar imagen | Catalog & Inventory | EP-02 |
-| `GET·POST /api/v1/categories`, `PATCH·DELETE /api/v1/categories/{id}` | Árbol de categorías | Catalog & Inventory | EP-02 |
-| `GET·POST /api/v1/brands`, `PATCH·DELETE /api/v1/brands/{id}` | Marcas | Catalog & Inventory | EP-02 |
-| `GET·POST /api/v1/attribute-definitions`, `PATCH·DELETE .../{id}` | Atributos técnicos | Catalog & Inventory | EP-02 |
-| `GET /api/v1/search` | Búsqueda por texto con facetas | Search | EP-03 |
-| `GET /api/v1/search/suggestions` | Autocompletado | Search | EP-03 |
-| `GET /api/v1/search/by-code/{code}` | Búsqueda exacta por SKU, fabricante u OEM | Search | EP-03 |
-| `GET·POST /api/v1/synonyms`, `PATCH·DELETE /api/v1/synonyms/{synonymId}` | Diccionario de sinónimos para búsqueda | Catalog & Inventory / Search | EP-03 |
-| `GET /api/v1/products/{productId}/recommendations` | Panel de recomendaciones | Recommendation | EP-04 |
-| `GET /api/v1/products/{productId}/relations` | Relaciones de un producto (admin) | Recommendation | EP-04 |
-| `POST /api/v1/relations` | Crear relación (opcionalmente bidireccional) | Recommendation | EP-04 |
-| `PATCH·DELETE /api/v1/relations/{relationType}/{relationId}` | Modificar o eliminar relación | Recommendation | EP-04 |
-| `GET·POST /api/v1/technical-notes`, `GET·PATCH·DELETE /api/v1/technical-notes/{noteId}` | Notas técnicas para el RAG | Catalog & Inventory / RAG | EP-05 |
-| `POST /api/v1/ai/ask` | Pregunta en lenguaje natural (SSE) | RAG Orchestrator | EP-05 |
-| `POST /api/v1/intent` | Clasificar intención | Intent Router | EP-05, EP-06 |
-| `POST /api/v1/speech/transcriptions` | Transcribir audio (+ intención) | Speech + Intent Router | EP-06 |
-| `GET /health` | Salud agregada | Sidecar Supervisor + Plataforma | EP-00 |
-| `GET /metrics` | Métricas Prometheus | Plataforma | EP-00, EP-09 |
+| Método y ruta | Operación | Componente | Épica | Alcance |
+|---|---|---|---|---|
+| `GET /api/v1/products` | Listar productos (admin) | Catalog & Inventory | EP-02 | MVP |
+| `POST /api/v1/products` | Crear producto (con stock inicial opcional) | Catalog & Inventory | EP-02 | MVP |
+| `GET /api/v1/products/{productId}` | Ficha completa | Catalog & Inventory | EP-02 | MVP |
+| `PATCH /api/v1/products/{productId}` | Modificar (bloqueo optimista) | Catalog & Inventory | EP-02 | MVP |
+| `DELETE /api/v1/products/{productId}` | Baja lógica | Catalog & Inventory | EP-02 | MVP |
+| `GET /api/v1/products/{productId}/stock-movements` | Historial del ledger | Catalog & Inventory | EP-02 | v2 |
+| `POST /api/v1/products/{productId}/stock-movements` | Ingreso o ajuste | Catalog & Inventory | EP-02 | MVP |
+| `POST /api/v1/products/{productId}/images` | Subir imagen de catálogo | Catalog & Inventory | EP-02 | v2 |
+| `DELETE /api/v1/products/{productId}/images/{imageId}` | Eliminar imagen | Catalog & Inventory | EP-02 | v2 |
+| `GET·POST /api/v1/categories`, `PATCH·DELETE /api/v1/categories/{id}` | Árbol de categorías | Catalog & Inventory | EP-02 | MVP |
+| `GET·POST /api/v1/brands`, `PATCH·DELETE /api/v1/brands/{id}` | Marcas | Catalog & Inventory | EP-02 | MVP |
+| `GET·POST /api/v1/attribute-definitions`, `PATCH·DELETE .../{id}` | Atributos técnicos | Catalog & Inventory | EP-02 | MVP |
+| `GET /api/v1/search` | Búsqueda por texto con facetas | Search | EP-03 | MVP (sin facetas) |
+| `GET /api/v1/search/suggestions` | Autocompletado | Search | EP-03 | v2 |
+| `GET /api/v1/search/by-code/{code}` | Búsqueda exacta por SKU, fabricante u OEM | Search | EP-03 | MVP |
+| `GET·POST /api/v1/synonyms`, `PATCH·DELETE /api/v1/synonyms/{synonymId}` | Diccionario de sinónimos para búsqueda | Catalog & Inventory / Search | EP-03 | v2 |
+| `GET /api/v1/products/{productId}/recommendations` | Panel de recomendaciones | Recommendation | EP-04 | MVP |
+| `GET /api/v1/products/{productId}/relations` | Relaciones de un producto (admin) | Recommendation | EP-04 | MVP |
+| `POST /api/v1/relations` | Crear relación (opcionalmente bidireccional) | Recommendation | EP-04 | MVP |
+| `PATCH·DELETE /api/v1/relations/{relationType}/{relationId}` | Modificar o eliminar relación | Recommendation | EP-04 | MVP |
+| `GET·POST /api/v1/technical-notes`, `GET·PATCH·DELETE /api/v1/technical-notes/{noteId}` | Notas técnicas para el RAG | Catalog & Inventory / RAG | EP-05 | v2 |
+| `POST /api/v1/ai/ask` | Pregunta en lenguaje natural (SSE) | RAG Orchestrator | EP-05 | v2 |
+| `POST /api/v1/intent` | Clasificar intención | Intent Router | EP-05, EP-06 | v2 |
+| `POST /api/v1/speech/transcriptions` | Transcribir audio (+ intención) | Speech + Intent Router | EP-06 | v2 |
+| `GET /health` | Salud agregada | Sidecar Supervisor + Plataforma | EP-00 | MVP |
+| `GET /metrics` | Métricas Prometheus | Plataforma | EP-00, EP-09 | MVP |
+
+**Alcance:** `MVP` = MVP del curso ([1.5](1-descripcion-general-del-producto.md#15-alcance-del-mvp)); `v2` = el endpoint sigue en `openapi.yaml` como referencia, pero no se implementa en el MVP del curso. En el MVP, `/health` reporta Meilisearch externo (sin supervisor) y la API se sirve por HTTP en `localhost`.
 
 ---
 

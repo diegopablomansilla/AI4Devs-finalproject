@@ -56,6 +56,12 @@ Dar al mostrador de ferreterías y repuestos una forma rápida y fiable de encon
 - **Operación local:** varias terminales en la LAN contra un **Nodo Maestro**; micrófono y cámara en el navegador; degradación controlada si falla un motor (p. ej. Meilisearch u Ollama) sin tumbar la búsqueda básica.
 - **Extensiones condicionadas del MVP:** búsqueda visual por foto (**Vortex Vision**) y **POS básico** (carrito y confirmación de venta con descuento atómico de stock, sin pagos ni facturación).
 
+**Alcance del MVP del curso** (ver [docs/1, § 1.5](docs/1-descripcion-general-del-producto.md#15-alcance-del-mvp)):
+
+- **Entra:** búsqueda por texto tolerante a errores (con búsqueda por código), recomendaciones por grafo (similares, sustitutos destacados sin stock, complementarios), alta y edición de productos, categorías, marcas, atributos y stock, dataset semilla de ~200 SKUs y una **PWA** con vistas de operador y administración para probar todo desde la GUI. Se ejecuta por HTTP en `localhost`.
+- **Pasa a v2:** Modo IA, voz, búsqueda visual, POS, HTTPS con CA local y `vectra.local`, servicio `launchd`, backups, supervisor de sidecars, imágenes de producto, facetas, sugerencias, sinónimos, búsqueda de respaldo, *benchmarks* y pruebas de degradación.
+- Detalle por historia en [docs/6, § 6.3.1](docs/6-historias.md#631-alcance-por-historia); ruta de 104 tickets en [docs/7, § 7.5.1](docs/7-tickets.md#751-ruta-del-mvp-del-curso).
+
 ### **1.3. Diseño y experiencia de usuario:**
 
 **Idea de interfaz:** Vectra es una PWA de mostrador con **modo oscuro** (`#0A0A0A`) y estética **Glassmorphism** (tarjetas translúcidas, desenfoque de fondo): legible bajo luz de local, con contraste accesible (WCAG AA) y botones grandes (≥ 44 px) para uso táctil con las manos ocupadas. El **Omnibox** ocupa el centro de la pantalla del **Operador** y recupera el foco tras cada acción; a su alrededor van resultados en tarjetas (foto, stock, precio, ubicación) y, al elegir un ítem, un panel lateral con recomendaciones. Iconos discretos activan voz, Modo IA (`?`) y, si está habilitado, cámara. La zona **Administrador** reutiliza el mismo lenguaje visual para ABM de catálogo, stock, relaciones y sinónimos (en el MVP no hay login: solo cambio de vista).

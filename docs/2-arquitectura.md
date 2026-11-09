@@ -140,6 +140,8 @@ El crate `domain` define los puertos (*traits*) y los crates de infraestructura 
 - **HTTPS obligatorio en la LAN:** los navegadores **solo permiten acceso a cámara y micrófono en contextos seguros** (HTTPS o `localhost`). Vortex Core genera una **CA local** en la instalación y un certificado para `vectra.local`; la CA se instala una vez en cada terminal.
 - Sin autenticación en el MVP; se recomienda una red Wi-Fi/VLAN dedicada al comercio.
 
+> **MVP del curso** ([1.5](1-descripcion-general-del-producto.md#15-alcance-del-mvp)): Vortex Core se sirve por **HTTP en `localhost`**, que el navegador ya trata como contexto seguro (la PWA y el Service Worker funcionan). HTTPS con CA local, `vectra.local` por mDNS y el acceso desde otras terminales de la LAN quedan para **v2**, cuando entren voz y cámara. Meilisearch se levanta a mano (binario o Docker) y Vortex Core lo consume por URL; el supervisor de sidecars también es v2.
+
 ---
 
 ## 2.8. Estructura de repositorio

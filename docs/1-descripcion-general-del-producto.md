@@ -101,23 +101,25 @@ El sistema se compone de dos piezas:
 
 | Prioridad | Capacidad | Compromiso |
 |---|---|---|
-| 1 | **Búsqueda por Texto** (Omnibox + Meilisearch) | Firme |
-| 1 | **Recomendaciones por Grafo** (similares, sustitutos sin stock, complementarios) | Firme |
-| 2 | **Modo IA** (RAG + LLM local) | Firme |
-| 3 | **Búsqueda por Voz** (Whisper local + ruteo de intención) | Firme |
-| 4 | **Búsqueda por Imagen** (embeddings visuales + búsqueda vectorial) | **Condicionado** a completar lo anterior |
-| 4 | **POS básico** (carrito, venta, descuento de stock) | **Condicionado** a completar lo anterior |
+| 1 | **Búsqueda por Texto** (Omnibox + Meilisearch, tolerante a errores) | **MVP del curso** |
+| 1 | **Recomendaciones por Grafo** (similares, sustitutos sin stock, complementarios) | **MVP del curso** |
+| 1 | **Catálogo mínimo** (alta y edición de productos, categorías, marcas, atributos, stock) + **dataset semilla** | **MVP del curso** |
+| 1 | **Shell de Vectra** (PWA con GUI de operador y administración) | **MVP del curso** |
+| 2 | **Modo IA** (RAG + LLM local) | v2 |
+| 3 | **Búsqueda por Voz** (Whisper local + ruteo de intención) | v2 |
+| 4 | **Búsqueda por Imagen** (embeddings visuales + búsqueda vectorial) | v2 condicionado |
+| 4 | **POS básico** (carrito, venta, descuento de stock) | v2 condicionado |
 
-Transversal y firme: **Catálogo e Inventario nativo** (Vectra es el sistema maestro de productos), **plataforma Vortex Core** y **shell de la interfaz**.
+> **Decisión de alcance (revisión LIDR de la primera entrega).** El MVP del curso es el primer hito (H1): un buscador que se puede probar completo desde la GUI. Se ejecuta en el Nodo Maestro por **HTTP en `localhost`** ([2.7](2-arquitectura.md#27-red-local-y-seguridad-mínima)). Pasan a **v2**: Modo IA, voz, visión, POS, HTTPS con CA local y `vectra.local`, servicio `launchd`, backups, canal de administración por socket, descarga de modelos offline, supervisor de sidecars, y los extras de búsqueda y catálogo (imágenes de producto, facetas, sugerencias, sinónimos, búsqueda de respaldo, historial y conciliación del ledger, carga rápida de relaciones, *benchmarks* y pruebas de degradación). El detalle por historia está en [6.3.1](6-historias.md#631-alcance-por-historia) y la ruta de tickets en [7.5.1](7-tickets.md#751-ruta-del-mvp-del-curso).
 
 ### Dentro del alcance
 
 - ABM (alta, baja, modificación) de productos, categorías, marcas, atributos técnicos y stock.
 - Carga **manual/curada** de relaciones entre productos (sustituto, complementario, similar).
-- Omnibox con búsqueda multimodal (texto, voz, IA; imagen condicionada).
+- Omnibox con búsqueda por texto en el MVP del curso; voz e IA en v2, imagen en v2 condicionado.
 - Panel de resultados con stock, precio, ubicación y panel de recomendaciones.
-- Acceso desde múltiples terminales en la LAN.
-- Captura de audio y video desde el navegador de la terminal.
+- Acceso desde múltiples terminales en la LAN (v2; el MVP del curso se usa en `localhost`).
+- Captura de audio y video desde el navegador de la terminal (v2).
 
 ### Fuera del alcance del MVP
 
@@ -339,7 +341,7 @@ Las preguntas del borrador quedaron cerradas según [7.2 Decisiones adoptadas](7
 
 > El backlog de épicas (priorización MoSCoW y dependencias), los hitos y las historias de usuario con sus criterios de aceptación están en [6. Épicas e Historias de Usuario](6-historias.md).
 
-Resumen: diez épicas, de **EP-00** (Plataforma Vortex Core) a **EP-09** (Calidad, rendimiento y operación), agrupadas en cuatro hitos: **H1** Buscador inteligente, **H2** Asistente IA, **H3** Manos libres y **H4** Extensiones condicionadas.
+Resumen: diez épicas, de **EP-00** (Plataforma Vortex Core) a **EP-09** (Calidad, rendimiento y operación), agrupadas en cuatro hitos. **H1** Buscador inteligente es el **MVP del curso**; **H2** Asistente IA, **H3** Manos libres y **H4** Extensiones condicionadas quedan para **v2**.
 
 ---
 
