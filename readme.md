@@ -134,7 +134,7 @@ Atributos, restricciones, tipos y reglas de negocio por dominio en el mismo **[`
 | Convenciones (IDs, NS/DB, soft delete) | [§ 4.3](docs/4-modelo.md#43-convenciones) |
 | Catálogo (`producto`, `categoria`, `marca`, `atributo_def`, imágenes, sinónimos) | [§ 4.4](docs/4-modelo.md#44-catálogo) |
 | Inventario (`movimiento_stock`, ledger) | [§ 4.5](docs/4-modelo.md#45-inventario-ledger-de-stock) |
-| Grafo (`similar_a`, `sustituye_a`, `complementa`) | [§ 4.6](docs/4-modelo.md#46-grafo-de-relaciones-entre-productos) |
+| Grafo (`similar_a`, `sustituible_por`, `complementa`) | [§ 4.6](docs/4-modelo.md#46-grafo-de-relaciones-entre-productos) |
 | Embeddings y outbox / sync | [§ 4.7](docs/4-modelo.md#47-vectores-e-índices-hnsw) · [§ 4.8](docs/4-modelo.md#48-sincronización-outbox-y-cursores) |
 | Índice Meilisearch derivado | [§ 4.11](docs/4-modelo.md#411-modelo-derivado-en-meilisearch) |
 

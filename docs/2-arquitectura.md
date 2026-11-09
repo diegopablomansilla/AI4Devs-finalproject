@@ -179,7 +179,7 @@ El crate `domain` define los puertos (*traits*) y los crates de infraestructura 
 |---|---|---|
 | Backend core | **Rust + Axum + Tokio** | Aprobado (recomendación TL) |
 | Frontend | **HTML + CSS + JavaScript vanilla**, Web Components, Service Worker (PWA) | Aprobado (decisión PO) |
-| Fuente de verdad / POS / grafo | **SurrealDB embebido** (SurrealKV o RocksDB) | Aprobado |
+| Fuente de verdad / POS / grafo | **SurrealDB embebido** con **RocksDB** (`kv-rocksdb`) | Aprobado |
 | Búsqueda de texto | **Meilisearch** (sidecar) | Aprobado — se descartó Tantivy |
 | Índice vectorial | **HNSW nativo de SurrealDB** detrás del *trait* `VectorIndex` | Aprobado (ADR-08) — se descartó Qdrant para el MVP |
 | Embeddings (visión y texto) | **ort** (ONNX Runtime para Rust) con *execution provider* CoreML | Aprobado |

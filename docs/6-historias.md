@@ -23,7 +23,7 @@
 11. [EP-07 — Búsqueda Visual (Vortex Vision)](#611-ep-07--búsqueda-visual-vortex-vision)
 12. [EP-08 — POS básico](#612-ep-08--pos-básico)
 13. [EP-09 — Calidad, rendimiento y operación](#613-ep-09--calidad-rendimiento-y-operación)
-14. [Preguntas abiertas que condicionan historias](#614-preguntas-abiertas-que-condicionan-historias)
+14. [Decisiones adoptadas y condicionantes de historias](#614-decisiones-adoptadas-y-condicionantes-de-historias)
 
 ---
 
@@ -1186,7 +1186,7 @@ Escenario: Actualización
   Entonces su embedding se recalcula y la próxima respuesta usa el contenido nuevo
 ```
 
-**Referencias:** [4.4.7](4-modelo.md#447-nota_tecnica). Sujeta a PM-04 y PAPI-03 (ver [6.14](#614-preguntas-abiertas-que-condicionan-historias)).
+**Referencias:** [4.4.7](4-modelo.md#447-nota_tecnica). Alcance cerrado en [PM-04 y PAPI-03](7-tickets.md#72-decisiones-adoptadas).
 
 ---
 
@@ -1576,22 +1576,14 @@ Escenario: Carga sostenida
 
 ---
 
-## 6.14. Preguntas abiertas que condicionan historias
+## 6.14. Decisiones adoptadas y condicionantes de historias
 
-Las preguntas se definen y deciden en su documento de origen; esta tabla indica qué historias bloquean.
+Las decisiones de producto, modelo, componentes y contrato están cerradas en [7.2 Decisiones adoptadas](7-tickets.md#72-decisiones-adoptadas) y en las secciones homónimas de cada documento (`1.13`, `3.8`, `4.13`, `5.14`). **Ninguna historia del alcance firme queda bloqueada por una pregunta abierta.**
 
-| Pregunta | Tema | Historias afectadas |
+Quedan solo **validaciones en implementación** (no bloquean el diseño):
+
+| Condicionante | Cuándo se cierra | Historias |
 |---|---|---|
-| [PA-02](1-descripcion-general-del-producto.md#113-preguntas-abiertas) | Modelo LLM final | HU-05-09, HU-09-07 |
-| [PA-03](1-descripcion-general-del-producto.md#113-preguntas-abiertas) | Modelo de embedding visual | HU-07-01, HU-07-02 |
-| [PA-04](1-descripcion-general-del-producto.md#113-preguntas-abiertas) | PWA sin conexión con el Nodo Maestro | HU-01-01 |
-| [PA-05](1-descripcion-general-del-producto.md#113-preguntas-abiertas) | Fuente del dataset semilla | HU-02-11, HU-05-09, HU-07-01 |
-| [PM-01](4-modelo.md#413-preguntas-abiertas-del-modelo) | Dimensión del índice de imagen | HU-07-01, HU-07-02 |
-| [PM-02](4-modelo.md#413-preguntas-abiertas-del-modelo) | Venta con stock insuficiente | HU-08-02, HU-08-03 |
-| [PM-03](4-modelo.md#413-preguntas-abiertas-del-modelo) | SurrealKV o RocksDB | HU-00-02 |
-| [PM-04](4-modelo.md#413-preguntas-abiertas-del-modelo) | Notas técnicas en el MVP | HU-05-10 |
-| [PM-05](4-modelo.md#413-preguntas-abiertas-del-modelo) | Nombre de `sustituye_a` | HU-04-01 (decidir antes de EP-04) |
-| [PAPI-02](5-contract-api.md#514-preguntas-abiertas-del-contrato) | Límites de audio | HU-06-06 |
-| [PAPI-03](5-contract-api.md#514-preguntas-abiertas-del-contrato) | ABM de sinónimos y notas técnicas en la API | HU-03-09, HU-05-10 |
-| [PC-01](3-componentes.md#38-preguntas-abiertas-de-componentes) | Crate `storage` | HU-00-01, HU-00-02 |
-| [PC-03](3-componentes.md#38-preguntas-abiertas-de-componentes) | Ubicación del POS Service | HU-08-01 a HU-08-04 |
+| Modelo LLM definitivo (PA-02) | *Benchmark* y ADR-09 en EP-05 | HU-05-09, HU-09-07 |
+| Embedding visual y dimensión HNSW (PA-03, PM-01) | *Spike* EP-07 | HU-07-01, HU-07-02 |
+| Límites de audio en producción (PAPI-02) | Medición en EP-06 | HU-06-06 |

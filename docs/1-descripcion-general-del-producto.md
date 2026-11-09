@@ -21,7 +21,7 @@
 10. [Hardware, rendimiento y presupuesto de memoria](#110-hardware-rendimiento-y-presupuesto-de-memoria)
 11. [Requisitos no funcionales](#111-requisitos-no-funcionales)
 12. [Riesgos y mitigaciones](#112-riesgos-y-mitigaciones)
-13. [Preguntas abiertas](#113-preguntas-abiertas)
+13. [Decisiones adoptadas](#113-decisiones-adoptadas)
 14. [Backlog inicial del MVP — Épicas](#114-backlog-inicial-del-mvp--épicas)
 15. [Glosario](#115-glosario)
 
@@ -179,7 +179,7 @@ Al seleccionar un producto se muestra un panel lateral con tres bloques, resuelt
 | Bloque | Relación | Regla |
 |---|---|---|
 | **Similares** | `producto -> similar_a -> producto` | Productos equivalentes o alternativos (otra marca, otra calidad). |
-| **Sustitutos (sin stock)** | `producto -> sustituye_a -> producto` | Se muestra **destacado** cuando `stock = 0`; solo sustitutos con `stock > 0`, ordenados por prioridad definida por el administrador. |
+| **Sustitutos (sin stock)** | `producto -> sustituible_por -> producto` | Se muestra **destacado** cuando `stock = 0`; solo sustitutos con `stock > 0`, ordenados por prioridad definida por el administrador. |
 | **Se usa junto con** | `producto -> complementa -> producto` | Venta cruzada: "Perno M8 → Arandela M8, Tuerca M8". |
 
 - Las relaciones son **dirigidas**; el administrador puede marcarlas como **bidireccionales** al crearlas.
@@ -321,15 +321,17 @@ Stack resumido: **Rust + Axum + Tokio**, **HTML/CSS/JS vanilla** con Web Compone
 
 ---
 
-## 1.13. Preguntas abiertas
+## 1.13. Decisiones adoptadas
 
-| # | Pregunta | Opciones | Recomendación del Arquitecto | Decide |
-|---|---|---|---|---|
-| **PA-01** | ¿Qdrant o índice vectorial nativo de SurrealDB? | **A)** Mantener Qdrant como sidecar. **B)** Usar HNSW nativo de SurrealDB. **C)** Qdrant detrás de un *trait* para poder migrar. | **Resuelta:** opción **B**, HNSW nativo de SurrealDB detrás del *trait* `VectorIndex` (ver [ADR-08](2-arquitectura.md#adr-08--índice-vectorial-en-surrealdb)). | PO + TL |
-| **PA-02** | Modelo LLM final | Qwen 7–8 B vs. Llama 3.1 8B (ver [2-arquitectura.md, 2.11.1](2-arquitectura.md#2111-llm-para-el-hardware-del-mvp-macbook-air-m4--24-gb)). | Decidir por *benchmark*. | PO + TL |
-| **PA-03** | Modelo de embedding visual | DINOv2 vs. CLIP/SigLIP. | Decidir por *benchmark* sobre el dataset semilla. | Arquitecto |
-| **PA-04** | ¿La PWA debe funcionar si la terminal pierde la conexión con el Nodo Maestro? | Solo *app shell* con aviso vs. caché de lectura del catálogo. | *App shell* con aviso en el MVP. | PO |
-| **PA-05** | Fuente del dataset semilla (≈ 2–5 k SKUs reales de ferretería/repuestos con fotos) | Catálogo de un comercio piloto vs. dataset generado. | Comercio piloto si es posible: valida la búsqueda con datos reales. | PO |
+Las preguntas del borrador quedaron cerradas según [7.2 Decisiones adoptadas](7-tickets.md#72-decisiones-adoptadas). Resumen de producto:
+
+| # | Decisión |
+|---|---|
+| **PA-01** | Índice vectorial **HNSW nativo de SurrealDB** detrás del *trait* `VectorIndex` ([ADR-08](2-arquitectura.md#adr-08--índice-vectorial-en-surrealdb)). |
+| **PA-02** | Modelo LLM por defecto hasta el *benchmark*: `qwen2.5:7b-instruct-q4_K_M`; ADR-09 al cerrar EP-05. |
+| **PA-03** | Modelo de embedding visual: se elige por *benchmark* en EP-07; la dimensión HNSW de imagen sigue a esa decisión. |
+| **PA-04** | PWA sin Nodo Maestro: solo *app shell* con aviso (sin caché de catálogo). |
+| **PA-05** | Dataset: catálogo del comercio piloto; en desarrollo, semilla de ~200 SKUs. |
 
 ---
 

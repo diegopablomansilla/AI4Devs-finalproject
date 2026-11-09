@@ -53,21 +53,21 @@ Las preguntas abiertas de los documentos previos se resuelven con la recomendaci
 
 | Pregunta | Decisión adoptada | Tickets afectados |
 |---|---|---|
-| [PM-03](4-modelo.md#413-preguntas-abiertas-del-modelo) | SurrealDB embebido con **RocksDB** (`kv-rocksdb`); `kv-mem` solo en tests. | T-00-08, T-09-02 |
-| [PM-05](4-modelo.md#413-preguntas-abiertas-del-modelo) | La tabla se llama **`sustituible_por`**. El contrato (`substitute`) no cambia. | T-04-01 |
-| [PM-02](4-modelo.md#413-preguntas-abiertas-del-modelo) | Una venta con stock insuficiente se **rechaza** completa (`negative_stock`). | T-08-03 |
-| [PM-04](4-modelo.md#413-preguntas-abiertas-del-modelo) | Notas técnicas **entran** al MVP con ABM mínimo. | T-05-25 a T-05-29 |
-| [PM-01](4-modelo.md#413-preguntas-abiertas-del-modelo) / [PA-03](1-descripcion-general-del-producto.md#113-preguntas-abiertas) | Se resuelven con el *spike* visual; el índice de imagen se define después. | T-07-01, T-07-02, T-07-05 |
-| [PA-02](1-descripcion-general-del-producto.md#113-preguntas-abiertas) | Modelo por defecto hasta el *benchmark*: `qwen2.5:7b-instruct-q4_K_M`. | T-05-12, T-05-32 |
-| [PA-04](1-descripcion-general-del-producto.md#113-preguntas-abiertas) | PWA sin nodo: solo *app shell* con aviso. | T-01-14 |
-| [PA-05](1-descripcion-general-del-producto.md#113-preguntas-abiertas) | Catálogo del comercio piloto; mientras tanto, dataset de desarrollo de ~200 SKUs. | T-02-41, T-02-46 |
-| [PC-01](3-componentes.md#38-preguntas-abiertas-de-componentes) | Crate **`storage`** único (conexión, esquema, migraciones, repositorios). | T-00-01, T-00-08 |
-| [PC-02](3-componentes.md#38-preguntas-abiertas-de-componentes) | **Outbox** propio en la misma transacción (no *change feed*). | T-03-01, T-03-02 |
-| [PC-03](3-componentes.md#38-preguntas-abiertas-de-componentes) | POS en crate propio **`pos`**. | T-08-01 |
-| [PAPI-01](5-contract-api.md#514-preguntas-abiertas-del-contrato) | Una sola fuente: `openapi.yaml`; se quita la copia embebida de 5.13. | T-09-03 |
-| [PAPI-02](5-contract-api.md#514-preguntas-abiertas-del-contrato) | Límites de audio 2 MB / 30 s; se miden en EP-06. | T-06-03, T-06-13 |
-| [PAPI-03](5-contract-api.md#514-preguntas-abiertas-del-contrato) | Sinónimos en `/api/v1/synonyms` (EP-03); notas en `/api/v1/technical-notes` (EP-05). | T-03-25, T-05-26 |
-| [PAPI-04](5-contract-api.md#514-preguntas-abiertas-del-contrato) | Especificación primero; los tests de `api` validan respuestas contra `openapi.yaml` (sin *codegen*). | T-09-04 |
+| [PM-03](4-modelo.md#413-decisiones-adoptadas-del-modelo) | SurrealDB embebido con **RocksDB** (`kv-rocksdb`); `kv-mem` solo en tests. | T-00-08, T-09-02 |
+| [PM-05](4-modelo.md#413-decisiones-adoptadas-del-modelo) | La tabla se llama **`sustituible_por`**. El contrato (`substitute`) no cambia. | T-04-01 |
+| [PM-02](4-modelo.md#413-decisiones-adoptadas-del-modelo) | Una venta con stock insuficiente se **rechaza** completa (`negative_stock`). | T-08-03 |
+| [PM-04](4-modelo.md#413-decisiones-adoptadas-del-modelo) | Notas técnicas **entran** al MVP con ABM mínimo. | T-05-25 a T-05-29 |
+| [PM-01](4-modelo.md#413-decisiones-adoptadas-del-modelo) / [PA-03](1-descripcion-general-del-producto.md#113-decisiones-adoptadas) | Se resuelven con el *spike* visual; el índice de imagen se define después. | T-07-01, T-07-02, T-07-05 |
+| [PA-02](1-descripcion-general-del-producto.md#113-decisiones-adoptadas) | Modelo por defecto hasta el *benchmark*: `qwen2.5:7b-instruct-q4_K_M`. | T-05-12, T-05-32 |
+| [PA-04](1-descripcion-general-del-producto.md#113-decisiones-adoptadas) | PWA sin nodo: solo *app shell* con aviso. | T-01-14 |
+| [PA-05](1-descripcion-general-del-producto.md#113-decisiones-adoptadas) | Catálogo del comercio piloto; mientras tanto, dataset de desarrollo de ~200 SKUs. | T-02-41, T-02-46 |
+| [PC-01](3-componentes.md#38-decisiones-adoptadas-de-componentes) | Crate **`storage`** único (conexión, esquema, migraciones, repositorios). | T-00-01, T-00-08 |
+| [PC-02](3-componentes.md#38-decisiones-adoptadas-de-componentes) | **Outbox** propio en la misma transacción (no *change feed*). | T-03-01, T-03-02 |
+| [PC-03](3-componentes.md#38-decisiones-adoptadas-de-componentes) | POS en crate propio **`pos`**. | T-08-01 |
+| [PAPI-01](5-contract-api.md#514-decisiones-adoptadas-del-contrato) | Una sola fuente: `openapi.yaml`; se quita la copia embebida de 5.13. | T-09-03 |
+| [PAPI-02](5-contract-api.md#514-decisiones-adoptadas-del-contrato) | Límites de audio 2 MB / 30 s; se miden en EP-06. | T-06-03, T-06-13 |
+| [PAPI-03](5-contract-api.md#514-decisiones-adoptadas-del-contrato) | Sinónimos en `/api/v1/synonyms` (EP-03); notas en `/api/v1/technical-notes` (EP-05). | T-03-25, T-05-26 |
+| [PAPI-04](5-contract-api.md#514-decisiones-adoptadas-del-contrato) | Especificación primero; los tests de `api` validan respuestas contra `openapi.yaml` (sin *codegen*). | T-09-04 |
 
 **Defaults técnicos del stack** (no definidos en los documentos previos): Rust estable fijado con `rust-toolchain.toml`, edición 2024; `tokio`, `axum` 0.8, `tower-http`, `axum-server` + `rustls`; `surrealdb` 2.x con versión exacta (`=`); `meilisearch-sdk`; `reqwest` para Ollama; `ort` + `tokenizers`; `whisper-rs`; `rust_decimal`, `ulid`, `thiserror`, `serde`; `tracing` + `tracing-appender`; `metrics` + `metrics-exporter-prometheus`; `rcgen`; `clap`. CI en **GitHub Actions** con *runner* macOS Apple Silicon (Metal y CoreML). Tests e2e con **Playwright** (herramienta de desarrollo, no se distribuye). Pruebas de carga con un binario Rust propio (`bench/`).
 
@@ -471,7 +471,7 @@ flowchart LR
 
 #### 017 · T-09-03 — Fuente única OpenAPI y *lint* Redocly
 **HU:** HU-09-02 · **Depende de:** T-09-01
-- **Hace:** aplica PAPI-01: quita la copia embebida de [5.13](5-contract-api.md#513-especificación-openapi-31) (queda el enlace a `openapi.yaml`) y ajusta la descripción de `openapi.yaml`; `redocly.yaml` y *job* de CI `npx @redocly/cli lint docs/openapi.yaml`.
+- **Hace:** PAPI-01 ya aplicado en docs (sin copia embebida en 5.13); agrega `redocly.yaml` y *job* de CI `npx @redocly/cli lint docs/openapi.yaml`.
 - **No hace:** validación de respuestas (T-09-04).
 - **Listo cuando:** la CI falla si `openapi.yaml` tiene un error de *lint*.
 
@@ -1083,7 +1083,7 @@ flowchart LR
 
 #### 117 · T-03-25 — Contrato de sinónimos en `openapi.yaml`
 **HU:** HU-03-09 · **Depende de:** T-09-03
-- **Hace:** agrega `GET`/`POST /api/v1/synonyms` y `PATCH`/`DELETE /api/v1/synonyms/{synonymId}` (baja lógica) con esquemas `Synonym`, `SynonymCreate` y `SynonymUpdate` (tag `Search`); actualiza 5.2 y 5.12 de [5-contract-api.md](5-contract-api.md).
+- **Hace:** verifica que `openapi.yaml` ya define sinónimos (`Synonym*`) y que [5.2](5-contract-api.md#52-mapa-de-endpoints) está alineado; ajusta el contrato solo si falta algo.
 - **No hace:** implementación.
 - **Listo cuando:** el *lint* de Redocly pasa.
 
@@ -1129,7 +1129,7 @@ flowchart LR
 
 #### 124 · T-04-01 — Migración de relaciones (`sustituible_por`)
 **HU:** HU-04-01 · **Depende de:** T-02-14
-- **Hace:** tablas `similar_a`, `sustituible_por` y `complementa` según [4.6.1](4-modelo.md#461-tablas-de-relación) (PM-05); actualiza 4.2, 4.6, 4.12 y 4.13 de [4-modelo.md](4-modelo.md) y la tabla de enumerados de [5.3](5-contract-api.md#53-correspondencia-api--modelo-de-datos).
+- **Hace:** migración SurrealDB con tablas `similar_a`, `sustituible_por` y `complementa` según [4.6.1](4-modelo.md#461-tablas-de-relación) (PM-05; nombre ya documentado).
 - **No hace:** lógica.
 - **Listo cuando:** tests: `ENFORCED` rechaza un destino inexistente y el índice único `(in, out)` rechaza duplicados.
 
@@ -1425,7 +1425,7 @@ flowchart LR
 
 #### 172 · T-05-26 — Contrato y endpoints de notas técnicas
 **HU:** HU-05-10 · **Depende de:** T-05-25, T-09-03
-- **Hace:** agrega `GET`/`POST /api/v1/technical-notes` y `GET`/`PATCH`/`DELETE /api/v1/technical-notes/{noteId}` a `openapi.yaml` (tag `AI`), actualiza 5.2 y 5.12 de [5-contract-api.md](5-contract-api.md) e implementa los casos de uso.
+- **Hace:** verifica contrato de notas técnicas en `openapi.yaml` (tag `AI`) y implementa casos de uso y endpoints.
 - **No hace:** UI.
 - **Listo cuando:** *lint* y tests de contrato pasan.
 

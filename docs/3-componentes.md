@@ -17,7 +17,7 @@
 5. [Componentes condicionados](#35-componentes-condicionados)
 6. [Decisiones de diseño transversales a los componentes](#36-decisiones-de-diseño-transversales-a-los-componentes)
 7. [Trazabilidad componente ↔ épica](#37-trazabilidad-componente--épica)
-8. [Preguntas abiertas de componentes](#38-preguntas-abiertas-de-componentes)
+8. [Decisiones adoptadas de componentes](#38-decisiones-adoptadas-de-componentes)
 
 ---
 
@@ -46,7 +46,7 @@ flowchart LR
       RAG["RAG Orchestrator"]
       SYNC["Index Sync Worker<br/>(outbox / change feed)"]
       SUP["Sidecar Supervisor<br/>+ health checks"]
-      DB[("SurrealDB embebido<br/>SurrealKV / RocksDB<br/>Fuente única de verdad<br/>+ índice vectorial HNSW")]
+      DB[("SurrealDB embebido<br/>RocksDB kv-rocksdb<br/>Fuente única de verdad<br/>+ índice vectorial HNSW")]
     end
     MEILI[("Meilisearch<br/>sidecar")]
     LLM["LLM runtime<br/>Ollama (Metal)<br/>sidecar"]
@@ -227,7 +227,7 @@ Cada ficha sigue la misma estructura: responsabilidad, interfaces expuestas, dep
 |---|---|
 | **Crate** | `recommend` |
 | **Responsabilidad** | Recomendaciones post-búsqueda por grafo y ABM de relaciones curadas entre productos. |
-| **Interfaces expuestas** | Obtener recomendaciones de un producto (bloques Similares, Sustitutos con stock, Se usa junto con); crear, modificar y eliminar relaciones (`similar_a`, `sustituye_a`, `complementa`) con prioridad, nota y opción bidireccional. |
+| **Interfaces expuestas** | Obtener recomendaciones de un producto (bloques Similares, Sustitutos con stock, Se usa junto con); crear, modificar y eliminar relaciones (`similar_a`, `sustituible_por`, `complementa`) con prioridad, nota y opción bidireccional. |
 | **Consume** | `RelationRepo`, `ProductRepo` (stock de los destinos). |
 | **Datos** | Aristas de grafo en SurrealDB con atributos `prioridad` y `nota` ([4-modelo.md, 4.6](4-modelo.md#46-grafo-de-relaciones-entre-productos)). |
 | **Comportamiento clave** | Los sustitutos se filtran por `stock > 0` y se ordenan por prioridad; si el producto consultado tiene `stock = 0`, el bloque se marca como destacado. La creación bidireccional genera ambas aristas en una transacción. Resuelve los tres bloques en una sola consulta al grafo. |
@@ -324,7 +324,7 @@ Cada ficha sigue la misma estructura: responsabilidad, interfaces expuestas, dep
 | Aspecto | Detalle |
 |---|---|
 | **Crate** | `storage` *(propuesto)* |
-| **Responsabilidad** | Encapsular SurrealDB embebido: apertura de la base (SurrealKV o RocksDB), esquema, migraciones, definición de índices (incluido HNSW), ayudas para transacciones con outbox y adaptadores base de repositorios. |
+| **Responsabilidad** | Encapsular SurrealDB embebido: apertura de la base con **RocksDB** (`kv-rocksdb`), esquema, migraciones, definición de índices (incluido HNSW), ayudas para transacciones con outbox y adaptadores base de repositorios. |
 | **Interfaces expuestas** | Conexión compartida; ejecución de migraciones al arrancar; implementaciones de los repositorios de dominio. |
 | **Consume** | SDK de SurrealDB con versión fijada. |
 | **Datos** | Todos los datos maestros, derivados y técnicos. Esquema completo, convenciones y migraciones en [4. Modelo de Datos](4-modelo.md). |
@@ -355,7 +355,7 @@ Componentes previstos que solo se construyen si se completa el alcance firme ([1
 
 | Componente | Crate | Responsabilidad | Épica |
 |---|---|---|---|
-| **POS Service** | `catalog` o crate propio `pos` (a definir) | Carrito y confirmación de venta: registra la venta y los movimientos de stock en una **transacción atómica** sobre el ledger. | EP-08 |
+| **POS Service** | Crate propio **`pos`** ([PC-03](7-tickets.md#72-decisiones-adoptadas)) | Carrito y confirmación de venta: registra la venta y los movimientos de stock en una **transacción atómica** sobre el ledger. | EP-08 |
 | **Vortex Vision** (extensión de Search + Embedding) | `search`, `vision` | Búsqueda por imagen *top-k* con confianza y alta de fotos de referencia confirmadas por el operador. | EP-07 |
 
 ---
@@ -395,10 +395,12 @@ Componentes previstos que solo se construyen si se completa el alcance firme ([1
 
 ---
 
-## 3.8. Preguntas abiertas de componentes
+## 3.8. Decisiones adoptadas de componentes
 
-| # | Pregunta | Opciones | Recomendación del Arquitecto | Decide |
-|---|---|---|---|---|
-| **PC-01** | ¿Se agrega el crate `storage` al workspace? | **A)** Crate `storage` compartido (conexión, esquema, migraciones). **B)** Cada servicio implementa sus repositorios contra SurrealDB directamente. | **A**: un único lugar para esquema, migraciones y la transacción con outbox. | TL |
-| **PC-02** | ¿Outbox propio o *change feed* nativo de SurrealDB? | **A)** Tabla outbox escrita en la misma transacción. **B)** *Change feed* nativo. | Empezar con **A** (control explícito e independiente de la versión) y evaluar **B** tras fijar la versión de SurrealDB. El modelo ya adopta **A** ([4-modelo.md, 4.8](4-modelo.md#48-sincronización-outbox-y-cursores)). | TL |
-| **PC-03** | ¿Dónde vive el POS Service si se habilita? | **A)** Dentro de `catalog`. **B)** Crate propio `pos`. | **B**: la visión estratégica (Predictive Supply, Integrity Module) consumirá eventos de venta de forma independiente. | Arquitecto |
+| # | Decisión |
+|---|---|
+| **PC-01** | Crate **`storage`** único: conexión, esquema, migraciones y repositorios compartidos. |
+| **PC-02** | **Outbox** propio en la misma transacción (no *change feed* nativo en el MVP). |
+| **PC-03** | POS en crate propio **`pos`** (condicionado a EP-08). |
+
+Detalle y trazabilidad en [7.2 Decisiones adoptadas](7-tickets.md#72-decisiones-adoptadas).
