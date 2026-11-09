@@ -1,6 +1,5 @@
 > Detalla en esta sección los prompts principales utilizados durante la creación del proyecto, que justifiquen el uso de asistentes de código en todas las fases del ciclo de vida del desarrollo. Esperamos un máximo de 3 por sección, principalmente los de creación inicial o  los de corrección o adición de funcionalidades que consideres más relevantes.
-Puedes añadir adicionalmente la conversación completa como link o archivo adjunto si así lo consideras
-
+> Puedes añadir adicionalmente la conversación completa como link o archivo adjunto si así lo consideras
 
 ## Índice
 
@@ -23,56 +22,54 @@ Nota: por lo general comence con un prompt modo plan y en auto, que explora el c
 
 ### Rol: Product Owner (PO) y Arquitecto de Software Senior especializado en Retail Industrial, Sistemas POS Local-First de Alto Rendimiento y Búsqueda Multimodal.
 
+
+
 ### Objetivo: Elaborar una descripción exhaustiva del proyecto, especificación técnica detallada, arquitectura de componentes y estructura del Backlog inicial (MVP) para sistema llamado "Vectra". Dejar la descripcion en un documento 1-descripcion-general-del-producto.md en una carpeta /docs
+
+
 
 ### Especificaciones del Proyecto:
 
 Cursor Opus 5.5
 
 1. Visión General y Filosofía:
-   - Filosofía: "Local-First" — 100% de operatividad local sin dependencia de la nube o internet.
-   - Vision del producto:
-        - **Vectra** es el sistema comercial definitivo de cara al usuario, diseñado para el retail moderno y entornos con inventarios complejos (Ferreterías, Farmacias, Repuestos Automotrices, etc.). Transforma cualquier mostrador estándar en una estación de inteligencia avanzada. Permite a los operadores encontrar piezas al instante mediante reconocimiento visual, consultar inventario por voz y recibir recomendaciones de productos alternativos y de stock, todo sin depender de una conexión a internet activa.
-        - **Vortex Core** es el motor backend local, silencioso y de altísimo rendimiento que se ejecuta en el Nodo Maestro (Hardware Apple Silicon). Impulsa toda la indexación de datos, embeddings vectoriales, procesamiento local de voz, registros transaccionales (ledger) y el razonamiento de la Inteligencia Artificial local.
-
+  - Filosofía: "Local-First" — 100% de operatividad local sin dependencia de la nube o internet.
+  - Vision del producto:
+    - **Vectra** es el sistema comercial definitivo de cara al usuario, diseñado para el retail moderno y entornos con inventarios complejos (Ferreterías, Farmacias, Repuestos Automotrices, etc.). Transforma cualquier mostrador estándar en una estación de inteligencia avanzada. Permite a los operadores encontrar piezas al instante mediante reconocimiento visual, consultar inventario por voz y recibir recomendaciones de productos alternativos y de stock, todo sin depender de una conexión a internet activa.
+    - **Vortex Core** es el motor backend local, silencioso y de altísimo rendimiento que se ejecuta en el Nodo Maestro (Hardware Apple Silicon). Impulsa toda la indexación de datos, embeddings vectoriales, procesamiento local de voz, registros transaccionales (ledger) y el razonamiento de la Inteligencia Artificial local.
 2. Arquitectura de Datos y Búsqueda Multimodal:
-   - Backend Core: Rust + Axum como motor asíncrono de alta concurrencia (core, gestión de APIs, streaming local y coordinación).
-   - Interfaz (Frontend): Single Page Application (SPA / PWA) con diseño "Glassmorphism" inspirado en Apple, modo oscuro nativo (#0A0A0A) y barra de búsqueda centralizada ("Omnibox").
-   - Fuente Única de Verdad (Single Source of Truth) & POS/CRM: SurrealDB (embebido en Rust con RocksDB/Surrealkv). Manejo de datos maestros, transacciones y relaciones de grafos avanzadas (ej. `RELATE producto:tornillo -> sugiere -> producto:arandela`, productos sustitutos e historial de pedidos y clientes).
-   - Búsqueda de Texto Instantánea: Meilisearch (Sidecar) para búsquedas tolerantes a errores ortográficos (typo-tolerance), jerarquización de relevancia, resaltado y sugerencias search-as-you-type en submilisegundos.
-   - Búsqueda Visual / Identidad Visual (Vortex Vision): Qdrant (Sidecar) con índice HNSW y embeddings extraídos localmente (onnxruntime-rs en Rust) para reconocimiento de piezas en menos de 10ms.
-   - Reconocimiento de Voz Local: Whisper local (Whisper.cpp / Whisper-rs) ejecutado en Rust sobre el Neural Engine/GPU. Ruteo automático de intenciones (Texto -> Meilisearch; Pregunta técnica -> RAG/LLM; "Busca esto" -> Qdrant).
-   - Modo IA y Razonamiento Local: RAG (Retrieval-Augmented Generation) combinando SurrealDB + Qdrant con un LLM Local (Llama 3 / Mistral vía Ollama) para resolver consultas complejas del operador.
-
+  - Backend Core: Rust + Axum como motor asíncrono de alta concurrencia (core, gestión de APIs, streaming local y coordinación).
+  - Interfaz (Frontend): Single Page Application (SPA / PWA) con diseño "Glassmorphism" inspirado en Apple, modo oscuro nativo (#0A0A0A) y barra de búsqueda centralizada ("Omnibox").
+  - Fuente Única de Verdad (Single Source of Truth) & POS/CRM: SurrealDB (embebido en Rust con RocksDB/Surrealkv). Manejo de datos maestros, transacciones y relaciones de grafos avanzadas (ej. `RELATE producto:tornillo -> sugiere -> producto:arandela`, productos sustitutos e historial de pedidos y clientes).
+  - Búsqueda de Texto Instantánea: Meilisearch (Sidecar) para búsquedas tolerantes a errores ortográficos (typo-tolerance), jerarquización de relevancia, resaltado y sugerencias search-as-you-type en submilisegundos.
+  - Búsqueda Visual / Identidad Visual (Vortex Vision): Qdrant (Sidecar) con índice HNSW y embeddings extraídos localmente (onnxruntime-rs en Rust) para reconocimiento de piezas en menos de 10ms.
+  - Reconocimiento de Voz Local: Whisper local (Whisper.cpp / Whisper-rs) ejecutado en Rust sobre el Neural Engine/GPU. Ruteo automático de intenciones (Texto -> Meilisearch; Pregunta técnica -> RAG/LLM; "Busca esto" -> Qdrant).
+  - Modo IA y Razonamiento Local: RAG (Retrieval-Augmented Generation) combinando SurrealDB + Qdrant con un LLM Local (Llama 3 / Mistral vía Ollama) para resolver consultas complejas del operador.
    Nota: El stack tecnologico esta basado en una recomendacion por parte de nuestro TL, sin embargo tu puedes opinar y proponer cualquier cambio.
-
 3. Módulos de Poder del Ecosistema Vortex Core:
-   - Dentro del alcance del MVP (Se centrara en Ferreterias y/ Repuestos)
-        - Vectra Search Portal: Omnibox de búsqueda multimodal (Texto, Voz, Imagen y Modo IA). 
-            - Features principales de la busqueda por Texto:
-                - Búsqueda por relevancia, tolerancia a errores tipográficos (typo-tolerance) y búsqueda "mientras escribes" (search-as-you-type) de forma nativa
-                - Ranking de Relevancia: si el usuario busca "Perno", el "Perno de Acero" es más relevante que una "Arandela para Perno".
-                - Highlighting y Sugerencias: El buscador devuelve exactamente qué parte del texto coincidió y ofrece sugerencias instantáneas mientras escribes (Search-as-you-type).
-            - Features principales luego de obtener resultados
-                - Proponer productos similares en base a relaciones
-                - Proponer opciones de productos si el stock es 0
-                - Proponer opciones de productos cuando el producto buscado usualmente se utiliza juto a o tro producto. Ejemplo arandera con x tornillo.
-   - Fuera de alcance del MVP (solo para resaltar la vision estrategica del producto o hacia donde se quiere evlucionar)
-        - Vortex Talk: Socio consultor de IA conversacional local para métricas, diagnósticos y decisiones estratégicas. 
-        - Predictive Supply: Oráculo de reposición predictiva de stock basado en ventas, patrones y factores externos.
-        - Integrity Module: Auditor silencioso que detecta discrepancias y previene fraude cruzando visión y tickets POS.
-        - Vortex Sentinel: Analítica física de tráfico y mapas de calor en el local mediante cámaras IP locales (privacidad total).
-        - Vortex Briefing & Mirror: Dashboard gerencial diario y sincronización cifrada opcional con la nube.
-
+  - Dentro del alcance del MVP (Se centrara en Ferreterias y/ Repuestos)
+  - Vectra Search Portal: Omnibox de búsqueda multimodal (Texto, Voz, Imagen y Modo IA). 
+    - Features principales de la busqueda por Texto:
+      - Búsqueda por relevancia, tolerancia a errores tipográficos (typo-tolerance) y búsqueda "mientras escribes" (search-as-you-type) de forma nativa
+      - Ranking de Relevancia: si el usuario busca "Perno", el "Perno de Acero" es más relevante que una "Arandela para Perno".
+      - Highlighting y Sugerencias: El buscador devuelve exactamente qué parte del texto coincidió y ofrece sugerencias instantáneas mientras escribes (Search-as-you-type).
+    - Features principales luego de obtener resultados
+      - Proponer productos similares en base a relaciones
+      - Proponer opciones de productos si el stock es 0
+      - Proponer opciones de productos cuando el producto buscado usualmente se utiliza juto a o tro producto. Ejemplo arandera con x tornillo.
+  - Fuera de alcance del MVP (solo para resaltar la vision estrategica del producto o hacia donde se quiere evlucionar)
+    - Vortex Talk: Socio consultor de IA conversacional local para métricas, diagnósticos y decisiones estratégicas. 
+    - Predictive Supply: Oráculo de reposición predictiva de stock basado en ventas, patrones y factores externos.
+    - Integrity Module: Auditor silencioso que detecta discrepancias y previene fraude cruzando visión y tickets POS.
+    - Vortex Sentinel: Analítica física de tráfico y mapas de calor en el local mediante cámaras IP locales (privacidad total).
+    - Vortex Briefing & Mirror: Dashboard gerencial diario y sincronización cifrada opcional con la nube.
 4. Target de Hardware y Rendimiento:
-   - Hardware de Validación/MVP: Apple Silicon (MacBook Air M4 con 24GB de Memoria Unificada).
-   - Hardware de Producción: Mac Mini (serie M Pro).
-   - Distribución de Memoria Objetivo: Residencia simultánea en RAM de SurrealDB, Meilisearch, Qdrant, Whisper y Llama 3 8B cuantizado sin hacer swap a disco.
-
+  - Hardware de Validación/MVP: Apple Silicon (MacBook Air M4 con 24GB de Memoria Unificada).
+  - Hardware de Producción: Mac Mini (serie M Pro).
+  - Distribución de Memoria Objetivo: Residencia simultánea en RAM de SurrealDB, Meilisearch, Qdrant, Whisper y Llama 3 8B cuantizado sin hacer swap a disco.
    Nota: El Hardware esta basado en una recomendacion por parte de nuestra area de ventas, sin embargo tu puedes opinar y proponer cualquier cambio.
 
 Antes de comenzar a redactar la especificación y el backlog, como Product Owner, pregúntame qué información adicional o aclaraciones necesitas para definir este proyecto.
-
 
 **Prompt 2:**
 
@@ -147,10 +144,13 @@ Para el MVP no hace falta
 
 ¿Periféricos a contemplar en el MVP?
 
-Cámara (webcam/tablet) para búsqueda visual, Micrófono en la terminal para voz
----
+## Cámara (webcam/tablet) para búsqueda visual, Micrófono en la terminal para voz
+
+
 
 ## 2. Arquitectura del Sistema
+
+
 
 ### **2.1. Diagrama de arquitectura:**
 
@@ -192,8 +192,8 @@ No lo necesitamos para “descubrir” una app nativa: la SPA la sirve Axum y el
 
 vectra.local vía mDNS resuelve otro problema de la LAN:
 
-Nombre estable para HTTPS. Cámara y micrófono solo funcionan en contexto seguro. El certificado tiene que coincidir con lo que el usuario escribe en la barra. Si usás solo la IP (https://192.168.x.x), el IP puede cambiar con DHCP y renovar el cert / reconfigurar terminales es un lío.
-URL humana y memorizable. En cada terminal: https://vectra.local en lugar de “preguntale al dueño la IP del Mac”.
+Nombre estable para HTTPS. Cámara y micrófono solo funcionan en contexto seguro. El certificado tiene que coincidir con lo que el usuario escribe en la barra. Si usás solo la IP ([https://192.168.x.x](https://192.168.x.x)), el IP puede cambiar con DHCP y renovar el cert / reconfigurar terminales es un lío.
+URL humana y memorizable. En cada terminal: [https://vectra.local](https://vectra.local) en lugar de “preguntale al dueño la IP del Mac”.
 Sin DNS del router. mDNS evita tocar el router o editar /etc/hosts en cada PC/tablet.
 No es descubrimiento de servicios tipo Bonjour para apps desktop/mobile. Es un hostname LAN barato para TLS + bookmark.
 
@@ -268,6 +268,8 @@ Componentes de Vortex Core (servicios, workers, supervisor)
 
 ---
 
+
+
 ### 3. Modelo de Datos
 
 **Prompt 1:**
@@ -310,6 +312,8 @@ Mover el detalle de datos (ejemplo SurrealQL, lista de entidades, reglas de esqu
 
 ---
 
+
+
 ### 4. Especificación de la API
 
 **Prompt 1:**
@@ -345,6 +349,8 @@ Moverlo a 5-contract-api.md y dejar en su lugar un resumen breve con enlace (rec
 
 ---
 
+
+
 ### 5. Historias de Usuario
 
 **Prompt 1:**
@@ -355,9 +361,6 @@ Rol: PO / PM con apoyo de un rol de Arquitecto de Software especializado en apli
 Objetivo: Eres la persona experta en gestion de proyectos y product owner del proyecto Vectra.
 A partir de los documentos en /docs, crea un documento llamado 6-historias.md (en la carpeta /docs) que incluya las epicas e historias principales.   Antes de empezar, pregúntame si necesitas saber algo.
 Si ves que algo quedo redundante en los .md que estan en /docs, muevelo y dejalo en este nuevo documento que te pido.
-
-
-
 
 **Prompt 2:**
 
@@ -380,6 +383,8 @@ Sí, mover la 1.14 y dejar un enlace; la 3.7 se queda en el documento 3 porque e
 
 ---
 
+
+
 ### 6. Tickets de Trabajo
 
 **Prompt 1:**
@@ -390,9 +395,6 @@ Rol: TL con apoyo de un rol de Arquitecto de Software especializado en aplicacio
 Objetivo: Eres la persona experta en el stack definido para proyecto Vectra.
 A partir de los documentos en /docs, crea un documento llamado 7-tickets.md (en la carpeta /docs) que incluya el trabajo a realizar para cumplir con cada historia, quiero que definas el orden de ejecucion de cada ticket, teniendo en cuenta las dependencias de cada uno, es decir si primero debemos tener creada una tabla para poder crear por ejemplo un service en axum, primero iria el ticket de la tabla. Trata de que los tickets sean concretos, claros, con limites muy bien definidos y de resolucion rapida.   Antes de empezar, pregúntame si necesitas saber algo.
 Si ves que algo quedo redundante en los .md que estan en /docs, muevelo y dejalo en este nuevo documento que te pido.
-
-
-
 
 **Prompt 2:**
 
@@ -418,10 +420,48 @@ No tocar los otros documentos, solo crear 7-tickets.md
 
 ---
 
-### 7. Pull Requests
+
+
+### 7. Desarrollo
+
+
+
+#### T-00-01
 
 **Prompt 1:**
 
+**Rol:** Arquitecto/Desarrollador de Software especializado en aplicaciones web Rust/Axum, Mailosearch, SurrealDB y vanilla web. 
+
+**Objetivo:**  Ticket T-00-01 de docs/7-tickets.md (paso 01 de la ruta MVP §7.5.1).Explosioná (inclui en cada spec TDD) el ticket en specs OpenSpec T-00-01-ZZ según docs/desarrollo-git-openspec.md y AGENTS.md:- cada spec ≈ 2 h; 1 change OpenSpec = 1 rama Git = 1 spec- listá ZZ, título y qué parte del Hace / No hace / Listo cuando cubre cada una- orden de ejecución y dependencias entre specs- happy path y unhappy path por spec- ticket padre: T-00-01; HU: HU-00-01- referencia de estructura: docs/2-arquitectura.md §2.8
+Actualiza el doc 6-historias.md con el resultado de la explosion, coloca esta informacion en la seccion de esta HU
+Alcance: solo MVP del curso. No crees ramas, no hagas openspec propose, no implementes.Mostrame el plan y esperá mi OK.
+
 **Prompt 2:**
 
+**Rol:** Arquitecto/Desarrollador de Software especializado en aplicaciones web Rust/Axum, Mailosearch, SurrealDB y vanilla web. 
+
+**Objetivo:**  OK con la explosión. Arrancamos la primera spec: T-00-01-01.
+
+1. git checkout develop && git pull && git checkout -b T-00-01-01
+
+2. openspec propose para T-00-01-01 (ticket padre T-00-01; Hace / Listo cuando del ticket)
+
+3. Parámachine: no implementes; mostrame la propuesta y esperá mi OK.
+
 **Prompt 3:**
+
+**Rol:** Arquitecto/Desarrollador de Software especializado en aplicaciones web Rust/Axum, Mailosearch, SurrealDB y vanilla web. 
+
+**Objetivo:**  OK con la propuesta. openspec apply T-00-01-01 con TDD (red → green → refactor).
+
+Incluí happy + unhappy path. Sin git commit hasta archive.
+
+**Prompt 4:**
+
+**Rol:** Arquitecto/Desarrollador de Software especializado en aplicaciones web Rust/Axum, Mailosearch, SurrealDB y vanilla web. 
+
+**Objetivo:**  Tests en verde. Autorizo openspec archive de T-00-01-01.
+
+Después proponé el commit Conventional Commits con scope (T-00-01-01) y footer Refs: T-00-01, HU-00-01; no lo ejecutes sin mi OK.
+
+Con el commit listo, proponé también el PR a develop.
