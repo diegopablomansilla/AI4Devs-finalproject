@@ -15,8 +15,12 @@
 !.env.example
 
 # Rust / Node (future)
-/target/
+target/
 node_modules/
+
+# Vortex Core local (T-00-01-01)
+models/
+data/
 dist/
 
 # Cursor: ignore local state; keep project rules
