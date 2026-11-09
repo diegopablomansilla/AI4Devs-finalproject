@@ -22,7 +22,7 @@
 10. [Operación del esquema](#410-operación-del-esquema)
 11. [Modelo derivado en Meilisearch](#411-modelo-derivado-en-meilisearch)
 12. [Mapa tabla ↔ repositorio ↔ componente](#412-mapa-tabla--repositorio--componente)
-13. [Preguntas abiertas del modelo](#413-preguntas-abiertas-del-modelo)
+13. [Decisiones adoptadas del modelo](#413-decisiones-adoptadas-del-modelo)
 
 ---
 
@@ -36,7 +36,7 @@
 | **Stock derivado del ledger** | El stock nunca se edita. Se registra un movimiento inmutable y, en la misma transacción, se actualiza la proyección `producto.stock`. |
 | **Relaciones como aristas de grafo** | Similares, sustitutos y complementarios son tablas `TYPE RELATION` con atributos propios (`prioridad`, `nota`). |
 | **IDs globales estables** | IDs ULID generados por la base; el SKU es un campo con índice único y puede cambiar sin romper aristas, ventas ni vectores. |
-| **Toda escritura que afecta índices emite un evento** | Se escribe en `outbox` dentro de la misma transacción (ADR-04, opción A de [PC-02](3-componentes.md#38-preguntas-abiertas-de-componentes)). |
+| **Toda escritura que afecta índices emite un evento** | Se escribe en `outbox` dentro de la misma transacción (ADR-04, [PC-02](3-componentes.md#38-decisiones-adoptadas-de-componentes)). |
 
 ### ¿Por qué no schemaless?
 
@@ -52,24 +52,136 @@ SurrealDB permite tablas `SCHEMALESS` y campos `FLEXIBLE`. Se descartan en el MV
 
 ## 4.2. Diagrama entidad-relación
 
+Los **PK** son IDs `record<tablea>:ulid()` salvo `contador` (ID fijo `contador:venta`). Las tablas `TYPE RELATION` usan `in` / `out` como FK hacia `producto`.
+
 ```mermaid
 erDiagram
   CATEGORIA ||--o{ CATEGORIA : "padre de"
   CATEGORIA ||--o{ PRODUCTO : clasifica
   MARCA |o--o{ PRODUCTO : fabrica
-  ATRIBUTO_DEF ||--o{ PRODUCTO : "tipa atributos[*]"
-  PRODUCTO }o--o{ PRODUCTO : "similar_a"
-  PRODUCTO }o--o{ PRODUCTO : "sustituye_a"
-  PRODUCTO }o--o{ PRODUCTO : "complementa"
-  PRODUCTO ||--o{ MOVIMIENTO_STOCK : "ledger"
+  ATRIBUTO_DEF ||--o{ PRODUCTO : "atributos.def"
+  PRODUCTO }o--o{ PRODUCTO : similar_a
+  PRODUCTO }o--o{ PRODUCTO : sustituible_por
+  PRODUCTO }o--o{ PRODUCTO : complementa
+  PRODUCTO ||--o{ MOVIMIENTO_STOCK : ledger
   PRODUCTO ||--o{ IMAGEN_PRODUCTO : tiene
-  PRODUCTO ||--o| EMBEDDING_TEXTO : "vector de ficha"
-  NOTA_TECNICA }o--o{ PRODUCTO : menciona
-  NOTA_TECNICA ||--o| EMBEDDING_TEXTO : "vector de nota"
-  IMAGEN_PRODUCTO ||--o{ EMBEDDING_IMAGEN : "original + aumentadas"
+  PRODUCTO ||--o| EMBEDDING_TEXTO : "embedding ficha"
+  NOTA_TECNICA }o--o{ PRODUCTO : productos
+  NOTA_TECNICA ||--o| EMBEDDING_TEXTO : "embedding nota"
+  IMAGEN_PRODUCTO ||--o{ EMBEDDING_IMAGEN : variantes
   VENTA ||--o{ MOVIMIENTO_STOCK : origina
   OUTBOX ||--o{ OUTBOX_FALLO : registra
-  SYNC_CURSOR }o--o| OUTBOX : "avanza sobre"
+  SYNC_CURSOR }o--o| OUTBOX : ultimo_evento
+
+  CATEGORIA {
+    record id PK
+    string nombre
+    string slug
+    record padre FK
+    array ancestros
+    array ruta
+    bool activo
+  }
+  MARCA {
+    record id PK
+    string nombre
+    string slug
+    bool activo
+  }
+  ATRIBUTO_DEF {
+    record id PK
+    string clave UK
+    string tipo
+    bool facetable
+    bool buscable
+  }
+  PRODUCTO {
+    record id PK
+    string sku UK
+    string nombre
+    record marca FK
+    record categoria FK
+    array atributos
+    decimal precio
+    decimal stock
+    int version
+    bool activo
+  }
+  IMAGEN_PRODUCTO {
+    record id PK
+    record producto FK
+    string ruta
+    string sha256
+    bool es_principal
+  }
+  SINONIMO {
+    record id PK
+    string tipo
+    string termino
+    array equivalentes
+    bool activo
+  }
+  NOTA_TECNICA {
+    record id PK
+    string titulo
+    string contenido
+    array productos FK
+    bool activo
+  }
+  MOVIMIENTO_STOCK {
+    record id PK
+    record producto FK
+    string tipo
+    decimal cantidad
+    record venta FK
+  }
+  SUSTITUIBLE_POR {
+    record in PK_FK
+    record out PK_FK
+    int prioridad
+    string nota
+  }
+  EMBEDDING_TEXTO {
+    record id PK
+    record fuente FK
+    array vector
+  }
+  EMBEDDING_IMAGEN {
+    record id PK
+    record imagen FK
+    record producto FK
+    array vector
+  }
+  OUTBOX {
+    record id PK
+    string entidad
+    record registro FK
+    string operacion
+  }
+  SYNC_CURSOR {
+    record id PK
+    record ultimo_evento FK
+  }
+  OUTBOX_FALLO {
+    record id PK
+    record evento FK
+    string consumidor
+  }
+  VENTA {
+    record id PK
+    int numero UK
+    array lineas
+    decimal total
+  }
+  CONTADOR {
+    record id PK
+    int valor
+  }
+  MIGRACION {
+    int version PK
+    string nombre
+    string checksum
+  }
 ```
 
 ### Inventario de tablas
@@ -84,7 +196,7 @@ erDiagram
 | `sinonimo` | Normal | Editable | Sí | EP-03 |
 | `nota_tecnica` | Normal | Editable | Sí | EP-05 |
 | `movimiento_stock` | Normal | **Inmutable** (*append-only*) | Sí | EP-02 |
-| `similar_a`, `sustituye_a`, `complementa` | `RELATION` | Editable | Sí | EP-04 |
+| `similar_a`, `sustituible_por`, `complementa` | `RELATION` | Editable | Sí | EP-04 |
 | `embedding_texto` | Normal (derivada) | Reconstruible | No | EP-05 |
 | `embedding_imagen` | Normal (derivada) | Reconstruible | No | EP-07 |
 | `outbox` | Normal (técnica) | Inmutable, purgable | No | EP-03 |
@@ -101,7 +213,7 @@ erDiagram
 | **Namespace y base** | `NS vectra`, `DB comercio`. Una base por comercio; multi-sucursal queda fuera del MVP. |
 | **Versión** | Versión de SurrealDB **fijada** en `Cargo.toml` (serie 2.x). La sintaxis de este documento se valida con tests de integración contra esa versión. |
 | **IDs** | ULID generado en el alta: `CREATE producto:ulid() CONTENT {...}`. Ordenables por tiempo, globales y estables. Las tablas derivadas usan IDs deterministas (ver 4.7). |
-| **Nombres** | Tablas y campos en español, `snake_case`, tablas en singular. Relaciones como verbo: `sustituye_a`, `complementa`. |
+| **Nombres** | Tablas y campos en español, `snake_case`, tablas en singular. Relaciones como verbo: `sustituible_por`, `complementa`. |
 | **Tiempos** | `creado_en` (`DEFAULT time::now() READONLY`) y `actualizado_en` (`VALUE time::now()`), en UTC. |
 | **Dinero y cantidades** | Tipo `decimal` (nunca `float`). Moneda única del comercio, definida en la configuración de Vortex Core. |
 | **Baja** | Lógica (`activo = false`) en tablas maestras referenciadas por el ledger, ventas o aristas. La baja física solo aplica a datos derivados y técnicos. |
@@ -380,17 +492,17 @@ Las tres relaciones comparten estructura. Convención de lectura: la arista **A 
 | Relación | Lectura de `A -> rel -> B` | Bidireccional por defecto |
 |---|---|---|
 | `similar_a` | B es equivalente o alternativo a A (otra marca, otra calidad). | Sí |
-| `sustituye_a` | Si A no tiene stock, B puede reemplazarlo. | No |
+| `sustituible_por` | Si A no tiene stock, B puede reemplazarlo (arista A→B: ofrecer B). | No |
 | `complementa` | Quien lleva A suele necesitar B (venta cruzada). | No |
 
 ```sql
-DEFINE TABLE sustituye_a SCHEMAFULL TYPE RELATION IN producto OUT producto ENFORCED CHANGEFEED 3d;
-DEFINE FIELD prioridad          ON sustituye_a TYPE int DEFAULT 1 ASSERT $value >= 1;   -- 1 = más alta
-DEFINE FIELD nota               ON sustituye_a TYPE option<string>;
-DEFINE FIELD grupo_bidireccional ON sustituye_a TYPE option<string>;   -- ULID compartido por ambas aristas
-DEFINE FIELD creado_en          ON sustituye_a TYPE datetime DEFAULT time::now() READONLY;
-DEFINE FIELD actualizado_en     ON sustituye_a TYPE datetime VALUE time::now();
-DEFINE INDEX uq_sustituye_a ON sustituye_a FIELDS in, out UNIQUE;
+DEFINE TABLE sustituible_por SCHEMAFULL TYPE RELATION IN producto OUT producto ENFORCED CHANGEFEED 3d;
+DEFINE FIELD prioridad          ON sustituible_por TYPE int DEFAULT 1 ASSERT $value >= 1;   -- 1 = más alta
+DEFINE FIELD nota               ON sustituible_por TYPE option<string>;
+DEFINE FIELD grupo_bidireccional ON sustituible_por TYPE option<string>;   -- ULID compartido por ambas aristas
+DEFINE FIELD creado_en          ON sustituible_por TYPE datetime DEFAULT time::now() READONLY;
+DEFINE FIELD actualizado_en     ON sustituible_por TYPE datetime VALUE time::now();
+DEFINE INDEX uq_sustituible_por ON sustituible_por FIELDS in, out UNIQUE;
 
 -- similar_a y complementa: definición idéntica cambiando el nombre de la tabla.
 ```
@@ -424,7 +536,7 @@ RETURN {
   ),
   sustitutos: (
     SELECT out.id AS id, out.sku AS sku, out.nombre AS nombre, out.stock AS stock, out.precio AS precio, prioridad, nota
-    FROM $p->sustituye_a WHERE out.activo = true AND out.stock > 0 ORDER BY prioridad
+    FROM $p->sustituible_por WHERE out.activo = true AND out.stock > 0 ORDER BY prioridad
   ),
   complementarios: (
     SELECT out.id AS id, out.sku AS sku, out.nombre AS nombre, out.stock AS stock, out.precio AS precio, prioridad, nota
@@ -579,7 +691,7 @@ Confirmar una venta es **una transacción**: incrementa `contador:venta`, crea l
 | **Migraciones** | Archivos `.surql` versionados en el crate `storage`, aplicados al arrancar en orden. Todas las sentencias usan `DEFINE ... IF NOT EXISTS` u `OVERWRITE` para ser idempotentes. |
 | **Registro de migraciones** | Tabla `migracion` (`version: int` único, `nombre`, `checksum`, `aplicada_en`). Un `checksum` distinto en una migración ya aplicada detiene el arranque. |
 | **Change feed** | Habilitado (`CHANGEFEED 3d`) en tablas maestras y ledger. En el MVP la sincronización usa el outbox; el *change feed* queda disponible para Vortex Briefing & Mirror y para evaluar PC-02 opción B. |
-| **Motor de almacenamiento** | SurrealKV o RocksDB, a decidir (PM-03). |
+| **Motor de almacenamiento** | **RocksDB** (`kv-rocksdb`) en producción; `kv-mem` solo en tests ([PM-03](7-tickets.md#72-decisiones-adoptadas)). |
 | **Backup** | Exportación diaria de la base (`vortex backup`) más copia de `media/`. Las tablas derivadas (`embedding_*`) y técnicas (`outbox`, `sync_cursor`, `outbox_fallo`) pueden excluirse: se regeneran con `vortex reindex`. |
 | **Dataset semilla** | `vortex seed` importa categorías, marcas, atributos, productos, relaciones, sinónimos e imágenes desde `seed/`; el stock se carga como movimientos `inicial`. Mismo formato que la importación futura. |
 
@@ -652,7 +764,7 @@ DEFINE INDEX uq_migracion_version ON migracion FIELDS version UNIQUE;
 | `producto`, `categoria`, `marca`, `atributo_def`, `imagen_producto`, `nota_tecnica` | `ProductRepo`, `CategoryRepo`, `BrandRepo`, `AttributeDefRepo`, `ImageRepo`, `TechNoteRepo` *(nombres propuestos)* | Catalog & Inventory | Search, Recommendation, RAG, Index Sync Worker |
 | `movimiento_stock` (+ `producto.stock`) | `StockLedger` | Catalog & Inventory, POS | Catalog, Search (vía `producto.stock`) |
 | `sinonimo` | `SynonymRepo` | Catalog & Inventory | Index Sync Worker |
-| `similar_a`, `sustituye_a`, `complementa` | `RelationRepo` | Recommendation ([DC-05](3-componentes.md#36-decisiones-de-diseño-transversales-a-los-componentes)) | RAG |
+| `similar_a`, `sustituible_por`, `complementa` | `RelationRepo` | Recommendation ([DC-05](3-componentes.md#36-decisiones-de-diseño-transversales-a-los-componentes)) | RAG |
 | `embedding_texto`, `embedding_imagen` | `VectorIndex` | Index Sync Worker | Search, RAG |
 | `outbox`, `sync_cursor`, `outbox_fallo` | `OutboxRepo` | Todos los que escriben datos maestros (outbox); Index Sync Worker (cursores y fallos) | Index Sync Worker, `/metrics` |
 | `venta`, `contador` | `SaleRepo` *(propuesto)* | POS *(condicionado)* | — |
@@ -660,12 +772,14 @@ DEFINE INDEX uq_migracion_version ON migracion FIELDS version UNIQUE;
 
 ---
 
-## 4.13. Preguntas abiertas del modelo
+## 4.13. Decisiones adoptadas del modelo
 
-| # | Pregunta | Opciones | Recomendación del Arquitecto | Decide |
-|---|---|---|---|---|
-| **PM-01** | Dimensión del índice `hnsw_emb_imagen` | Depende del modelo elegido en PA-03 (DINOv2-small: 384; CLIP/SigLIP ViT-B: 512/768). | Definir el índice recién al cerrar PA-03. | Arquitecto |
-| **PM-02** | ¿Se permite vender con stock insuficiente? | **A)** Rechazar (`ASSERT stock >= 0`). **B)** Permitir stock negativo y alertar. | **A** en el MVP (coherente con el ledger); revisar con el comercio piloto, porque en mostrador el stock del sistema suele desfasarse del físico. | PO |
-| **PM-03** | Motor de almacenamiento de SurrealDB embebido | SurrealKV vs. RocksDB. | RocksDB por madurez, salvo que el *benchmark* de EP-00 muestre ventajas claras de SurrealKV. | TL |
-| **PM-04** | ¿Las notas técnicas entran en el MVP? | **A)** Sí, con ABM mínimo. **B)** No; el RAG usa solo fichas de producto. | **A** si el comercio piloto aporta contenido; si no, **B** sin cambiar el esquema. | PO |
-| **PM-05** | Nombre de la relación `sustituye_a` | Mantener (con la convención "A → B: ofrecer B") vs. renombrar a `sustituible_por`, que se lee en el sentido de la arista. | Renombrar a `sustituible_por` antes de implementar EP-04, para evitar ambigüedad. | PO + Arquitecto |
+Las preguntas del borrador quedaron cerradas según [7.2 Decisiones adoptadas](7-tickets.md#72-decisiones-adoptadas). Resumen:
+
+| # | Decisión |
+|---|---|
+| **PM-01** | La dimensión HNSW de `embedding_imagen` se fija tras el *spike* visual (PA-03), no antes. |
+| **PM-02** | Venta con stock insuficiente: se **rechaza** la venta completa (`negative_stock`). |
+| **PM-03** | Motor embebido: **RocksDB** (`kv-rocksdb`); `kv-mem` solo en tests. |
+| **PM-04** | Notas técnicas **entran** al MVP con ABM mínimo y API en `/api/v1/technical-notes`. |
+| **PM-05** | La relación de sustitutos se llama **`sustituible_por`**; el contrato mantiene `substitute`. |

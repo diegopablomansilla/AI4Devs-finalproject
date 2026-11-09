@@ -3,7 +3,7 @@
 > **Estado:** Borrador v0.1 — MVP
 > **Roles autores:** Tech Lead + Arquitecto de Software (Rust, Local-First, IA local)
 > **Documentos previos:** [1. Producto](1-descripcion-general-del-producto.md) · [2. Arquitectura](2-arquitectura.md) · [3. Componentes](3-componentes.md) · [4. Modelo de Datos](4-modelo.md) · [5. Contrato de API](5-contract-api.md) · [6. Historias](6-historias.md)
-> **Alcance:** desglose de las 74 historias de [6-historias.md](6-historias.md) en tickets técnicos de ~2 h, con un **orden de ejecución lineal** que respeta las dependencias reales entre tickets (tabla antes que repositorio, repositorio antes que caso de uso, caso de uso antes que endpoint, endpoint antes que UI).
+> **Alcance:** desglose de las 74 historias de [6-historias.md](6-historias.md) en tickets técnicos de ~2 h, con un **orden de ejecución lineal** que respeta las dependencias reales entre tickets (tabla antes que repositorio, repositorio antes que caso de uso, caso de uso antes que endpoint, endpoint antes que UI). Cada ticket indica si entra al **MVP del curso** o a **v2**; la ruta del MVP está en [7.5.1](#751-ruta-del-mvp-del-curso).
 > **Idioma objetivo:** Español (Latinoamérica)
 
 ---
@@ -14,7 +14,7 @@
 2. [Decisiones adoptadas](#72-decisiones-adoptadas)
 3. [Hallazgos técnicos no cubiertos por los documentos previos](#73-hallazgos-técnicos-no-cubiertos-por-los-documentos-previos)
 4. [Fases y dependencias](#74-fases-y-dependencias)
-5. [Orden de ejecución](#75-orden-de-ejecución)
+5. [Orden de ejecución](#75-orden-de-ejecución) · [Ruta del MVP del curso](#751-ruta-del-mvp-del-curso)
 6. [Fase 0 — Fundaciones de Vortex Core](#76-fase-0--fundaciones-de-vortex-core)
 7. [Fase 1 — Shell de Vectra](#77-fase-1--shell-de-vectra)
 8. [Fase 2 — Catálogo e inventario](#78-fase-2--catálogo-e-inventario)
@@ -53,21 +53,21 @@ Las preguntas abiertas de los documentos previos se resuelven con la recomendaci
 
 | Pregunta | Decisión adoptada | Tickets afectados |
 |---|---|---|
-| [PM-03](4-modelo.md#413-preguntas-abiertas-del-modelo) | SurrealDB embebido con **RocksDB** (`kv-rocksdb`); `kv-mem` solo en tests. | T-00-08, T-09-02 |
-| [PM-05](4-modelo.md#413-preguntas-abiertas-del-modelo) | La tabla se llama **`sustituible_por`**. El contrato (`substitute`) no cambia. | T-04-01 |
-| [PM-02](4-modelo.md#413-preguntas-abiertas-del-modelo) | Una venta con stock insuficiente se **rechaza** completa (`negative_stock`). | T-08-03 |
-| [PM-04](4-modelo.md#413-preguntas-abiertas-del-modelo) | Notas técnicas **entran** al MVP con ABM mínimo. | T-05-25 a T-05-29 |
-| [PM-01](4-modelo.md#413-preguntas-abiertas-del-modelo) / [PA-03](1-descripcion-general-del-producto.md#113-preguntas-abiertas) | Se resuelven con el *spike* visual; el índice de imagen se define después. | T-07-01, T-07-02, T-07-05 |
-| [PA-02](1-descripcion-general-del-producto.md#113-preguntas-abiertas) | Modelo por defecto hasta el *benchmark*: `qwen2.5:7b-instruct-q4_K_M`. | T-05-12, T-05-32 |
-| [PA-04](1-descripcion-general-del-producto.md#113-preguntas-abiertas) | PWA sin nodo: solo *app shell* con aviso. | T-01-14 |
-| [PA-05](1-descripcion-general-del-producto.md#113-preguntas-abiertas) | Catálogo del comercio piloto; mientras tanto, dataset de desarrollo de ~200 SKUs. | T-02-41, T-02-46 |
-| [PC-01](3-componentes.md#38-preguntas-abiertas-de-componentes) | Crate **`storage`** único (conexión, esquema, migraciones, repositorios). | T-00-01, T-00-08 |
-| [PC-02](3-componentes.md#38-preguntas-abiertas-de-componentes) | **Outbox** propio en la misma transacción (no *change feed*). | T-03-01, T-03-02 |
-| [PC-03](3-componentes.md#38-preguntas-abiertas-de-componentes) | POS en crate propio **`pos`**. | T-08-01 |
-| [PAPI-01](5-contract-api.md#514-preguntas-abiertas-del-contrato) | Una sola fuente: `openapi.yaml`; se quita la copia embebida de 5.13. | T-09-03 |
-| [PAPI-02](5-contract-api.md#514-preguntas-abiertas-del-contrato) | Límites de audio 2 MB / 30 s; se miden en EP-06. | T-06-03, T-06-13 |
-| [PAPI-03](5-contract-api.md#514-preguntas-abiertas-del-contrato) | Sinónimos en `/api/v1/synonyms` (EP-03); notas en `/api/v1/technical-notes` (EP-05). | T-03-25, T-05-26 |
-| [PAPI-04](5-contract-api.md#514-preguntas-abiertas-del-contrato) | Especificación primero; los tests de `api` validan respuestas contra `openapi.yaml` (sin *codegen*). | T-09-04 |
+| [PM-03](4-modelo.md#413-decisiones-adoptadas-del-modelo) | SurrealDB embebido con **RocksDB** (`kv-rocksdb`); `kv-mem` solo en tests. | T-00-08, T-09-02 |
+| [PM-05](4-modelo.md#413-decisiones-adoptadas-del-modelo) | La tabla se llama **`sustituible_por`**. El contrato (`substitute`) no cambia. | T-04-01 |
+| [PM-02](4-modelo.md#413-decisiones-adoptadas-del-modelo) | Una venta con stock insuficiente se **rechaza** completa (`negative_stock`). | T-08-03 |
+| [PM-04](4-modelo.md#413-decisiones-adoptadas-del-modelo) | Notas técnicas **entran** al MVP con ABM mínimo. | T-05-25 a T-05-29 |
+| [PM-01](4-modelo.md#413-decisiones-adoptadas-del-modelo) / [PA-03](1-descripcion-general-del-producto.md#113-decisiones-adoptadas) | Se resuelven con el *spike* visual; el índice de imagen se define después. | T-07-01, T-07-02, T-07-05 |
+| [PA-02](1-descripcion-general-del-producto.md#113-decisiones-adoptadas) | Modelo por defecto hasta el *benchmark*: `qwen2.5:7b-instruct-q4_K_M`. | T-05-12, T-05-32 |
+| [PA-04](1-descripcion-general-del-producto.md#113-decisiones-adoptadas) | PWA sin nodo: solo *app shell* con aviso. | T-01-14 |
+| [PA-05](1-descripcion-general-del-producto.md#113-decisiones-adoptadas) | Catálogo del comercio piloto; mientras tanto, dataset de desarrollo de ~200 SKUs. | T-02-41, T-02-46 |
+| [PC-01](3-componentes.md#38-decisiones-adoptadas-de-componentes) | Crate **`storage`** único (conexión, esquema, migraciones, repositorios). | T-00-01, T-00-08 |
+| [PC-02](3-componentes.md#38-decisiones-adoptadas-de-componentes) | **Outbox** propio en la misma transacción (no *change feed*). | T-03-01, T-03-02 |
+| [PC-03](3-componentes.md#38-decisiones-adoptadas-de-componentes) | POS en crate propio **`pos`**. | T-08-01 |
+| [PAPI-01](5-contract-api.md#514-decisiones-adoptadas-del-contrato) | Una sola fuente: `openapi.yaml`; se quita la copia embebida de 5.13. | T-09-03 |
+| [PAPI-02](5-contract-api.md#514-decisiones-adoptadas-del-contrato) | Límites de audio 2 MB / 30 s; se miden en EP-06. | T-06-03, T-06-13 |
+| [PAPI-03](5-contract-api.md#514-decisiones-adoptadas-del-contrato) | Sinónimos en `/api/v1/synonyms` (EP-03); notas en `/api/v1/technical-notes` (EP-05). | T-03-25, T-05-26 |
+| [PAPI-04](5-contract-api.md#514-decisiones-adoptadas-del-contrato) | Especificación primero; los tests de `api` validan respuestas contra `openapi.yaml` (sin *codegen*). | T-09-04 |
 
 **Defaults técnicos del stack** (no definidos en los documentos previos): Rust estable fijado con `rust-toolchain.toml`, edición 2024; `tokio`, `axum` 0.8, `tower-http`, `axum-server` + `rustls`; `surrealdb` 2.x con versión exacta (`=`); `meilisearch-sdk`; `reqwest` para Ollama; `ort` + `tokenizers`; `whisper-rs`; `rust_decimal`, `ulid`, `thiserror`, `serde`; `tracing` + `tracing-appender`; `metrics` + `metrics-exporter-prometheus`; `rcgen`; `clap`. CI en **GitHub Actions** con *runner* macOS Apple Silicon (Metal y CoreML). Tests e2e con **Playwright** (herramienta de desarrollo, no se distribuye). Pruebas de carga con un binario Rust propio (`bench/`).
 
@@ -130,245 +130,365 @@ flowchart LR
 
 ## 7.5. Orden de ejecución
 
-| Orden | Ticket | Título | HU | Depende de |
-|---|---|---|---|---|
-| **Fase 0** | | | | |
-| 001 | T-00-01 | Workspace Cargo y crates vacíos | HU-00-01 | — |
-| 002 | T-09-01 | CI base en GitHub Actions | HU-00-01, HU-09-01 | T-00-01 |
-| 003 | T-00-02 | Verificación automática de la regla de dependencias de `domain` | HU-00-01 | T-09-01 |
-| 004 | T-00-03 | Taxonomía de errores de dominio | HU-00-01 | T-00-01 |
-| 005 | T-00-04 | Tipos base de dominio (ID, decimal, fecha) | HU-00-01 | T-00-01 |
-| 006 | T-00-05 | Configuración TOML con validación | HU-00-06 | T-00-01 |
-| 007 | T-00-06 | Logs estructurados con rotación | HU-00-09 | T-00-05 |
-| 008 | T-00-07 | CLI con subcomandos | HU-00-06 | T-00-05 |
-| 009 | T-00-08 | Apertura de SurrealDB embebido | HU-00-02 | T-00-03, T-00-05 |
-| 010 | T-00-09 | Motor de migraciones con *checksum* | HU-00-02 | T-00-08 |
-| 011 | T-09-02 | *Harness* de tests de integración de `storage` | HU-09-01 | T-00-09 |
-| 012 | T-00-10 | Servidor Axum mínimo con apagado ordenado | HU-00-06 | T-00-07 |
-| 013 | T-00-11 | Errores de dominio a `problem+json` | HU-01-05, HU-09-02 | T-00-03, T-00-10 |
-| 014 | T-00-12 | *Middlewares* transversales del Gateway | HU-00-09 | T-00-11 |
-| 015 | T-00-13 | Registro de salud y `GET /health` | HU-00-05 | T-00-10 |
-| 016 | T-00-14 | `GET /metrics` en formato Prometheus | HU-00-05 | T-00-12 |
-| 017 | T-09-03 | Fuente única OpenAPI y *lint* Redocly | HU-09-02 | T-09-01 |
-| 018 | T-09-04 | Validador de respuestas contra `openapi.yaml` | HU-09-02 | T-09-03, T-00-13 |
-| 019 | T-00-15 | `vortex cert`: CA local y certificado | HU-00-03 | T-00-07 |
-| 020 | T-00-16 | HTTPS con `rustls` y redirección HTTP | HU-00-03 | T-00-15, T-00-10 |
-| 021 | T-00-17 | Nombre `vectra.local` en la LAN | HU-00-03 | T-00-16 |
-| 022 | T-00-18 | Guía de instalación de la CA en terminales | HU-00-03 | T-00-16 |
-| 023 | T-00-19 | Estáticos de la SPA y `/media` | HU-01-01 | T-00-10 |
-| 024 | T-00-20 | Arranque ordenado de `vortex serve` (v1) | HU-00-06 | T-00-09, T-00-13, T-00-16, T-00-19 |
-| **Fase 1** | | | | |
-| 025 | T-01-01 | Esqueleto de `vectra-web` y *router* | HU-01-04 | T-00-19 |
-| 026 | T-01-02 | *Design tokens* oscuros Glassmorphism | HU-01-02 | T-01-01 |
-| 027 | T-01-03 | Componentes `vx-button`, `vx-field`, `vx-chip` | HU-01-02 | T-01-02 |
-| 028 | T-01-04 | Componentes `vx-modal`, `vx-side-panel`, `vx-toast` | HU-01-02 | T-01-02 |
-| 029 | T-01-05 | Componente `vx-product-card` | HU-01-02 | T-01-02 |
-| 030 | T-01-06 | Cliente HTTP `api.js` | HU-01-05 | T-01-01 |
-| 031 | T-01-07 | Mensajes de error por `code` | HU-01-05 | T-01-06, T-01-04 |
-| 032 | T-01-08 | Vista del operador y `vx-omnibox` | HU-01-03 | T-01-03 |
-| 033 | T-01-09 | Modos del Omnibox | HU-01-03 | T-01-08 |
-| 034 | T-01-10 | Navegación por teclado de listas | HU-01-03 | T-01-08, T-01-05 |
-| 035 | T-01-11 | Vista de administración y menú | HU-01-04 | T-01-01, T-01-03 |
-| 036 | T-01-12 | Estado del sistema desde `/health` | HU-01-05 | T-01-06, T-01-09, T-00-13 |
-| 037 | T-01-13 | *Manifest* PWA | HU-01-01 | T-01-01 |
-| 038 | T-01-14 | Service Worker: *app shell* y sin conexión | HU-01-01 | T-01-13 |
-| 039 | T-01-15 | Actualización del Service Worker | HU-01-01 | T-01-14 |
-| **Fase 2** | | | | |
-| 040 | T-03-01 | Migración `outbox`, `sync_cursor`, `outbox_fallo` | HU-03-01 | T-00-09 |
-| 041 | T-03-02 | Transacción "dato + outbox" y aviso al worker | HU-03-01 | T-03-01 |
-| 042 | T-02-01 | Migración `categoria` | HU-02-01 | T-00-09 |
-| 043 | T-02-02 | Dominio Categoría y `CategoryRepo` | HU-02-01 | T-00-03, T-00-04 |
-| 044 | T-02-03 | Repositorio de categorías: alta, lectura, listado | HU-02-01 | T-02-01, T-02-02, T-03-02 |
-| 045 | T-02-04 | Repositorio de categorías: mover, renombrar, ciclos | HU-02-01 | T-02-03 |
-| 046 | T-02-05 | Casos de uso de categorías | HU-02-01 | T-02-04 |
-| 047 | T-02-06 | Endpoints `/categories` | HU-02-01 | T-02-05, T-09-04 |
-| 048 | T-02-07 | UI de categorías | HU-02-01 | T-02-06, T-01-11 |
-| 049 | T-02-08 | Marca: migración, dominio y repositorio | HU-02-02 | T-03-02 |
-| 050 | T-02-09 | Marca: casos de uso y endpoints | HU-02-02 | T-02-08, T-09-04 |
-| 051 | T-02-10 | UI de marcas | HU-02-02 | T-02-09, T-01-11 |
-| 052 | T-02-11 | `atributo_def`: migración, dominio y repositorio | HU-02-03 | T-03-02 |
-| 053 | T-02-12 | `atributo_def`: casos de uso y endpoints | HU-02-03 | T-02-11, T-09-04 |
-| 054 | T-02-13 | UI de atributos técnicos | HU-02-03 | T-02-12, T-01-11 |
-| 055 | T-02-14 | Migración `producto` | HU-02-04 | T-02-01, T-02-08, T-02-11 |
-| 056 | T-02-15 | Migración `movimiento_stock` | HU-02-07 | T-02-14 |
-| 057 | T-02-16 | Dominio Producto y validación de atributos | HU-02-04 | T-02-02, T-02-08, T-02-11 |
-| 058 | T-02-17 | Dominio Movimiento de stock y `StockLedger` | HU-02-07 | T-00-04 |
-| 059 | T-02-18 | Repositorio de producto: alta con stock inicial | HU-02-04 | T-02-15, T-02-16, T-02-17 |
-| 060 | T-02-19 | Repositorio de producto: ficha y edición con `version` | HU-02-05 | T-02-18 |
-| 061 | T-02-20 | Casos de uso de producto | HU-02-04, HU-02-05 | T-02-19 |
-| 062 | T-02-21 | Endpoints `POST/GET/PATCH /products` | HU-02-04, HU-02-05 | T-02-20, T-09-04 |
-| 063 | T-02-22 | Baja y reactivación de producto | HU-02-06 | T-02-21 |
-| 064 | T-02-23 | Regla `attribute_in_use` | HU-02-03 | T-02-12, T-02-18 |
-| 065 | T-02-24 | `StockLedger.append` transaccional | HU-02-07 | T-02-17, T-02-15, T-03-02 |
-| 066 | T-02-25 | Endpoint `POST .../stock-movements` | HU-02-07 | T-02-24, T-02-21 |
-| 067 | T-00-21 | Paginación por cursor | HU-02-08 | T-00-11 |
-| 068 | T-02-26 | Endpoint `GET .../stock-movements` | HU-02-08 | T-02-25, T-00-21 |
-| 069 | T-02-27 | Endpoint `GET /products` (listado admin) | HU-02-10 | T-02-21, T-00-21 |
-| 070 | T-02-28 | `imagen_producto`: migración, dominio y repositorio | HU-02-09 | T-02-14, T-03-02 |
-| 071 | T-02-29 | Almacenamiento de archivos de imagen | HU-02-09 | T-02-28 |
-| 072 | T-02-30 | Endpoint `POST .../images` | HU-02-09 | T-02-29, T-02-21 |
-| 073 | T-02-31 | Endpoint `PATCH .../images/{imageId}` | HU-02-09 | T-02-30 |
-| 074 | T-02-32 | Endpoint `DELETE .../images/{imageId}` | HU-02-09 | T-02-30 |
-| 075 | T-02-33 | Limpieza de archivos huérfanos | HU-02-09 | T-02-29 |
-| 076 | T-02-34 | UI listado de productos | HU-02-10, HU-02-06 | T-02-27, T-02-22, T-01-11 |
-| 077 | T-02-35 | UI alta de producto | HU-02-04 | T-02-34 |
-| 078 | T-02-36 | UI atributos y códigos en la ficha | HU-02-04 | T-02-35, T-02-12 |
-| 079 | T-02-37 | UI edición con conflicto de versión | HU-02-05 | T-02-36 |
-| 080 | T-02-38 | UI stock: movimientos e historial | HU-02-07, HU-02-08 | T-02-26, T-02-35 |
-| 081 | T-02-39 | UI imágenes del producto | HU-02-09 | T-02-31, T-02-32, T-02-35 |
-| 082 | T-00-22 | Canal de administración local (*Unix socket*) | HU-00-06 | T-00-20 |
-| 083 | T-02-40 | Formato del dataset semilla y validador | HU-02-11 | T-02-16 |
-| 084 | T-02-41 | Dataset de desarrollo (~200 SKUs) | HU-02-11 | T-02-40 |
-| 085 | T-02-42 | `vortex seed`: categorías, marcas y atributos | HU-02-11 | T-02-40, T-02-05, T-02-09, T-02-12, T-00-22 |
-| 086 | T-02-43 | `vortex seed`: productos y stock inicial | HU-02-11 | T-02-42, T-02-20 |
-| 087 | T-02-44 | `vortex seed`: imágenes | HU-02-11 | T-02-43, T-02-29 |
-| 088 | T-02-45 | `vortex verify`: conciliación del ledger | HU-02-12 | T-02-24, T-00-22 |
-| **Fase 3** | | | | |
-| 089 | T-00-23 | Supervisor: proceso hijo con reinicio | HU-00-04 | T-00-20 |
-| 090 | T-00-24 | `vortex models`: manifiesto y binario de Meilisearch | HU-00-08 | T-00-07 |
-| 091 | T-00-25 | Supervisor: Meilisearch | HU-00-04 | T-00-23, T-00-24, T-00-13 |
-| 092 | T-00-26 | Supervisor: apagado ordenado de sidecars | HU-00-04 | T-00-25 |
-| 093 | T-09-05 | CI: Meilisearch real para integración | HU-09-01 | T-09-01, T-00-24 |
-| 094 | T-03-03 | Puerto `TextSearch` | HU-03-01 | T-00-03 |
-| 095 | T-03-04 | Adaptador Meilisearch base | HU-03-01 | T-03-03, T-09-05 |
-| 096 | T-03-05 | Configuración del índice `productos` | HU-03-04, HU-03-07 | T-03-04 |
-| 097 | T-03-06 | Construcción del documento de búsqueda | HU-03-01 | T-02-19, T-02-28 |
-| 098 | T-03-07 | Worker Meilisearch: productos | HU-03-01 | T-03-05, T-03-06, T-03-02 |
-| 099 | T-03-08 | Worker: *fan-out* de categoría, marca y atributo | HU-03-01, HU-02-01 | T-03-07 |
-| 100 | T-03-09 | Worker: reintentos, fallos, métricas y salud | HU-03-01 | T-03-07, T-00-14 |
-| 101 | T-03-10 | Purga del outbox | HU-03-01 | T-03-09 |
-| 102 | T-03-11 | `vortex reindex` (Meilisearch) con intercambio atómico | HU-03-02 | T-03-07, T-00-22 |
-| 103 | T-00-27 | Arranque ordenado (v2): supervisor y worker | HU-00-06 | T-00-25, T-03-07 |
-| 104 | T-03-12 | Caso de uso de búsqueda por texto | HU-03-03 | T-03-05 |
-| 105 | T-03-13 | Endpoint `GET /search` | HU-03-03, HU-03-04 | T-03-12, T-09-04 |
-| 106 | T-03-14 | Tests de ranking y tolerancia a errores | HU-03-03, HU-03-04 | T-03-13, T-02-41 |
-| 107 | T-03-15 | UI búsqueda mientras se escribe | HU-03-03 | T-03-13, T-01-10 |
-| 108 | T-03-16 | UI resaltado seguro | HU-03-05 | T-03-15 |
-| 109 | T-03-17 | UI tarjetas de resultado completas | HU-03-05 | T-03-16, T-01-05 |
-| 110 | T-03-18 | Facetas en la búsqueda | HU-03-07 | T-03-13 |
-| 111 | T-03-19 | UI filtros facetados | HU-03-07 | T-03-18, T-03-15 |
-| 112 | T-03-20 | Endpoint de sugerencias | HU-03-06 | T-03-05 |
-| 113 | T-03-21 | UI sugerencias | HU-03-06 | T-03-20, T-03-15 |
-| 114 | T-03-22 | Búsqueda por código en SurrealDB | HU-03-08 | T-02-19 |
-| 115 | T-03-23 | UI búsqueda por código | HU-03-08 | T-03-22, T-03-15 |
-| 116 | T-03-24 | `sinonimo`: migración, dominio y repositorio | HU-03-09 | T-03-02 |
-| 117 | T-03-25 | Contrato de sinónimos en `openapi.yaml` | HU-03-09 | T-09-03 |
-| 118 | T-03-26 | Casos de uso y endpoints de sinónimos | HU-03-09 | T-03-24, T-03-25 |
-| 119 | T-03-27 | Worker: sinónimos a Meilisearch | HU-03-09 | T-03-24, T-03-07 |
-| 120 | T-03-28 | UI de sinónimos | HU-03-09 | T-03-26, T-01-11 |
-| 121 | T-03-29 | `vortex seed`: sinónimos | HU-03-09, HU-02-11 | T-03-24, T-02-42 |
-| 122 | T-03-30 | Búsqueda de respaldo en SurrealDB | HU-03-10 | T-03-12, T-02-14 |
-| 123 | T-03-31 | UI modo reducido | HU-03-10 | T-03-30, T-03-19 |
-| **Fase 4** | | | | |
-| 124 | T-04-01 | Migración de relaciones (`sustituible_por`) | HU-04-01 | T-02-14 |
-| 125 | T-04-02 | Dominio Relación y `RelationRepo` | HU-04-01, HU-04-02 | T-00-03 |
-| 126 | T-04-03 | Repositorio: crear relación simple y bidireccional | HU-04-01, HU-04-02 | T-04-01, T-04-02 |
-| 127 | T-04-04 | Repositorio: editar, eliminar y listar | HU-04-02, HU-04-03 | T-04-03 |
-| 128 | T-04-05 | Endpoints de relaciones | HU-04-01, HU-04-02, HU-04-03 | T-04-04, T-09-04 |
-| 129 | T-04-06 | Consulta de recomendaciones | HU-04-05, HU-04-06 | T-04-01, T-02-28 |
-| 130 | T-04-07 | Endpoint de recomendaciones | HU-04-05 | T-04-06 |
-| 131 | T-04-08 | UI panel de recomendaciones | HU-04-05, HU-04-06 | T-04-07, T-03-17, T-01-04 |
-| 132 | T-04-09 | UI relaciones en la ficha | HU-04-03 | T-04-05, T-02-35 |
-| 133 | T-04-10 | UI carga rápida de relaciones | HU-04-04, HU-04-02 | T-04-09, T-03-13 |
-| 134 | T-04-11 | `vortex seed`: relaciones | HU-02-11 | T-04-03, T-02-43 |
-| **Cierre H1** | | | | |
-| 135 | T-02-46 | Importar el catálogo del comercio piloto | HU-02-11 | T-02-44, T-03-29, T-04-11 |
-| 136 | T-00-28 | `vortex backup` manual | HU-00-07 | T-00-22 |
-| 137 | T-00-29 | Backup diario programado | HU-00-07 | T-00-28, T-00-14 |
-| 138 | T-00-30 | Servicio `launchd` | HU-00-06 | T-00-27 |
-| 139 | T-09-06 | Generador de catálogo sintético (10 k SKUs) | HU-09-04 | T-02-40 |
-| 140 | T-09-07 | *Benchmark* backend H1 | HU-09-04 | T-09-06, T-04-07, T-03-09 |
-| 141 | T-09-08 | Medición de búsqueda de extremo a extremo | HU-09-04 | T-09-07, T-03-17 |
-| 142 | T-09-09 | *Setup* de tests e2e con Playwright | HU-09-03 | T-02-41 |
-| 143 | T-09-10 | e2e H1: búsqueda y filtros | HU-09-03 | T-09-09, T-03-19 |
-| 144 | T-09-11 | e2e H1: recomendaciones y alta de producto | HU-09-03 | T-09-10, T-04-08 |
-| 145 | T-09-12 | Degradación H1: Meilisearch | HU-09-05 | T-03-31, T-00-25 |
-| **Fase 5** | | | | |
-| 146 | T-05-01 | *Spike* HNSW: datos y *harness* | HU-05-01 | T-09-02 |
-| 147 | T-05-02 | *Spike* HNSW: grilla, informe y decisión | HU-05-01 | T-05-01 |
-| 148 | T-05-03 | Migración `embedding_texto` | HU-05-03 | T-05-02, T-02-14 |
-| 149 | T-05-04 | Puertos `Embedder` y `VectorIndex` | HU-05-03, HU-05-04 | T-00-03 |
-| 150 | T-05-05 | `vortex models`: embeddings de texto | HU-00-08 | T-00-24 |
-| 151 | T-05-06 | Adaptador `Embedder` de texto (ort + CoreML) | HU-05-03 | T-05-04, T-05-05 |
-| 152 | T-05-07 | Adaptador `VectorIndex` (HNSW SurrealDB) | HU-05-04 | T-05-03, T-05-04 |
-| 153 | T-05-08 | Worker de vectores: productos | HU-05-03 | T-05-06, T-05-07, T-03-09 |
-| 154 | T-05-09 | Reindexación de vectores | HU-05-03 | T-05-08, T-03-11 |
-| 155 | T-05-10 | Salud de `textEmbeddings` y carga al arrancar | HU-05-03 | T-05-06, T-00-27 |
-| 156 | T-05-11 | Recuperación híbrida con RRF | HU-05-04 | T-05-07, T-03-12, T-04-06 |
-| 157 | T-05-12 | `vortex models`: Ollama y LLM | HU-00-08 | T-00-24 |
-| 158 | T-05-13 | Supervisor: Ollama con modelo residente | HU-00-04, HU-05-02 | T-05-12, T-00-23 |
-| 159 | T-05-14 | Puerto `LlmProvider` y adaptador Ollama base | HU-05-02 | T-05-13 |
-| 160 | T-05-15 | *Streaming* y cancelación en Ollama | HU-05-02 | T-05-14 |
-| 161 | T-09-13 | CI: Ollama y embeddings con modelos pequeños | HU-09-01 | T-05-14, T-05-06 |
-| 162 | T-05-16 | Plantilla de *prompt* RAG versionada | HU-05-06 | T-05-11 |
-| 163 | T-05-17 | *Parser* de citas y validación de SKU | HU-05-06 | T-05-15 |
-| 164 | T-05-18 | Orquestador RAG | HU-05-05, HU-05-06 | T-05-16, T-05-17 |
-| 165 | T-05-19 | Endpoint `POST /ai/ask` (SSE) | HU-05-05, HU-05-07 | T-05-18, T-09-04 |
-| 166 | T-05-20 | UI Modo IA con *streaming* | HU-05-05 | T-05-19, T-01-09 |
-| 167 | T-05-21 | UI tarjetas citadas y fallas del Modo IA | HU-05-06, HU-05-07 | T-05-20 |
-| 168 | T-05-22 | Intent Router: reglas | HU-05-08 | T-00-03 |
-| 169 | T-05-23 | Intent Router: clasificador LLM de respaldo | HU-05-08 | T-05-22, T-05-14 |
-| 170 | T-05-24 | Endpoint `POST /intent` y uso en el Omnibox | HU-05-08 | T-05-23, T-05-20 |
-| 171 | T-05-25 | `nota_tecnica`: migración, dominio y repositorio | HU-05-10 | T-03-02, T-02-14 |
-| 172 | T-05-26 | Contrato y endpoints de notas técnicas | HU-05-10 | T-05-25, T-09-03 |
-| 173 | T-05-27 | Notas técnicas en vectores y en el RAG | HU-05-10 | T-05-25, T-05-08, T-05-18 |
-| 174 | T-05-28 | UI de notas técnicas | HU-05-10 | T-05-26, T-01-11 |
-| 175 | T-05-29 | `vortex seed`: notas técnicas | HU-05-10 | T-05-25, T-02-43 |
-| 176 | T-05-30 | Set de 50 preguntas del rubro | HU-05-09 | T-02-46 |
-| 177 | T-05-31 | *Harness* de *benchmark* de LLM | HU-05-09 | T-05-18, T-05-30 |
-| 178 | T-05-32 | Ejecutar el *benchmark* y registrar ADR-09 | HU-05-09 | T-05-31 |
-| **Cierre H2** | | | | |
-| 179 | T-09-14 | *Benchmark* H2: primer token, tokens/s y HNSW | HU-09-04 | T-05-32 |
-| 180 | T-09-15 | Prueba térmica en MacBook Air | HU-09-07 | T-05-32 |
-| 181 | T-09-16 | Degradación H2: Ollama y embeddings | HU-09-05 | T-05-21, T-05-10 |
-| 182 | T-09-17 | e2e Modo IA | HU-09-03 | T-05-21, T-09-09 |
-| **Fase 6** | | | | |
-| 183 | T-06-01 | `vortex models`: Whisper | HU-00-08 | T-00-24 |
-| 184 | T-06-02 | Puerto `SpeechToText` y adaptador whisper-rs | HU-06-02 | T-06-01 |
-| 185 | T-09-18 | CI: Whisper `tiny` para integración | HU-09-01 | T-06-02 |
-| 186 | T-06-03 | Decodificación WAV y límites de audio | HU-06-02, HU-06-06 | T-06-02 |
-| 187 | T-06-04 | *Prompt* inicial con vocabulario del catálogo | HU-06-02 | T-06-02, T-02-19 |
-| 188 | T-06-05 | Normalización: números y fracciones | HU-06-03 | T-00-01 |
-| 189 | T-06-06 | Normalización: medidas métricas y "por" | HU-06-03 | T-06-05 |
-| 190 | T-06-07 | Endpoint `POST /speech/transcriptions` | HU-06-02, HU-06-04 | T-06-03, T-06-06, T-05-23, T-09-04 |
-| 191 | T-06-08 | Salud de `speech` y carga al arrancar | HU-06-06 | T-06-02, T-00-27 |
-| 192 | T-06-09 | UI captura "mantener para hablar" | HU-06-01 | T-01-09 |
-| 193 | T-06-10 | UI límite de 30 s y micrófono deshabilitado | HU-06-06 | T-06-09, T-01-12 |
-| 194 | T-06-11 | UI transcripción editable y ruteo | HU-06-04, HU-06-05 | T-06-07, T-06-09, T-05-20 |
-| 195 | T-06-12 | Decodificación WebM/Ogg Opus | HU-06-01 | T-06-03 |
-| 196 | T-06-13 | Medición de latencia de voz | HU-06-02 | T-06-07 |
-| **Cierre H3** | | | | |
-| 197 | T-09-19 | Concurrencia con 5 terminales | HU-09-06 | T-06-11, T-05-21 |
-| 198 | T-09-20 | Degradación H3: Whisper | HU-09-05 | T-06-10, T-06-08 |
-| 199 | T-09-21 | e2e voz con audio simulado | HU-09-03 | T-06-11, T-09-09 |
-| 200 | T-00-31 | Arranque en frío, degradado y sin internet | HU-00-06, HU-00-08 | T-06-08, T-05-13, T-05-10 |
-| **Fase 7** | | | | |
-| 201 | T-07-01 | *Spike* visual: set de fotos y *harness* | HU-07-01 | T-02-46 |
-| 202 | T-07-02 | *Spike* visual: ejecución y decisión | HU-07-01 | T-07-01 |
-| 203 | T-07-03 | Capacidad `vision` en configuración y `/health` | HU-01-03, HU-07-03 | T-00-13 |
-| 204 | T-07-04 | `vortex models`: modelo visual | HU-00-08 | T-07-02, T-00-24 |
-| 205 | T-07-05 | Migración `embedding_imagen` | HU-07-02 | T-07-02, T-02-28 |
-| 206 | T-07-06 | Adaptador `Embedder` de imagen | HU-07-02 | T-07-04, T-05-04 |
-| 207 | T-07-07 | *Data augmentation* determinista | HU-07-02 | T-07-06 |
-| 208 | T-07-08 | Worker de vectores: imágenes | HU-07-02 | T-07-05, T-07-07, T-05-08 |
-| 209 | T-07-09 | Búsqueda *k-NN* agrupada por producto | HU-07-03 | T-07-08 |
-| 210 | T-07-10 | Contrato y endpoint `POST /search/image` | HU-07-03 | T-07-09, T-09-04 |
-| 211 | T-07-11 | UI cámara y candidatos | HU-07-03 | T-07-10, T-07-03 |
-| 212 | T-07-12 | Foto de referencia confirmada | HU-07-04 | T-07-11, T-02-30 |
-| 213 | T-07-13 | Abrir la cámara por voz | HU-07-05 | T-07-11, T-06-11 |
-| 214 | T-09-22 | *Benchmark* y degradación de la búsqueda visual | HU-09-04, HU-09-05 | T-07-11 |
-| **Fase 8** | | | | |
-| 215 | T-08-01 | Crate `pos` y migración `venta`, `contador` | HU-08-03 | T-02-15 |
-| 216 | T-08-02 | Dominio Venta y `SaleRepo` | HU-08-02, HU-08-03 | T-08-01 |
-| 217 | T-08-03 | Repositorio: confirmar venta atómica | HU-08-03 | T-08-02, T-02-24 |
-| 218 | T-08-04 | Contrato `/sales` en `openapi.yaml` | HU-08-03, HU-08-04 | T-09-03 |
-| 219 | T-08-05 | Casos de uso y endpoints de venta | HU-08-03, HU-08-04 | T-08-03, T-08-04 |
-| 220 | T-08-06 | UI carrito persistente | HU-08-01 | T-04-08, T-05-21 |
-| 221 | T-08-07 | UI edición del carrito y totales | HU-08-02 | T-08-06 |
-| 222 | T-08-08 | UI confirmar venta y detalle | HU-08-03, HU-08-04 | T-08-07, T-08-05 |
-| 223 | T-09-23 | Concurrencia de ventas sobre la última unidad | HU-08-03 | T-08-05 |
-| 224 | T-09-24 | e2e H4: visión y POS | HU-09-03 | T-07-12, T-08-08 |
+| Orden | Ticket | Título | HU | Depende de | Alcance |
+|---|---|---|---|---|---|
+| **Fase 0** | | | | | |
+| 001 | T-00-01 | Workspace Cargo y crates vacíos | HU-00-01 | — | MVP |
+| 002 | T-09-01 | CI base en GitHub Actions | HU-00-01, HU-09-01 | T-00-01 | MVP |
+| 003 | T-00-02 | Verificación automática de la regla de dependencias de `domain` | HU-00-01 | T-09-01 | MVP |
+| 004 | T-00-03 | Taxonomía de errores de dominio | HU-00-01 | T-00-01 | MVP |
+| 005 | T-00-04 | Tipos base de dominio (ID, decimal, fecha) | HU-00-01 | T-00-01 | MVP |
+| 006 | T-00-05 | Configuración TOML con validación | HU-00-06 | T-00-01 | MVP |
+| 007 | T-00-06 | Logs estructurados con rotación | HU-00-09 | T-00-05 | MVP |
+| 008 | T-00-07 | CLI con subcomandos | HU-00-06 | T-00-05 | MVP |
+| 009 | T-00-08 | Apertura de SurrealDB embebido | HU-00-02 | T-00-03, T-00-05 | MVP |
+| 010 | T-00-09 | Motor de migraciones con *checksum* | HU-00-02 | T-00-08 | MVP |
+| 011 | T-09-02 | *Harness* de tests de integración de `storage` | HU-09-01 | T-00-09 | MVP |
+| 012 | T-00-10 | Servidor Axum mínimo con apagado ordenado | HU-00-06 | T-00-07 | MVP |
+| 013 | T-00-11 | Errores de dominio a `problem+json` | HU-01-05, HU-09-02 | T-00-03, T-00-10 | MVP |
+| 014 | T-00-12 | *Middlewares* transversales del Gateway | HU-00-09 | T-00-11 | MVP |
+| 015 | T-00-13 | Registro de salud y `GET /health` | HU-00-05 | T-00-10 | MVP |
+| 016 | T-00-14 | `GET /metrics` en formato Prometheus | HU-00-05 | T-00-12 | MVP |
+| 017 | T-09-03 | Fuente única OpenAPI y *lint* Redocly | HU-09-02 | T-09-01 | MVP |
+| 018 | T-09-04 | Validador de respuestas contra `openapi.yaml` | HU-09-02 | T-09-03, T-00-13 | MVP |
+| 019 | T-00-15 | `vortex cert`: CA local y certificado | HU-00-03 | T-00-07 | v2 |
+| 020 | T-00-16 | HTTPS con `rustls` y redirección HTTP | HU-00-03 | T-00-15, T-00-10 | v2 |
+| 021 | T-00-17 | Nombre `vectra.local` en la LAN | HU-00-03 | T-00-16 | v2 |
+| 022 | T-00-18 | Guía de instalación de la CA en terminales | HU-00-03 | T-00-16 | v2 |
+| 023 | T-00-19 | Estáticos de la SPA y `/media` | HU-01-01 | T-00-10 | MVP |
+| 024 | T-00-20 | Arranque ordenado de `vortex serve` (paso 1) | HU-00-06 | T-00-09, T-00-13, T-00-19 | MVP |
+| **Fase 1** | | | | | |
+| 025 | T-01-01 | Esqueleto de `vectra-web` y *router* | HU-01-04 | T-00-19 | MVP |
+| 026 | T-01-02 | *Design tokens* oscuros Glassmorphism | HU-01-02 | T-01-01 | MVP |
+| 027 | T-01-03 | Componentes `vx-button`, `vx-field`, `vx-chip` | HU-01-02 | T-01-02 | MVP |
+| 028 | T-01-04 | Componentes `vx-modal`, `vx-side-panel`, `vx-toast` | HU-01-02 | T-01-02 | MVP |
+| 029 | T-01-05 | Componente `vx-product-card` | HU-01-02 | T-01-02 | MVP |
+| 030 | T-01-06 | Cliente HTTP `api.js` | HU-01-05 | T-01-01 | MVP |
+| 031 | T-01-07 | Mensajes de error por `code` | HU-01-05 | T-01-06, T-01-04 | MVP |
+| 032 | T-01-08 | Vista del operador y `vx-omnibox` | HU-01-03 | T-01-03 | MVP |
+| 033 | T-01-09 | Modos del Omnibox | HU-01-03 | T-01-08 | MVP |
+| 034 | T-01-10 | Navegación por teclado de listas | HU-01-03 | T-01-08, T-01-05 | MVP |
+| 035 | T-01-11 | Vista de administración y menú | HU-01-04 | T-01-01, T-01-03 | MVP |
+| 036 | T-01-12 | Estado del sistema desde `/health` | HU-01-05 | T-01-06, T-01-09, T-00-13 | MVP |
+| 037 | T-01-13 | *Manifest* PWA | HU-01-01 | T-01-01 | MVP |
+| 038 | T-01-14 | Service Worker: *app shell* y sin conexión | HU-01-01 | T-01-13 | MVP |
+| 039 | T-01-15 | Actualización del Service Worker | HU-01-01 | T-01-14 | MVP |
+| **Fase 2** | | | | | |
+| 040 | T-03-01 | Migración `outbox`, `sync_cursor`, `outbox_fallo` | HU-03-01 | T-00-09 | MVP |
+| 041 | T-03-02 | Transacción "dato + outbox" y aviso al worker | HU-03-01 | T-03-01 | MVP |
+| 042 | T-02-01 | Migración `categoria` | HU-02-01 | T-00-09 | MVP |
+| 043 | T-02-02 | Dominio Categoría y `CategoryRepo` | HU-02-01 | T-00-03, T-00-04 | MVP |
+| 044 | T-02-03 | Repositorio de categorías: alta, lectura, listado | HU-02-01 | T-02-01, T-02-02, T-03-02 | MVP |
+| 045 | T-02-04 | Repositorio de categorías: mover, renombrar, ciclos | HU-02-01 | T-02-03 | MVP |
+| 046 | T-02-05 | Casos de uso de categorías | HU-02-01 | T-02-04 | MVP |
+| 047 | T-02-06 | Endpoints `/categories` | HU-02-01 | T-02-05, T-09-04 | MVP |
+| 048 | T-02-07 | UI de categorías | HU-02-01 | T-02-06, T-01-11 | MVP |
+| 049 | T-02-08 | Marca: migración, dominio y repositorio | HU-02-02 | T-03-02 | MVP |
+| 050 | T-02-09 | Marca: casos de uso y endpoints | HU-02-02 | T-02-08, T-09-04 | MVP |
+| 051 | T-02-10 | UI de marcas | HU-02-02 | T-02-09, T-01-11 | MVP |
+| 052 | T-02-11 | `atributo_def`: migración, dominio y repositorio | HU-02-03 | T-03-02 | MVP |
+| 053 | T-02-12 | `atributo_def`: casos de uso y endpoints | HU-02-03 | T-02-11, T-09-04 | MVP |
+| 054 | T-02-13 | UI de atributos técnicos | HU-02-03 | T-02-12, T-01-11 | MVP |
+| 055 | T-02-14 | Migración `producto` | HU-02-04 | T-02-01, T-02-08, T-02-11 | MVP |
+| 056 | T-02-15 | Migración `movimiento_stock` | HU-02-07 | T-02-14 | MVP |
+| 057 | T-02-16 | Dominio Producto y validación de atributos | HU-02-04 | T-02-02, T-02-08, T-02-11 | MVP |
+| 058 | T-02-17 | Dominio Movimiento de stock y `StockLedger` | HU-02-07 | T-00-04 | MVP |
+| 059 | T-02-18 | Repositorio de producto: alta con stock inicial | HU-02-04 | T-02-15, T-02-16, T-02-17 | MVP |
+| 060 | T-02-19 | Repositorio de producto: ficha y edición con `version` | HU-02-05 | T-02-18 | MVP |
+| 061 | T-02-20 | Casos de uso de producto | HU-02-04, HU-02-05 | T-02-19 | MVP |
+| 062 | T-02-21 | Endpoints `POST/GET/PATCH /products` | HU-02-04, HU-02-05 | T-02-20, T-09-04 | MVP |
+| 063 | T-02-22 | Baja y reactivación de producto | HU-02-06 | T-02-21 | MVP |
+| 064 | T-02-23 | Regla `attribute_in_use` | HU-02-03 | T-02-12, T-02-18 | MVP |
+| 065 | T-02-24 | `StockLedger.append` transaccional | HU-02-07 | T-02-17, T-02-15, T-03-02 | MVP |
+| 066 | T-02-25 | Endpoint `POST .../stock-movements` | HU-02-07 | T-02-24, T-02-21 | MVP |
+| 067 | T-00-21 | Paginación por cursor | HU-02-08, HU-02-10 | T-00-11 | MVP |
+| 068 | T-02-26 | Endpoint `GET .../stock-movements` | HU-02-08 | T-02-25, T-00-21 | v2 |
+| 069 | T-02-27 | Endpoint `GET /products` (listado admin) | HU-02-10 | T-02-21, T-00-21 | MVP |
+| 070 | T-02-28 | `imagen_producto`: migración, dominio y repositorio | HU-02-09 | T-02-14, T-03-02 | v2 |
+| 071 | T-02-29 | Almacenamiento de archivos de imagen | HU-02-09 | T-02-28 | v2 |
+| 072 | T-02-30 | Endpoint `POST .../images` | HU-02-09 | T-02-29, T-02-21 | v2 |
+| 073 | T-02-31 | Endpoint `PATCH .../images/{imageId}` | HU-02-09 | T-02-30 | v2 |
+| 074 | T-02-32 | Endpoint `DELETE .../images/{imageId}` | HU-02-09 | T-02-30 | v2 |
+| 075 | T-02-33 | Limpieza de archivos huérfanos | HU-02-09 | T-02-29 | v2 |
+| 076 | T-02-34 | UI listado de productos | HU-02-10, HU-02-06 | T-02-27, T-02-22, T-01-11 | MVP |
+| 077 | T-02-35 | UI alta de producto | HU-02-04 | T-02-34 | MVP |
+| 078 | T-02-36 | UI atributos y códigos en la ficha | HU-02-04 | T-02-35, T-02-12 | MVP |
+| 079 | T-02-37 | UI edición con conflicto de versión | HU-02-05 | T-02-36 | MVP |
+| 080 | T-02-38 | UI stock: movimientos | HU-02-07 | T-02-25, T-02-35 | MVP |
+| 081 | T-02-39 | UI imágenes del producto | HU-02-09 | T-02-31, T-02-32, T-02-35 | v2 |
+| 082 | T-00-22 | Canal de administración local (*Unix socket*) | HU-00-06 | T-00-20 | v2 |
+| 083 | T-02-40 | Formato del dataset semilla y validador | HU-02-11 | T-02-16 | MVP |
+| 084 | T-02-41 | Dataset de desarrollo (~200 SKUs) | HU-02-11 | T-02-40 | MVP |
+| 085 | T-02-42 | `vortex seed`: categorías, marcas y atributos | HU-02-11 | T-02-40, T-02-05, T-02-09, T-02-12 | MVP |
+| 086 | T-02-43 | `vortex seed`: productos y stock inicial | HU-02-11 | T-02-42, T-02-20 | MVP |
+| 087 | T-02-44 | `vortex seed`: imágenes | HU-02-11 | T-02-43, T-02-29 | v2 |
+| 088 | T-02-45 | `vortex verify`: conciliación del ledger | HU-02-12 | T-02-24, T-00-22 | v2 |
+| **Fase 3** | | | | | |
+| 089 | T-00-23 | Supervisor: proceso hijo con reinicio | HU-00-04 | T-00-20 | v2 |
+| 090 | T-00-24 | `vortex models`: manifiesto y binario de Meilisearch | HU-00-08 | T-00-07 | v2 |
+| 091 | T-00-25 | Supervisor: Meilisearch | HU-00-04 | T-00-23, T-00-24, T-00-13 | v2 |
+| 092 | T-00-26 | Supervisor: apagado ordenado de sidecars | HU-00-04 | T-00-25 | v2 |
+| 093 | T-09-05 | CI: Meilisearch real para integración | HU-09-01 | T-09-01 | MVP |
+| 094 | T-03-03 | Puerto `TextSearch` | HU-03-01 | T-00-03 | MVP |
+| 095 | T-03-04 | Adaptador Meilisearch base | HU-03-01 | T-03-03, T-09-05 | MVP |
+| 096 | T-03-05 | Configuración del índice `productos` | HU-03-04, HU-03-07 | T-03-04 | MVP |
+| 097 | T-03-06 | Construcción del documento de búsqueda | HU-03-01 | T-02-19 | MVP |
+| 098 | T-03-07 | Worker Meilisearch: productos | HU-03-01 | T-03-05, T-03-06, T-03-02 | MVP |
+| 099 | T-03-08 | Worker: *fan-out* de categoría, marca y atributo | HU-03-01, HU-02-01 | T-03-07 | MVP |
+| 100 | T-03-09 | Worker: reintentos, fallos, métricas y salud | HU-03-01 | T-03-07, T-00-14 | MVP |
+| 101 | T-03-10 | Purga del outbox | HU-03-01 | T-03-09 | v2 |
+| 102 | T-03-11 | `vortex reindex` (Meilisearch) con intercambio atómico | HU-03-02 | T-03-07 | MVP |
+| 103 | T-00-27 | Arranque ordenado (paso 2): Meilisearch y worker | HU-00-06 | T-00-20, T-03-07 | MVP |
+| 104 | T-03-12 | Caso de uso de búsqueda por texto | HU-03-03 | T-03-05 | MVP |
+| 105 | T-03-13 | Endpoint `GET /search` | HU-03-03, HU-03-04 | T-03-12, T-09-04 | MVP |
+| 106 | T-03-14 | Tests de ranking y tolerancia a errores | HU-03-03, HU-03-04 | T-03-13, T-02-41 | MVP |
+| 107 | T-03-15 | UI búsqueda mientras se escribe | HU-03-03 | T-03-13, T-01-10 | MVP |
+| 108 | T-03-16 | UI resaltado seguro | HU-03-05 | T-03-15 | MVP |
+| 109 | T-03-17 | UI tarjetas de resultado completas | HU-03-05 | T-03-16, T-01-05 | MVP |
+| 110 | T-03-18 | Facetas en la búsqueda | HU-03-07 | T-03-13 | v2 |
+| 111 | T-03-19 | UI filtros facetados | HU-03-07 | T-03-18, T-03-15 | v2 |
+| 112 | T-03-20 | Endpoint de sugerencias | HU-03-06 | T-03-05 | v2 |
+| 113 | T-03-21 | UI sugerencias | HU-03-06 | T-03-20, T-03-15 | v2 |
+| 114 | T-03-22 | Búsqueda por código en SurrealDB | HU-03-08 | T-02-19 | MVP |
+| 115 | T-03-23 | UI búsqueda por código | HU-03-08 | T-03-22, T-03-15 | MVP |
+| 116 | T-03-24 | `sinonimo`: migración, dominio y repositorio | HU-03-09 | T-03-02 | v2 |
+| 117 | T-03-25 | Contrato de sinónimos en `openapi.yaml` | HU-03-09 | T-09-03 | v2 |
+| 118 | T-03-26 | Casos de uso y endpoints de sinónimos | HU-03-09 | T-03-24, T-03-25 | v2 |
+| 119 | T-03-27 | Worker: sinónimos a Meilisearch | HU-03-09 | T-03-24, T-03-07 | v2 |
+| 120 | T-03-28 | UI de sinónimos | HU-03-09 | T-03-26, T-01-11 | v2 |
+| 121 | T-03-29 | `vortex seed`: sinónimos | HU-03-09, HU-02-11 | T-03-24, T-02-42 | v2 |
+| 122 | T-03-30 | Búsqueda de respaldo en SurrealDB | HU-03-10 | T-03-12, T-02-14 | v2 |
+| 123 | T-03-31 | UI modo reducido | HU-03-10 | T-03-30, T-03-19 | v2 |
+| **Fase 4** | | | | | |
+| 124 | T-04-01 | Migración de relaciones (`sustituible_por`) | HU-04-01 | T-02-14 | MVP |
+| 125 | T-04-02 | Dominio Relación y `RelationRepo` | HU-04-01, HU-04-02 | T-00-03 | MVP |
+| 126 | T-04-03 | Repositorio: crear relación simple y bidireccional | HU-04-01, HU-04-02 | T-04-01, T-04-02 | MVP |
+| 127 | T-04-04 | Repositorio: editar, eliminar y listar | HU-04-02, HU-04-03 | T-04-03 | MVP |
+| 128 | T-04-05 | Endpoints de relaciones | HU-04-01, HU-04-02, HU-04-03 | T-04-04, T-09-04 | MVP |
+| 129 | T-04-06 | Consulta de recomendaciones | HU-04-05, HU-04-06 | T-04-01 | MVP |
+| 130 | T-04-07 | Endpoint de recomendaciones | HU-04-05 | T-04-06 | MVP |
+| 131 | T-04-08 | UI panel de recomendaciones | HU-04-05, HU-04-06 | T-04-07, T-03-17, T-01-04 | MVP |
+| 132 | T-04-09 | UI relaciones en la ficha | HU-04-03 | T-04-05, T-02-35 | MVP |
+| 133 | T-04-10 | UI carga rápida de relaciones | HU-04-04, HU-04-02 | T-04-09, T-03-13 | v2 |
+| 134 | T-04-11 | `vortex seed`: relaciones | HU-02-11 | T-04-03, T-02-43 | MVP |
+| **Cierre H1** | | | | | |
+| 135 | T-02-46 | Importar el catálogo del comercio piloto | HU-02-11 | T-02-44, T-03-29, T-04-11 | v2 |
+| 136 | T-00-28 | `vortex backup` manual | HU-00-07 | T-00-22 | v2 |
+| 137 | T-00-29 | Backup diario programado | HU-00-07 | T-00-28, T-00-14 | v2 |
+| 138 | T-00-30 | Servicio `launchd` | HU-00-06 | T-00-27 | v2 |
+| 139 | T-09-06 | Generador de catálogo sintético (10 k SKUs) | HU-09-04 | T-02-40 | v2 |
+| 140 | T-09-07 | *Benchmark* backend H1 | HU-09-04 | T-09-06, T-04-07, T-03-09 | v2 |
+| 141 | T-09-08 | Medición de búsqueda de extremo a extremo | HU-09-04 | T-09-07, T-03-17 | v2 |
+| 142 | T-09-09 | *Setup* de tests e2e con Playwright | HU-09-03 | T-02-41 | MVP |
+| 143 | T-09-10 | e2e H1: búsqueda y filtros | HU-09-03 | T-09-09, T-03-15 | MVP |
+| 144 | T-09-11 | e2e H1: recomendaciones y alta de producto | HU-09-03 | T-09-10, T-04-08 | MVP |
+| 145 | T-09-12 | Degradación H1: Meilisearch | HU-09-05 | T-03-31, T-00-25 | v2 |
+| **Fase 5** | | | | | |
+| 146 | T-05-01 | *Spike* HNSW: datos y *harness* | HU-05-01 | T-09-02 | v2 |
+| 147 | T-05-02 | *Spike* HNSW: grilla, informe y decisión | HU-05-01 | T-05-01 | v2 |
+| 148 | T-05-03 | Migración `embedding_texto` | HU-05-03 | T-05-02, T-02-14 | v2 |
+| 149 | T-05-04 | Puertos `Embedder` y `VectorIndex` | HU-05-03, HU-05-04 | T-00-03 | v2 |
+| 150 | T-05-05 | `vortex models`: embeddings de texto | HU-00-08 | T-00-24 | v2 |
+| 151 | T-05-06 | Adaptador `Embedder` de texto (ort + CoreML) | HU-05-03 | T-05-04, T-05-05 | v2 |
+| 152 | T-05-07 | Adaptador `VectorIndex` (HNSW SurrealDB) | HU-05-04 | T-05-03, T-05-04 | v2 |
+| 153 | T-05-08 | Worker de vectores: productos | HU-05-03 | T-05-06, T-05-07, T-03-09 | v2 |
+| 154 | T-05-09 | Reindexación de vectores | HU-05-03 | T-05-08, T-03-11 | v2 |
+| 155 | T-05-10 | Salud de `textEmbeddings` y carga al arrancar | HU-05-03 | T-05-06, T-00-27 | v2 |
+| 156 | T-05-11 | Recuperación híbrida con RRF | HU-05-04 | T-05-07, T-03-12, T-04-06 | v2 |
+| 157 | T-05-12 | `vortex models`: Ollama y LLM | HU-00-08 | T-00-24 | v2 |
+| 158 | T-05-13 | Supervisor: Ollama con modelo residente | HU-00-04, HU-05-02 | T-05-12, T-00-23 | v2 |
+| 159 | T-05-14 | Puerto `LlmProvider` y adaptador Ollama base | HU-05-02 | T-05-13 | v2 |
+| 160 | T-05-15 | *Streaming* y cancelación en Ollama | HU-05-02 | T-05-14 | v2 |
+| 161 | T-09-13 | CI: Ollama y embeddings con modelos pequeños | HU-09-01 | T-05-14, T-05-06 | v2 |
+| 162 | T-05-16 | Plantilla de *prompt* RAG versionada | HU-05-06 | T-05-11 | v2 |
+| 163 | T-05-17 | *Parser* de citas y validación de SKU | HU-05-06 | T-05-15 | v2 |
+| 164 | T-05-18 | Orquestador RAG | HU-05-05, HU-05-06 | T-05-16, T-05-17 | v2 |
+| 165 | T-05-19 | Endpoint `POST /ai/ask` (SSE) | HU-05-05, HU-05-07 | T-05-18, T-09-04 | v2 |
+| 166 | T-05-20 | UI Modo IA con *streaming* | HU-05-05 | T-05-19, T-01-09 | v2 |
+| 167 | T-05-21 | UI tarjetas citadas y fallas del Modo IA | HU-05-06, HU-05-07 | T-05-20 | v2 |
+| 168 | T-05-22 | Intent Router: reglas | HU-05-08 | T-00-03 | v2 |
+| 169 | T-05-23 | Intent Router: clasificador LLM de respaldo | HU-05-08 | T-05-22, T-05-14 | v2 |
+| 170 | T-05-24 | Endpoint `POST /intent` y uso en el Omnibox | HU-05-08 | T-05-23, T-05-20 | v2 |
+| 171 | T-05-25 | `nota_tecnica`: migración, dominio y repositorio | HU-05-10 | T-03-02, T-02-14 | v2 |
+| 172 | T-05-26 | Contrato y endpoints de notas técnicas | HU-05-10 | T-05-25, T-09-03 | v2 |
+| 173 | T-05-27 | Notas técnicas en vectores y en el RAG | HU-05-10 | T-05-25, T-05-08, T-05-18 | v2 |
+| 174 | T-05-28 | UI de notas técnicas | HU-05-10 | T-05-26, T-01-11 | v2 |
+| 175 | T-05-29 | `vortex seed`: notas técnicas | HU-05-10 | T-05-25, T-02-43 | v2 |
+| 176 | T-05-30 | Set de 50 preguntas del rubro | HU-05-09 | T-02-46 | v2 |
+| 177 | T-05-31 | *Harness* de *benchmark* de LLM | HU-05-09 | T-05-18, T-05-30 | v2 |
+| 178 | T-05-32 | Ejecutar el *benchmark* y registrar ADR-09 | HU-05-09 | T-05-31 | v2 |
+| **Cierre H2** | | | | | |
+| 179 | T-09-14 | *Benchmark* H2: primer token, tokens/s y HNSW | HU-09-04 | T-05-32 | v2 |
+| 180 | T-09-15 | Prueba térmica en MacBook Air | HU-09-07 | T-05-32 | v2 |
+| 181 | T-09-16 | Degradación H2: Ollama y embeddings | HU-09-05 | T-05-21, T-05-10 | v2 |
+| 182 | T-09-17 | e2e Modo IA | HU-09-03 | T-05-21, T-09-09 | v2 |
+| **Fase 6** | | | | | |
+| 183 | T-06-01 | `vortex models`: Whisper | HU-00-08 | T-00-24 | v2 |
+| 184 | T-06-02 | Puerto `SpeechToText` y adaptador whisper-rs | HU-06-02 | T-06-01 | v2 |
+| 185 | T-09-18 | CI: Whisper `tiny` para integración | HU-09-01 | T-06-02 | v2 |
+| 186 | T-06-03 | Decodificación WAV y límites de audio | HU-06-02, HU-06-06 | T-06-02 | v2 |
+| 187 | T-06-04 | *Prompt* inicial con vocabulario del catálogo | HU-06-02 | T-06-02, T-02-19 | v2 |
+| 188 | T-06-05 | Normalización: números y fracciones | HU-06-03 | T-00-01 | v2 |
+| 189 | T-06-06 | Normalización: medidas métricas y "por" | HU-06-03 | T-06-05 | v2 |
+| 190 | T-06-07 | Endpoint `POST /speech/transcriptions` | HU-06-02, HU-06-04 | T-06-03, T-06-06, T-05-23, T-09-04 | v2 |
+| 191 | T-06-08 | Salud de `speech` y carga al arrancar | HU-06-06 | T-06-02, T-00-27 | v2 |
+| 192 | T-06-09 | UI captura "mantener para hablar" | HU-06-01 | T-01-09 | v2 |
+| 193 | T-06-10 | UI límite de 30 s y micrófono deshabilitado | HU-06-06 | T-06-09, T-01-12 | v2 |
+| 194 | T-06-11 | UI transcripción editable y ruteo | HU-06-04, HU-06-05 | T-06-07, T-06-09, T-05-20 | v2 |
+| 195 | T-06-12 | Decodificación WebM/Ogg Opus | HU-06-01 | T-06-03 | v2 |
+| 196 | T-06-13 | Medición de latencia de voz | HU-06-02 | T-06-07 | v2 |
+| **Cierre H3** | | | | | |
+| 197 | T-09-19 | Concurrencia con 5 terminales | HU-09-06 | T-06-11, T-05-21 | v2 |
+| 198 | T-09-20 | Degradación H3: Whisper | HU-09-05 | T-06-10, T-06-08 | v2 |
+| 199 | T-09-21 | e2e voz con audio simulado | HU-09-03 | T-06-11, T-09-09 | v2 |
+| 200 | T-00-31 | Arranque en frío, degradado y sin internet | HU-00-06, HU-00-08 | T-06-08, T-05-13, T-05-10 | v2 |
+| **Fase 7** | | | | | |
+| 201 | T-07-01 | *Spike* visual: set de fotos y *harness* | HU-07-01 | T-02-46 | v2 |
+| 202 | T-07-02 | *Spike* visual: ejecución y decisión | HU-07-01 | T-07-01 | v2 |
+| 203 | T-07-03 | Capacidad `vision` en configuración y `/health` | HU-01-03, HU-07-03 | T-00-13 | v2 |
+| 204 | T-07-04 | `vortex models`: modelo visual | HU-00-08 | T-07-02, T-00-24 | v2 |
+| 205 | T-07-05 | Migración `embedding_imagen` | HU-07-02 | T-07-02, T-02-28 | v2 |
+| 206 | T-07-06 | Adaptador `Embedder` de imagen | HU-07-02 | T-07-04, T-05-04 | v2 |
+| 207 | T-07-07 | *Data augmentation* determinista | HU-07-02 | T-07-06 | v2 |
+| 208 | T-07-08 | Worker de vectores: imágenes | HU-07-02 | T-07-05, T-07-07, T-05-08 | v2 |
+| 209 | T-07-09 | Búsqueda *k-NN* agrupada por producto | HU-07-03 | T-07-08 | v2 |
+| 210 | T-07-10 | Contrato y endpoint `POST /search/image` | HU-07-03 | T-07-09, T-09-04 | v2 |
+| 211 | T-07-11 | UI cámara y candidatos | HU-07-03 | T-07-10, T-07-03 | v2 |
+| 212 | T-07-12 | Foto de referencia confirmada | HU-07-04 | T-07-11, T-02-30 | v2 |
+| 213 | T-07-13 | Abrir la cámara por voz | HU-07-05 | T-07-11, T-06-11 | v2 |
+| 214 | T-09-22 | *Benchmark* y degradación de la búsqueda visual | HU-09-04, HU-09-05 | T-07-11 | v2 |
+| **Fase 8** | | | | | |
+| 215 | T-08-01 | Crate `pos` y migración `venta`, `contador` | HU-08-03 | T-02-15 | v2 |
+| 216 | T-08-02 | Dominio Venta y `SaleRepo` | HU-08-02, HU-08-03 | T-08-01 | v2 |
+| 217 | T-08-03 | Repositorio: confirmar venta atómica | HU-08-03 | T-08-02, T-02-24 | v2 |
+| 218 | T-08-04 | Contrato `/sales` en `openapi.yaml` | HU-08-03, HU-08-04 | T-09-03 | v2 |
+| 219 | T-08-05 | Casos de uso y endpoints de venta | HU-08-03, HU-08-04 | T-08-03, T-08-04 | v2 |
+| 220 | T-08-06 | UI carrito persistente | HU-08-01 | T-04-08, T-05-21 | v2 |
+| 221 | T-08-07 | UI edición del carrito y totales | HU-08-02 | T-08-06 | v2 |
+| 222 | T-08-08 | UI confirmar venta y detalle | HU-08-03, HU-08-04 | T-08-07, T-08-05 | v2 |
+| 223 | T-09-23 | Concurrencia de ventas sobre la última unidad | HU-08-03 | T-08-05 | v2 |
+| 224 | T-09-24 | e2e H4: visión y POS | HU-09-03 | T-07-12, T-08-08 | v2 |
 
+
+### 7.5.1. Ruta del MVP del curso
+
+Subconjunto de la tabla anterior con alcance **MVP** (104 de 224 tickets), en el mismo orden. Ningún ticket de esta ruta depende de un ticket v2. Se ejecuta por HTTP en `localhost`, con Meilisearch levantado a mano ([2.7](2-arquitectura.md#27-red-local-y-seguridad-mínima)). Alcance por historia en [6.3.1](6-historias.md#631-alcance-por-historia).
+
+| Paso | Orden | Ticket | Título | Depende de |
+|---|---|---|---|---|
+| 01 | 001 | T-00-01 | Workspace Cargo y crates vacíos | — |
+| 02 | 002 | T-09-01 | CI base en GitHub Actions | T-00-01 |
+| 03 | 003 | T-00-02 | Verificación automática de la regla de dependencias de `domain` | T-09-01 |
+| 04 | 004 | T-00-03 | Taxonomía de errores de dominio | T-00-01 |
+| 05 | 005 | T-00-04 | Tipos base de dominio (ID, decimal, fecha) | T-00-01 |
+| 06 | 006 | T-00-05 | Configuración TOML con validación | T-00-01 |
+| 07 | 007 | T-00-06 | Logs estructurados con rotación | T-00-05 |
+| 08 | 008 | T-00-07 | CLI con subcomandos | T-00-05 |
+| 09 | 009 | T-00-08 | Apertura de SurrealDB embebido | T-00-03, T-00-05 |
+| 10 | 010 | T-00-09 | Motor de migraciones con *checksum* | T-00-08 |
+| 11 | 011 | T-09-02 | *Harness* de tests de integración de `storage` | T-00-09 |
+| 12 | 012 | T-00-10 | Servidor Axum mínimo con apagado ordenado | T-00-07 |
+| 13 | 013 | T-00-11 | Errores de dominio a `problem+json` | T-00-03, T-00-10 |
+| 14 | 014 | T-00-12 | *Middlewares* transversales del Gateway | T-00-11 |
+| 15 | 015 | T-00-13 | Registro de salud y `GET /health` | T-00-10 |
+| 16 | 016 | T-00-14 | `GET /metrics` en formato Prometheus | T-00-12 |
+| 17 | 017 | T-09-03 | Fuente única OpenAPI y *lint* Redocly | T-09-01 |
+| 18 | 018 | T-09-04 | Validador de respuestas contra `openapi.yaml` | T-09-03, T-00-13 |
+| 19 | 023 | T-00-19 | Estáticos de la SPA y `/media` | T-00-10 |
+| 20 | 024 | T-00-20 | Arranque ordenado de `vortex serve` (paso 1) | T-00-09, T-00-13, T-00-19 |
+| 21 | 025 | T-01-01 | Esqueleto de `vectra-web` y *router* | T-00-19 |
+| 22 | 026 | T-01-02 | *Design tokens* oscuros Glassmorphism | T-01-01 |
+| 23 | 027 | T-01-03 | Componentes `vx-button`, `vx-field`, `vx-chip` | T-01-02 |
+| 24 | 028 | T-01-04 | Componentes `vx-modal`, `vx-side-panel`, `vx-toast` | T-01-02 |
+| 25 | 029 | T-01-05 | Componente `vx-product-card` | T-01-02 |
+| 26 | 030 | T-01-06 | Cliente HTTP `api.js` | T-01-01 |
+| 27 | 031 | T-01-07 | Mensajes de error por `code` | T-01-06, T-01-04 |
+| 28 | 032 | T-01-08 | Vista del operador y `vx-omnibox` | T-01-03 |
+| 29 | 033 | T-01-09 | Modos del Omnibox | T-01-08 |
+| 30 | 034 | T-01-10 | Navegación por teclado de listas | T-01-08, T-01-05 |
+| 31 | 035 | T-01-11 | Vista de administración y menú | T-01-01, T-01-03 |
+| 32 | 036 | T-01-12 | Estado del sistema desde `/health` | T-01-06, T-01-09, T-00-13 |
+| 33 | 037 | T-01-13 | *Manifest* PWA | T-01-01 |
+| 34 | 038 | T-01-14 | Service Worker: *app shell* y sin conexión | T-01-13 |
+| 35 | 039 | T-01-15 | Actualización del Service Worker | T-01-14 |
+| 36 | 040 | T-03-01 | Migración `outbox`, `sync_cursor`, `outbox_fallo` | T-00-09 |
+| 37 | 041 | T-03-02 | Transacción "dato + outbox" y aviso al worker | T-03-01 |
+| 38 | 042 | T-02-01 | Migración `categoria` | T-00-09 |
+| 39 | 043 | T-02-02 | Dominio Categoría y `CategoryRepo` | T-00-03, T-00-04 |
+| 40 | 044 | T-02-03 | Repositorio de categorías: alta, lectura, listado | T-02-01, T-02-02, T-03-02 |
+| 41 | 045 | T-02-04 | Repositorio de categorías: mover, renombrar, ciclos | T-02-03 |
+| 42 | 046 | T-02-05 | Casos de uso de categorías | T-02-04 |
+| 43 | 047 | T-02-06 | Endpoints `/categories` | T-02-05, T-09-04 |
+| 44 | 048 | T-02-07 | UI de categorías | T-02-06, T-01-11 |
+| 45 | 049 | T-02-08 | Marca: migración, dominio y repositorio | T-03-02 |
+| 46 | 050 | T-02-09 | Marca: casos de uso y endpoints | T-02-08, T-09-04 |
+| 47 | 051 | T-02-10 | UI de marcas | T-02-09, T-01-11 |
+| 48 | 052 | T-02-11 | `atributo_def`: migración, dominio y repositorio | T-03-02 |
+| 49 | 053 | T-02-12 | `atributo_def`: casos de uso y endpoints | T-02-11, T-09-04 |
+| 50 | 054 | T-02-13 | UI de atributos técnicos | T-02-12, T-01-11 |
+| 51 | 055 | T-02-14 | Migración `producto` | T-02-01, T-02-08, T-02-11 |
+| 52 | 056 | T-02-15 | Migración `movimiento_stock` | T-02-14 |
+| 53 | 057 | T-02-16 | Dominio Producto y validación de atributos | T-02-02, T-02-08, T-02-11 |
+| 54 | 058 | T-02-17 | Dominio Movimiento de stock y `StockLedger` | T-00-04 |
+| 55 | 059 | T-02-18 | Repositorio de producto: alta con stock inicial | T-02-15, T-02-16, T-02-17 |
+| 56 | 060 | T-02-19 | Repositorio de producto: ficha y edición con `version` | T-02-18 |
+| 57 | 061 | T-02-20 | Casos de uso de producto | T-02-19 |
+| 58 | 062 | T-02-21 | Endpoints `POST/GET/PATCH /products` | T-02-20, T-09-04 |
+| 59 | 063 | T-02-22 | Baja y reactivación de producto | T-02-21 |
+| 60 | 064 | T-02-23 | Regla `attribute_in_use` | T-02-12, T-02-18 |
+| 61 | 065 | T-02-24 | `StockLedger.append` transaccional | T-02-17, T-02-15, T-03-02 |
+| 62 | 066 | T-02-25 | Endpoint `POST .../stock-movements` | T-02-24, T-02-21 |
+| 63 | 067 | T-00-21 | Paginación por cursor | T-00-11 |
+| 64 | 069 | T-02-27 | Endpoint `GET /products` (listado admin) | T-02-21, T-00-21 |
+| 65 | 076 | T-02-34 | UI listado de productos | T-02-27, T-02-22, T-01-11 |
+| 66 | 077 | T-02-35 | UI alta de producto | T-02-34 |
+| 67 | 078 | T-02-36 | UI atributos y códigos en la ficha | T-02-35, T-02-12 |
+| 68 | 079 | T-02-37 | UI edición con conflicto de versión | T-02-36 |
+| 69 | 080 | T-02-38 | UI stock: movimientos | T-02-25, T-02-35 |
+| 70 | 083 | T-02-40 | Formato del dataset semilla y validador | T-02-16 |
+| 71 | 084 | T-02-41 | Dataset de desarrollo (~200 SKUs) | T-02-40 |
+| 72 | 085 | T-02-42 | `vortex seed`: categorías, marcas y atributos | T-02-40, T-02-05, T-02-09, T-02-12 |
+| 73 | 086 | T-02-43 | `vortex seed`: productos y stock inicial | T-02-42, T-02-20 |
+| 74 | 093 | T-09-05 | CI: Meilisearch real para integración | T-09-01 |
+| 75 | 094 | T-03-03 | Puerto `TextSearch` | T-00-03 |
+| 76 | 095 | T-03-04 | Adaptador Meilisearch base | T-03-03, T-09-05 |
+| 77 | 096 | T-03-05 | Configuración del índice `productos` | T-03-04 |
+| 78 | 097 | T-03-06 | Construcción del documento de búsqueda | T-02-19 |
+| 79 | 098 | T-03-07 | Worker Meilisearch: productos | T-03-05, T-03-06, T-03-02 |
+| 80 | 099 | T-03-08 | Worker: *fan-out* de categoría, marca y atributo | T-03-07 |
+| 81 | 100 | T-03-09 | Worker: reintentos, fallos, métricas y salud | T-03-07, T-00-14 |
+| 82 | 102 | T-03-11 | `vortex reindex` (Meilisearch) con intercambio atómico | T-03-07 |
+| 83 | 103 | T-00-27 | Arranque ordenado (paso 2): Meilisearch y worker | T-00-20, T-03-07 |
+| 84 | 104 | T-03-12 | Caso de uso de búsqueda por texto | T-03-05 |
+| 85 | 105 | T-03-13 | Endpoint `GET /search` | T-03-12, T-09-04 |
+| 86 | 106 | T-03-14 | Tests de ranking y tolerancia a errores | T-03-13, T-02-41 |
+| 87 | 107 | T-03-15 | UI búsqueda mientras se escribe | T-03-13, T-01-10 |
+| 88 | 108 | T-03-16 | UI resaltado seguro | T-03-15 |
+| 89 | 109 | T-03-17 | UI tarjetas de resultado completas | T-03-16, T-01-05 |
+| 90 | 114 | T-03-22 | Búsqueda por código en SurrealDB | T-02-19 |
+| 91 | 115 | T-03-23 | UI búsqueda por código | T-03-22, T-03-15 |
+| 92 | 124 | T-04-01 | Migración de relaciones (`sustituible_por`) | T-02-14 |
+| 93 | 125 | T-04-02 | Dominio Relación y `RelationRepo` | T-00-03 |
+| 94 | 126 | T-04-03 | Repositorio: crear relación simple y bidireccional | T-04-01, T-04-02 |
+| 95 | 127 | T-04-04 | Repositorio: editar, eliminar y listar | T-04-03 |
+| 96 | 128 | T-04-05 | Endpoints de relaciones | T-04-04, T-09-04 |
+| 97 | 129 | T-04-06 | Consulta de recomendaciones | T-04-01 |
+| 98 | 130 | T-04-07 | Endpoint de recomendaciones | T-04-06 |
+| 99 | 131 | T-04-08 | UI panel de recomendaciones | T-04-07, T-03-17, T-01-04 |
+| 100 | 132 | T-04-09 | UI relaciones en la ficha | T-04-05, T-02-35 |
+| 101 | 134 | T-04-11 | `vortex seed`: relaciones | T-04-03, T-02-43 |
+| 102 | 142 | T-09-09 | *Setup* de tests e2e con Playwright | T-02-41 |
+| 103 | 143 | T-09-10 | e2e H1: búsqueda y filtros | T-09-09, T-03-15 |
+| 104 | 144 | T-09-11 | e2e H1: recomendaciones y alta de producto | T-09-10, T-04-08 |
+
+Recableos respecto del backlog completo (los tickets v2 se retoman con sus dependencias originales):
+
+- **T-00-20 / T-00-27:** sin HTTPS (T-00-16) ni supervisor (T-00-25); el arranque verifica Meilisearch externo por URL.
+- **T-02-42 / T-03-11:** `vortex seed` y `vortex reindex` abren la base directamente con el servidor detenido; sin canal por socket (T-00-22).
+- **T-09-05:** la CI levanta Meilisearch con versión fijada, sin el manifiesto de `vortex models` (T-00-24).
+- **T-03-06 / T-04-06:** documento de búsqueda y recomendaciones sin imagen principal; sin T-02-28.
+- **T-02-38:** solo registra movimientos; el historial (T-02-26, HU-02-08) es v2.
+- **T-09-10:** e2e de búsqueda sin facetas; depende de T-03-15 en vez de T-03-19.
 ---
 
 ## 7.6. Fase 0 — Fundaciones de Vortex Core
@@ -471,7 +591,7 @@ flowchart LR
 
 #### 017 · T-09-03 — Fuente única OpenAPI y *lint* Redocly
 **HU:** HU-09-02 · **Depende de:** T-09-01
-- **Hace:** aplica PAPI-01: quita la copia embebida de [5.13](5-contract-api.md#513-especificación-openapi-31) (queda el enlace a `openapi.yaml`) y ajusta la descripción de `openapi.yaml`; `redocly.yaml` y *job* de CI `npx @redocly/cli lint docs/openapi.yaml`.
+- **Hace:** PAPI-01 ya aplicado en docs (sin copia embebida en 5.13); agrega `redocly.yaml` y *job* de CI `npx @redocly/cli lint docs/openapi.yaml`.
 - **No hace:** validación de respuestas (T-09-04).
 - **Listo cuando:** la CI falla si `openapi.yaml` tiene un error de *lint*.
 
@@ -511,9 +631,9 @@ flowchart LR
 - **No hace:** contenido de la SPA (Fase 1).
 - **Listo cuando:** tests verifican las cabeceras de caché de cada tipo de recurso.
 
-#### 024 · T-00-20 — Arranque ordenado de `vortex serve` (v1)
-**HU:** HU-00-06 · **Depende de:** T-00-09, T-00-13, T-00-16, T-00-19
-- **Hace:** secuencia configuración → logs → Storage y migraciones → registro de salud → API; `/health` en `starting` hasta terminar; cada fase registra su duración; si falla Storage o la configuración, no se expone la API.
+#### 024 · T-00-20 — Arranque ordenado de `vortex serve` (paso 1)
+**HU:** HU-00-06 · **Depende de:** T-00-09, T-00-13, T-00-19
+- **Hace:** secuencia configuración → logs → Storage y migraciones → registro de salud → API por HTTP en `localhost` (MVP del curso; HTTPS se suma en v2 con T-00-16); `/health` en `starting` hasta terminar; cada fase registra su duración; si falla Storage o la configuración, no se expone la API.
 - **No hace:** supervisor ni worker (T-00-27).
 - **Listo cuando:** un test de integración arranca el binario, espera `ok` y verifica que con una base inaccesible el proceso termina con error.
 
@@ -778,7 +898,7 @@ flowchart LR
 - **Listo cuando:** escenarios de HU-02-07 como tests de `api` validados contra `openapi.yaml`.
 
 #### 067 · T-00-21 — Paginación por cursor
-**HU:** HU-02-08 · **Depende de:** T-00-11
+**HU:** HU-02-08, HU-02-10 · **Depende de:** T-00-11
 - **Hace:** helper en `api` con cursor opaco (último ULID visto, en base64url), `limit` ≤ 100 y `nextCursor = null` al final; cursor inválido → `invalid_input`.
 - **No hace:** paginación por *offset* (la maneja la búsqueda).
 - **Listo cuando:** tests unitarios de codificación y límites.
@@ -855,11 +975,11 @@ flowchart LR
 - **No hace:** combinación automática de cambios.
 - **Listo cuando:** con dos pestañas se reproduce el escenario "Conflicto" de HU-02-05.
 
-#### 080 · T-02-38 — UI stock: movimientos e historial
-**HU:** HU-02-07, HU-02-08 · **Depende de:** T-02-26, T-02-35
-- **Hace:** pestaña "Stock" con formulario de ingreso y ajuste (motivo obligatorio en ajuste) e historial paginado; no hay opción de editar ni borrar movimientos.
-- **No hace:** exportar el historial.
-- **Listo cuando:** escenarios de HU-02-07 y HU-02-08 ejecutados a mano.
+#### 080 · T-02-38 — UI stock: movimientos
+**HU:** HU-02-07 · **Depende de:** T-02-25, T-02-35
+- **Hace:** pestaña "Stock" con formulario de ingreso y ajuste (motivo obligatorio en ajuste) y el stock resultante; no hay opción de editar ni borrar movimientos.
+- **No hace:** historial paginado (v2, con T-02-26 y HU-02-08) ni exportar el historial.
+- **Listo cuando:** escenarios de HU-02-07 ejecutados a mano.
 
 #### 081 · T-02-39 — UI imágenes del producto
 **HU:** HU-02-09 · **Depende de:** T-02-31, T-02-32, T-02-35
@@ -886,8 +1006,8 @@ flowchart LR
 - **Listo cuando:** el validador de T-02-40 no reporta errores.
 
 #### 085 · T-02-42 — `vortex seed`: categorías, marcas y atributos
-**HU:** HU-02-11 · **Depende de:** T-02-40, T-02-05, T-02-09, T-02-12, T-00-22
-- **Hace:** importa maestros usando los casos de uso de `catalog`, idempotente (actualiza por *slug* o clave), por el canal de administración o en modo directo.
+**HU:** HU-02-11 · **Depende de:** T-02-40, T-02-05, T-02-09, T-02-12
+- **Hace:** importa maestros usando los casos de uso de `catalog`, idempotente (actualiza por *slug* o clave), en modo directo con el servidor detenido (el canal de administración T-00-22 es v2).
 - **No hace:** productos.
 - **Listo cuando:** ejecutar dos veces seguidas no duplica registros.
 
@@ -938,8 +1058,8 @@ flowchart LR
 - **Listo cuando:** tras detener el servicio no quedan procesos hijos.
 
 #### 093 · T-09-05 — CI: Meilisearch real para integración
-**HU:** HU-09-01 · **Depende de:** T-09-01, T-00-24
-- **Hace:** *job* de CI que descarga la misma versión del manifiesto, levanta Meilisearch y ejecuta los tests marcados `#[ignore = "meilisearch"]` con `--include-ignored`.
+**HU:** HU-09-01 · **Depende de:** T-09-01
+- **Hace:** *job* de CI que levanta Meilisearch con una versión fijada (la misma que se usa en desarrollo; el manifiesto de `vortex models` es v2) y ejecuta los tests marcados `#[ignore = "meilisearch"]` con `--include-ignored`.
 - **No hace:** otros motores.
 - **Listo cuando:** la CI corre un test de integración contra Meilisearch real.
 
@@ -962,8 +1082,8 @@ flowchart LR
 - **Listo cuando:** test de integración lee la configuración aplicada y la compara con la esperada.
 
 #### 097 · T-03-06 — Construcción del documento de búsqueda
-**HU:** HU-03-01 · **Depende de:** T-02-19, T-02-28
-- **Hace:** función pura `build_search_document(producto, marca, categoría, defs, imagen_principal)` según [4.11.1](4-modelo.md#4111-documento) más `marca_id` y `categoria_ids`; `atributos_texto` solo con atributos buscables y `attr_<clave>` solo con facetables; `ubicacion` formateada como `P3 · E-B · 12`.
+**HU:** HU-03-01 · **Depende de:** T-02-19
+- **Hace:** función pura `build_search_document(producto, marca, categoría, defs)` según [4.11.1](4-modelo.md#4111-documento) más `marca_id` y `categoria_ids`; `atributos_texto` solo con atributos buscables y `attr_<clave>` solo con facetables; `ubicacion` formateada como `P3 · E-B · 12`; `imagen` en `null` (la imagen principal se suma en v2 con T-02-28).
 - **No hace:** envío a Meilisearch.
 - **Listo cuando:** test de *snapshot* con el producto de ejemplo de 4.4.4.
 
@@ -992,16 +1112,16 @@ flowchart LR
 - **Listo cuando:** test con eventos viejos detrás y delante de un cursor.
 
 #### 102 · T-03-11 — `vortex reindex` (Meilisearch) con intercambio atómico
-**HU:** HU-03-02 · **Depende de:** T-03-07, T-00-22
-- **Hace:** registra el último evento existente, construye `productos_nuevo` desde las tablas maestras con la configuración, `swapIndexes` atómico, borra el índice viejo y ubica `sync_cursor:meilisearch` en el evento registrado; disponible por el canal de administración.
+**HU:** HU-03-02 · **Depende de:** T-03-07
+- **Hace:** registra el último evento existente, construye `productos_nuevo` desde las tablas maestras con la configuración, `swapIndexes` atómico, borra el índice viejo y ubica `sync_cursor:meilisearch` en el evento registrado; en el MVP se ejecuta con el servidor detenido (por el canal de administración en v2).
 - **No hace:** vectores (T-05-09).
 - **Listo cuando:** test que busca en bucle durante el reindex sin recibir errores ni resultados vacíos.
 
-#### 103 · T-00-27 — Arranque ordenado (v2): supervisor y worker
-**HU:** HU-00-06 · **Depende de:** T-00-25, T-03-07
-- **Hace:** secuencia configuración → Storage → supervisor (espera Meilisearch `up` con límite de 20 s; si no, sigue en modo degradado) → Index Sync Worker → API.
-- **No hace:** carga de modelos de IA (se agrega en T-05-10, T-05-13 y T-06-08).
-- **Listo cuando:** con el binario de Meilisearch ausente, la API igual arranca y `/health` reporta `meilisearch: down`.
+#### 103 · T-00-27 — Arranque ordenado (paso 2): Meilisearch y worker
+**HU:** HU-00-06 · **Depende de:** T-00-20, T-03-07
+- **Hace:** secuencia configuración → Storage → verificación de Meilisearch externo por la URL configurada (espera `up` con límite de 20 s; si no, sigue en modo degradado) → Index Sync Worker → API.
+- **No hace:** levantar Meilisearch como proceso hijo (supervisor T-00-25, v2) ni carga de modelos de IA (T-05-10, T-05-13 y T-06-08).
+- **Listo cuando:** con Meilisearch detenido, la API igual arranca y `/health` reporta `meilisearch: down`.
 
 #### 104 · T-03-12 — Caso de uso de búsqueda por texto
 **HU:** HU-03-03 · **Depende de:** T-03-05
@@ -1083,7 +1203,7 @@ flowchart LR
 
 #### 117 · T-03-25 — Contrato de sinónimos en `openapi.yaml`
 **HU:** HU-03-09 · **Depende de:** T-09-03
-- **Hace:** agrega `GET`/`POST /api/v1/synonyms` y `PATCH`/`DELETE /api/v1/synonyms/{synonymId}` (baja lógica) con esquemas `Synonym`, `SynonymCreate` y `SynonymUpdate` (tag `Search`); actualiza 5.2 y 5.12 de [5-contract-api.md](5-contract-api.md).
+- **Hace:** verifica que `openapi.yaml` ya define sinónimos (`Synonym*`) y que [5.2](5-contract-api.md#52-mapa-de-endpoints) está alineado; ajusta el contrato solo si falta algo.
 - **No hace:** implementación.
 - **Listo cuando:** el *lint* de Redocly pasa.
 
@@ -1129,7 +1249,7 @@ flowchart LR
 
 #### 124 · T-04-01 — Migración de relaciones (`sustituible_por`)
 **HU:** HU-04-01 · **Depende de:** T-02-14
-- **Hace:** tablas `similar_a`, `sustituible_por` y `complementa` según [4.6.1](4-modelo.md#461-tablas-de-relación) (PM-05); actualiza 4.2, 4.6, 4.12 y 4.13 de [4-modelo.md](4-modelo.md) y la tabla de enumerados de [5.3](5-contract-api.md#53-correspondencia-api--modelo-de-datos).
+- **Hace:** migración SurrealDB con tablas `similar_a`, `sustituible_por` y `complementa` según [4.6.1](4-modelo.md#461-tablas-de-relación) (PM-05; nombre ya documentado).
 - **No hace:** lógica.
 - **Listo cuando:** tests: `ENFORCED` rechaza un destino inexistente y el índice único `(in, out)` rechaza duplicados.
 
@@ -1158,8 +1278,8 @@ flowchart LR
 - **Listo cuando:** escenarios de HU-04-01 y HU-04-02 como tests de `api` validados contra `openapi.yaml`.
 
 #### 129 · T-04-06 — Consulta de recomendaciones
-**HU:** HU-04-05, HU-04-06 · **Depende de:** T-04-01, T-02-28
-- **Hace:** consulta única de [4.6.2](4-modelo.md#462-consulta-de-recomendaciones) (con `sustituible_por`) más ubicación e imagen principal; destinos inactivos excluidos; sustitutos con `stock > 0`; `destacar_sustitutos` si el producto tiene stock 0.
+**HU:** HU-04-05, HU-04-06 · **Depende de:** T-04-01
+- **Hace:** consulta única de [4.6.2](4-modelo.md#462-consulta-de-recomendaciones) (con `sustituible_por`) más ubicación; `imageUrl` en `null` (imagen principal en v2 con T-02-28); destinos inactivos excluidos; sustitutos con `stock > 0`; `destacar_sustitutos` si el producto tiene stock 0.
 - **No hace:** HTTP.
 - **Listo cuando:** tests de los escenarios de HU-04-05 y HU-04-06 (incluido el producto dado de baja).
 
@@ -1246,9 +1366,9 @@ flowchart LR
 - **Listo cuando:** un test "la app carga y el Omnibox tiene foco" pasa en CI.
 
 #### 143 · T-09-10 — e2e H1: búsqueda y filtros
-**HU:** HU-09-03 · **Depende de:** T-09-09, T-03-19
-- **Hace:** búsqueda con error tipográfico, filtro por atributo y stock, y navegación por teclado.
-- **No hace:** —
+**HU:** HU-09-03 · **Depende de:** T-09-09, T-03-15
+- **Hace:** búsqueda con error tipográfico, tarjetas con stock y navegación por teclado.
+- **No hace:** filtros por atributo y stock (v2, con T-03-19).
 - **Listo cuando:** pasa en CI.
 
 #### 144 · T-09-11 — e2e H1: recomendaciones y alta de producto
@@ -1425,7 +1545,7 @@ flowchart LR
 
 #### 172 · T-05-26 — Contrato y endpoints de notas técnicas
 **HU:** HU-05-10 · **Depende de:** T-05-25, T-09-03
-- **Hace:** agrega `GET`/`POST /api/v1/technical-notes` y `GET`/`PATCH`/`DELETE /api/v1/technical-notes/{noteId}` a `openapi.yaml` (tag `AI`), actualiza 5.2 y 5.12 de [5-contract-api.md](5-contract-api.md) e implementa los casos de uso.
+- **Hace:** verifica contrato de notas técnicas en `openapi.yaml` (tag `AI`) y implementa casos de uso y endpoints.
 - **No hace:** UI.
 - **Listo cuando:** *lint* y tests de contrato pasan.
 
@@ -1792,9 +1912,9 @@ Solo se ejecuta si se completó el alcance firme ([1.5](1-descripcion-general-de
 | HU-02-05 | T-02-19, T-02-20, T-02-21, T-02-37 |
 | HU-02-06 | T-02-22, T-02-34 |
 | HU-02-07 | T-02-15, T-02-17, T-02-24, T-02-25, T-02-38 |
-| HU-02-08 | T-00-21, T-02-26, T-02-38 |
+| HU-02-08 | T-00-21, T-02-26 (UI del historial a definir en v2) |
 | HU-02-09 | T-02-28 a T-02-33, T-02-39 |
-| HU-02-10 | T-02-27, T-02-34 |
+| HU-02-10 | T-00-21, T-02-27, T-02-34 |
 | HU-02-11 | T-02-40 a T-02-44, T-02-46, T-03-29, T-04-11 |
 | HU-02-12 | T-02-45 |
 | HU-03-01 | T-03-01, T-03-02, T-03-03, T-03-04, T-03-06 a T-03-10 |

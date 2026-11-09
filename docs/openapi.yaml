@@ -5,8 +5,7 @@ info:
   summary: API local de Vortex Core consumida por la SPA Vectra en las terminales de la LAN.
   description: |
     Contrato de las APIs principales del MVP (alcance firme). Documento explicativo:
-    `docs/5-contract-api.md`. Esta especificación y la copia embebida en ese documento
-    deben mantenerse idénticas.
+    `docs/5-contract-api.md`. Fuente única del contrato ejecutable (PAPI-01).
 
     - Sin autenticación en el MVP (red local de confianza, ver 2.7).
     - Montos, precios y cantidades de stock se transmiten como **string decimal** (nunca float).
@@ -558,6 +557,152 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/SuggestionResponse' }
         '400': { $ref: '#/components/responses/BadRequest' }
+
+  /api/v1/synonyms:
+    get:
+      tags: [Search]
+      operationId: listSynonyms
+      summary: Listar entradas del diccionario de sinónimos
+      parameters:
+        - $ref: '#/components/parameters/IncludeInactive'
+      responses:
+        '200':
+          description: Sinónimos activos (defecto) o todos si `includeInactive=true`.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/Synonym' }
+    post:
+      tags: [Search]
+      operationId: createSynonym
+      summary: Crear entrada de sinónimos
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SynonymCreate' }
+      responses:
+        '201':
+          description: Sinónimo creado.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Synonym' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /api/v1/synonyms/{synonymId}:
+    parameters:
+      - name: synonymId
+        in: path
+        required: true
+        schema: { $ref: '#/components/schemas/Ulid' }
+    patch:
+      tags: [Search]
+      operationId: updateSynonym
+      summary: Modificar sinónimos
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SynonymUpdate' }
+      responses:
+        '200':
+          description: Sinónimo actualizado.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Synonym' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [Search]
+      operationId: deactivateSynonym
+      summary: Dar de baja un sinónimo (baja lógica)
+      responses:
+        '204': { description: Sinónimo dado de baja. }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/v1/technical-notes:
+    get:
+      tags: [AI]
+      operationId: listTechnicalNotes
+      summary: Listar notas técnicas
+      parameters:
+        - name: q
+          in: query
+          description: Filtro por prefijo del título.
+          schema: { type: string, maxLength: 100 }
+        - $ref: '#/components/parameters/IncludeInactive'
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Página de notas técnicas.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TechnicalNotePage' }
+    post:
+      tags: [AI]
+      operationId: createTechnicalNote
+      summary: Crear nota técnica
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TechnicalNoteCreate' }
+      responses:
+        '201':
+          description: Nota creada.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TechnicalNote' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+
+  /api/v1/technical-notes/{noteId}:
+    parameters:
+      - name: noteId
+        in: path
+        required: true
+        schema: { $ref: '#/components/schemas/Ulid' }
+    get:
+      tags: [AI]
+      operationId: getTechnicalNote
+      summary: Obtener una nota técnica
+      responses:
+        '200':
+          description: Nota técnica.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TechnicalNote' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [AI]
+      operationId: updateTechnicalNote
+      summary: Modificar nota técnica
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TechnicalNoteUpdate' }
+      responses:
+        '200':
+          description: Nota actualizada.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TechnicalNote' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [AI]
+      operationId: deactivateTechnicalNote
+      summary: Dar de baja una nota técnica (baja lógica)
+      responses:
+        '204': { description: Nota dada de baja. }
+        '404': { $ref: '#/components/responses/NotFound' }
 
   # ───────────────────────────── Recommendations & relations ─────────────────────────────
   /api/v1/products/{productId}/recommendations:
@@ -1192,6 +1337,89 @@ components:
         name: { type: string, minLength: 1, maxLength: 100 }
         slug: { type: string, pattern: '^[a-z0-9]+(-[a-z0-9]+)*$' }
         active: { type: boolean }
+
+    SynonymType:
+      type: string
+      enum: [mutual, unidirectional]
+    Synonym:
+      type: object
+      required: [id, type, equivalents, active, createdAt, updatedAt]
+      properties:
+        id: { $ref: '#/components/schemas/Ulid' }
+        type: { $ref: '#/components/schemas/SynonymType' }
+        term:
+          type: [string, 'null']
+          description: Origen obligatorio si `type = unidirectional`; omitido si `mutual`.
+        equivalents:
+          type: array
+          minItems: 1
+          items: { type: string, minLength: 1, maxLength: 100 }
+        active: { type: boolean }
+        createdAt: { $ref: '#/components/schemas/Timestamp' }
+        updatedAt: { $ref: '#/components/schemas/Timestamp' }
+    SynonymCreate:
+      type: object
+      required: [type, equivalents]
+      properties:
+        type: { $ref: '#/components/schemas/SynonymType' }
+        term: { type: string, minLength: 1, maxLength: 100 }
+        equivalents:
+          type: array
+          minItems: 1
+          items: { type: string, minLength: 1, maxLength: 100 }
+    SynonymUpdate:
+      type: object
+      minProperties: 1
+      properties:
+        type: { $ref: '#/components/schemas/SynonymType' }
+        term: { type: [string, 'null'], maxLength: 100 }
+        equivalents:
+          type: array
+          minItems: 1
+          items: { type: string, minLength: 1, maxLength: 100 }
+        active: { type: boolean }
+
+    TechnicalNote:
+      type: object
+      required: [id, title, content, productIds, active, createdAt, updatedAt]
+      properties:
+        id: { $ref: '#/components/schemas/Ulid' }
+        title: { type: string }
+        content: { type: string }
+        productIds:
+          type: array
+          items: { $ref: '#/components/schemas/Ulid' }
+        active: { type: boolean }
+        createdAt: { $ref: '#/components/schemas/Timestamp' }
+        updatedAt: { $ref: '#/components/schemas/Timestamp' }
+    TechnicalNoteCreate:
+      type: object
+      required: [title, content]
+      properties:
+        title: { type: string, minLength: 1, maxLength: 200 }
+        content: { type: string, minLength: 1 }
+        productIds:
+          type: array
+          items: { $ref: '#/components/schemas/Ulid' }
+          default: []
+    TechnicalNoteUpdate:
+      type: object
+      minProperties: 1
+      properties:
+        title: { type: string, minLength: 1, maxLength: 200 }
+        content: { type: string, minLength: 1 }
+        productIds:
+          type: array
+          items: { $ref: '#/components/schemas/Ulid' }
+        active: { type: boolean }
+    TechnicalNotePage:
+      type: object
+      required: [items, nextCursor]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/TechnicalNote' }
+        nextCursor: { type: [string, 'null'] }
 
     AttributeType:
       type: string

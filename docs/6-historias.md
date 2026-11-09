@@ -23,7 +23,7 @@
 11. [EP-07 — Búsqueda Visual (Vortex Vision)](#611-ep-07--búsqueda-visual-vortex-vision)
 12. [EP-08 — POS básico](#612-ep-08--pos-básico)
 13. [EP-09 — Calidad, rendimiento y operación](#613-ep-09--calidad-rendimiento-y-operación)
-14. [Preguntas abiertas que condicionan historias](#614-preguntas-abiertas-que-condicionan-historias)
+14. [Decisiones adoptadas y condicionantes de historias](#614-decisiones-adoptadas-y-condicionantes-de-historias)
 
 ---
 
@@ -60,20 +60,20 @@ Además de sus criterios de aceptación, toda historia cumple:
 
 ## 6.2. Backlog de épicas
 
-Priorización **MoSCoW**; el orden refleja la secuencia de construcción acordada ([1.5](1-descripcion-general-del-producto.md#15-alcance-del-mvp)).
+Priorización **MoSCoW**; el orden refleja la secuencia de construcción acordada ([1.5](1-descripcion-general-del-producto.md#15-alcance-del-mvp)). La columna **Alcance** indica qué entra al **MVP del curso**; el detalle por historia está en [6.3.1](#631-alcance-por-historia).
 
-| ID | Épica | Objetivo | MoSCoW | Depende de |
-|---|---|---|---|---|
-| **EP-00** | **Plataforma Vortex Core** | Workspace Rust, servidor Axum, SurrealDB embebido, supervisor de sidecars, HTTPS local con CA propia + mDNS, `launchd`, logs, `/health`, backups y scripts de descarga de modelos. | Must | — |
-| **EP-01** | **Shell de Vectra y Design System** | SPA vanilla con Web Components, PWA (Service Worker, manifest), tema oscuro `#0A0A0A` Glassmorphism, layout base, Omnibox (componente) y navegación Operador/Administrador. | Must | EP-00 |
-| **EP-02** | **Catálogo e Inventario** | Modelo de datos de productos, atributos, códigos, categorías y marcas; ledger de stock; ABM desde la UI de administración; dataset semilla. | Must | EP-00, EP-01 |
-| **EP-03** | **Búsqueda por Texto** | Sincronización SurrealDB → Meilisearch (outbox + reindexación total), ranking de relevancia, tolerancia a errores, *highlighting*, sugerencias, sinónimos, filtros facetados, búsqueda por código. | Must | EP-02 |
-| **EP-04** | **Grafo de Relaciones y Recomendaciones** | ABM de relaciones (similar, sustituto, complementario), panel de recomendaciones, sustitutos destacados con stock 0, prioridad y bidireccionalidad. | Must | EP-02, EP-03 |
-| **EP-05** | **Modo IA (RAG local)** | Integración Ollama tras `LlmProvider`, *spike* de rendimiento del índice HNSW de SurrealDB (ADR-08), embeddings de texto, recuperación híbrida, respuestas en streaming con tarjetas de producto validadas, guardarraíles, *benchmark* de modelos (PA-02). | Must | EP-03, EP-04 |
-| **EP-06** | **Búsqueda por Voz** | Captura de audio en la terminal, whisper-rs con Metal, vocabulario del rubro, normalización de medidas, ruteo de intención (reglas + LLM), transcripción editable. | Should | EP-03, EP-05 |
-| **EP-07** | **Búsqueda Visual — Vortex Vision** *(condicionado)* | *Spike* PA-03, embeddings visuales con ort + CoreML, indexación de fotos de catálogo con *data augmentation*, captura desde cámara, *top-k* con confianza, fotos de referencia incrementales. | Could | EP-02, EP-06 (ruteo "busca esto") |
-| **EP-08** | **POS básico** *(condicionado)* | Carrito desde resultados y recomendaciones, confirmación de venta con descuento atómico de stock en el ledger. | Could | EP-02, EP-04 |
-| **EP-09** | **Calidad, rendimiento y operación** *(transversal)* | Suite de tests (unitarios, integración, e2e), *benchmarks* de latencia contra los objetivos de [1.11](1-descripcion-general-del-producto.md#111-requisitos-no-funcionales), pruebas de degradación (caída de sidecars), pruebas con 5 terminales concurrentes, pruebas térmicas en MacBook Air. | Must | Transversal |
+| ID | Épica | Objetivo | MoSCoW | Alcance | Depende de |
+|---|---|---|---|---|---|
+| **EP-00** | **Plataforma Vortex Core** | Workspace Rust, servidor Axum, SurrealDB embebido, supervisor de sidecars, HTTPS local con CA propia + mDNS, `launchd`, logs, `/health`, backups y scripts de descarga de modelos. | Must | MVP parcial | — |
+| **EP-01** | **Shell de Vectra y Design System** | SPA vanilla con Web Components, PWA (Service Worker, manifest), tema oscuro `#0A0A0A` Glassmorphism, layout base, Omnibox (componente) y navegación Operador/Administrador. | Must | MVP | EP-00 |
+| **EP-02** | **Catálogo e Inventario** | Modelo de datos de productos, atributos, códigos, categorías y marcas; ledger de stock; ABM desde la UI de administración; dataset semilla. | Must | MVP parcial | EP-00, EP-01 |
+| **EP-03** | **Búsqueda por Texto** | Sincronización SurrealDB → Meilisearch (outbox + reindexación total), ranking de relevancia, tolerancia a errores, *highlighting*, sugerencias, sinónimos, filtros facetados, búsqueda por código. | Must | MVP parcial | EP-02 |
+| **EP-04** | **Grafo de Relaciones y Recomendaciones** | ABM de relaciones (similar, sustituto, complementario), panel de recomendaciones, sustitutos destacados con stock 0, prioridad y bidireccionalidad. | Must | MVP parcial | EP-02, EP-03 |
+| **EP-05** | **Modo IA (RAG local)** | Integración Ollama tras `LlmProvider`, *spike* de rendimiento del índice HNSW de SurrealDB (ADR-08), embeddings de texto, recuperación híbrida, respuestas en streaming con tarjetas de producto validadas, guardarraíles, *benchmark* de modelos (PA-02). | Must | v2 | EP-03, EP-04 |
+| **EP-06** | **Búsqueda por Voz** | Captura de audio en la terminal, whisper-rs con Metal, vocabulario del rubro, normalización de medidas, ruteo de intención (reglas + LLM), transcripción editable. | Should | v2 | EP-03, EP-05 |
+| **EP-07** | **Búsqueda Visual — Vortex Vision** *(condicionado)* | *Spike* PA-03, embeddings visuales con ort + CoreML, indexación de fotos de catálogo con *data augmentation*, captura desde cámara, *top-k* con confianza, fotos de referencia incrementales. | Could | v2 | EP-02, EP-06 (ruteo "busca esto") |
+| **EP-08** | **POS básico** *(condicionado)* | Carrito desde resultados y recomendaciones, confirmación de venta con descuento atómico de stock en el ledger. | Could | v2 | EP-02, EP-04 |
+| **EP-09** | **Calidad, rendimiento y operación** *(transversal)* | Suite de tests (unitarios, integración, e2e), *benchmarks* de latencia contra los objetivos de [1.11](1-descripcion-general-del-producto.md#111-requisitos-no-funcionales), pruebas de degradación (caída de sidecars), pruebas con 5 terminales concurrentes, pruebas térmicas en MacBook Air. | Must | MVP parcial | Transversal |
 
 ```mermaid
 flowchart LR
@@ -97,14 +97,76 @@ flowchart LR
 
 ## 6.3. Hitos
 
-| Hito | Contenido | Resultado demostrable |
-|---|---|---|
-| **H1 — Buscador inteligente** | EP-00, EP-01, EP-02, EP-03, EP-04 | Omnibox con búsqueda tolerante a errores y recomendaciones de sustitutos/complementarios sobre catálogo real. |
-| **H2 — Asistente IA** | EP-05 | El operador pregunta en lenguaje natural y recibe productos del catálogo con stock. |
-| **H3 — Manos libres** | EP-06 | Búsqueda y preguntas por voz desde cualquier terminal. |
-| **H4 — Extensiones condicionadas** | EP-07, EP-08 | Reconocimiento visual de piezas y venta básica. |
+| Hito | Alcance | Contenido | Resultado demostrable |
+|---|---|---|---|
+| **H1 — Buscador inteligente** | **MVP del curso** | Historias `MVP` de EP-00 a EP-04 y EP-09 ([6.3.1](#631-alcance-por-historia)) | Desde la PWA en `localhost`: el operador busca con errores de tipeo y ve tarjetas con stock, precio y ubicación; al elegir un producto ve similares, sustitutos (destacados si no hay stock) y complementarios. El administrador da de alta y edita productos, stock y relaciones, sobre el dataset semilla. |
+| **H2 — Asistente IA** | v2 | EP-05 | El operador pregunta en lenguaje natural y recibe productos del catálogo con stock. |
+| **H3 — Manos libres** | v2 | EP-06 | Búsqueda y preguntas por voz desde cualquier terminal. |
+| **H4 — Extensiones condicionadas** | v2 | EP-07, EP-08 | Reconocimiento visual de piezas y venta básica. |
 
-EP-09 acompaña a todos los hitos: cada hito se cierra con los *benchmarks* y las pruebas de degradación de las capacidades que incorpora.
+EP-09 acompaña a todos los hitos. En el MVP del curso cubre tests de integración, validación del contrato y e2e; los *benchmarks* y las pruebas de degradación pasan a v2.
+
+### 6.3.1. Alcance por historia
+
+- **MVP:** entra completa al MVP del curso.
+- **MVP parcial:** entra al MVP; los escenarios indicados se cumplen en v2.
+- **v2:** fuera del MVP del curso.
+
+| Historia | Título | Alcance | Nota |
+|---|---|---|---|
+| HU-00-01 | Workspace Rust y regla de dependencias | MVP | |
+| HU-00-02 | SurrealDB embebido con migraciones versionadas | MVP | |
+| HU-00-03 | HTTPS local y descubrimiento `vectra.local` | v2 | El MVP se sirve por HTTP en `localhost`. |
+| HU-00-04 | Supervisión de sidecars | v2 | Meilisearch se levanta a mano y se consume por URL. |
+| HU-00-05 | Salud y métricas | MVP | |
+| HU-00-06 | Servicio del sistema y arranque ordenado | MVP parcial | "Arranque en frío" con `launchd` en v2; quedan arranque degradado y configuración inválida. |
+| HU-00-07 | Backups diarios | v2 | |
+| HU-00-08 | Descarga de modelos e instalación offline | v2 | |
+| HU-00-09 | Logs estructurados | MVP | |
+| HU-01-01 | Aplicación instalable (PWA) | MVP | Instalable desde `localhost`. |
+| HU-01-02 | Design system oscuro Glassmorphism | MVP | |
+| HU-01-03 | Componente Omnibox | MVP | Solo modo texto; voz, IA e imagen en v2. |
+| HU-01-04 | Navegación Operador / Administrador | MVP | |
+| HU-01-05 | Estado del sistema y errores visibles | MVP | |
+| HU-02-01 | Árbol de categorías | MVP | |
+| HU-02-02 | Marcas | MVP | |
+| HU-02-03 | Definición de atributos técnicos | MVP | |
+| HU-02-04 | Alta de producto | MVP | |
+| HU-02-05 | Edición con bloqueo optimista | MVP | |
+| HU-02-06 | Baja y reactivación de producto | MVP | |
+| HU-02-07 | Ingresos y ajustes de stock | MVP | Permite dejar un producto en 0 desde la GUI y ver los sustitutos destacados. |
+| HU-02-08 | Historial de movimientos | v2 | |
+| HU-02-09 | Imágenes de producto | v2 | |
+| HU-02-10 | Listado administrativo de productos | MVP | |
+| HU-02-11 | Dataset semilla | MVP parcial | Sin imágenes ni sinónimos; dataset de desarrollo de ~200 SKUs (el catálogo piloto en v2). |
+| HU-02-12 | Conciliación del ledger | v2 | |
+| HU-03-01 | Sincronización del índice de búsqueda | MVP | |
+| HU-03-02 | Reindexación total | MVP | Con el servidor detenido (sin canal por socket). |
+| HU-03-03 | Búsqueda mientras se escribe, tolerante a errores | MVP | |
+| HU-03-04 | Ranking de relevancia | MVP | |
+| HU-03-05 | Tarjetas de resultado con stock, precio y ubicación | MVP parcial | Sin imagen principal (v2 con HU-02-09). |
+| HU-03-06 | Sugerencias instantáneas | v2 | |
+| HU-03-07 | Filtros facetados | v2 | |
+| HU-03-08 | Búsqueda por código | MVP | |
+| HU-03-09 | Diccionario de sinónimos del rubro | v2 | |
+| HU-03-10 | Búsqueda de respaldo | v2 | |
+| HU-04-01 | Crear relación entre productos | MVP | |
+| HU-04-02 | Relaciones bidireccionales | MVP | |
+| HU-04-03 | Gestionar las relaciones de un producto | MVP | |
+| HU-04-04 | Carga rápida de relaciones | v2 | |
+| HU-04-05 | Panel de recomendaciones | MVP parcial | El escenario "Latencia" se mide con los *benchmarks* de v2. |
+| HU-04-06 | Sustitutos destacados sin stock | MVP | |
+| HU-05-01 a HU-05-10 | Modo IA (RAG local) | v2 | |
+| HU-06-01 a HU-06-06 | Búsqueda por voz | v2 | |
+| HU-07-01 a HU-07-05 | Búsqueda visual | v2 | |
+| HU-08-01 a HU-08-04 | POS básico | v2 | |
+| HU-09-01 | Tests de integración contra motores reales | MVP | SurrealDB y Meilisearch; Ollama y Whisper en v2. |
+| HU-09-02 | Validación del contrato de API | MVP | |
+| HU-09-03 | Tests de extremo a extremo de la SPA | MVP parcial | Solo el flujo de H1 (búsqueda, recomendaciones y alta de producto). |
+| HU-09-04 | Benchmarks de latencia | v2 | |
+| HU-09-05 | Pruebas de degradación | v2 | |
+| HU-09-06 | Concurrencia con 5 terminales | v2 | |
+| HU-09-07 | Prueba térmica en MacBook Air | v2 | |
 
 ---
 
@@ -1186,7 +1248,7 @@ Escenario: Actualización
   Entonces su embedding se recalcula y la próxima respuesta usa el contenido nuevo
 ```
 
-**Referencias:** [4.4.7](4-modelo.md#447-nota_tecnica). Sujeta a PM-04 y PAPI-03 (ver [6.14](#614-preguntas-abiertas-que-condicionan-historias)).
+**Referencias:** [4.4.7](4-modelo.md#447-nota_tecnica). Alcance cerrado en [PM-04 y PAPI-03](7-tickets.md#72-decisiones-adoptadas).
 
 ---
 
@@ -1576,22 +1638,14 @@ Escenario: Carga sostenida
 
 ---
 
-## 6.14. Preguntas abiertas que condicionan historias
+## 6.14. Decisiones adoptadas y condicionantes de historias
 
-Las preguntas se definen y deciden en su documento de origen; esta tabla indica qué historias bloquean.
+Las decisiones de producto, modelo, componentes y contrato están cerradas en [7.2 Decisiones adoptadas](7-tickets.md#72-decisiones-adoptadas) y en las secciones homónimas de cada documento (`1.13`, `3.8`, `4.13`, `5.14`). **Ninguna historia del alcance firme queda bloqueada por una pregunta abierta.**
 
-| Pregunta | Tema | Historias afectadas |
+Quedan solo **validaciones en implementación** (no bloquean el diseño):
+
+| Condicionante | Cuándo se cierra | Historias |
 |---|---|---|
-| [PA-02](1-descripcion-general-del-producto.md#113-preguntas-abiertas) | Modelo LLM final | HU-05-09, HU-09-07 |
-| [PA-03](1-descripcion-general-del-producto.md#113-preguntas-abiertas) | Modelo de embedding visual | HU-07-01, HU-07-02 |
-| [PA-04](1-descripcion-general-del-producto.md#113-preguntas-abiertas) | PWA sin conexión con el Nodo Maestro | HU-01-01 |
-| [PA-05](1-descripcion-general-del-producto.md#113-preguntas-abiertas) | Fuente del dataset semilla | HU-02-11, HU-05-09, HU-07-01 |
-| [PM-01](4-modelo.md#413-preguntas-abiertas-del-modelo) | Dimensión del índice de imagen | HU-07-01, HU-07-02 |
-| [PM-02](4-modelo.md#413-preguntas-abiertas-del-modelo) | Venta con stock insuficiente | HU-08-02, HU-08-03 |
-| [PM-03](4-modelo.md#413-preguntas-abiertas-del-modelo) | SurrealKV o RocksDB | HU-00-02 |
-| [PM-04](4-modelo.md#413-preguntas-abiertas-del-modelo) | Notas técnicas en el MVP | HU-05-10 |
-| [PM-05](4-modelo.md#413-preguntas-abiertas-del-modelo) | Nombre de `sustituye_a` | HU-04-01 (decidir antes de EP-04) |
-| [PAPI-02](5-contract-api.md#514-preguntas-abiertas-del-contrato) | Límites de audio | HU-06-06 |
-| [PAPI-03](5-contract-api.md#514-preguntas-abiertas-del-contrato) | ABM de sinónimos y notas técnicas en la API | HU-03-09, HU-05-10 |
-| [PC-01](3-componentes.md#38-preguntas-abiertas-de-componentes) | Crate `storage` | HU-00-01, HU-00-02 |
-| [PC-03](3-componentes.md#38-preguntas-abiertas-de-componentes) | Ubicación del POS Service | HU-08-01 a HU-08-04 |
+| Modelo LLM definitivo (PA-02) | *Benchmark* y ADR-09 en EP-05 | HU-05-09, HU-09-07 |
+| Embedding visual y dimensión HNSW (PA-03, PM-01) | *Spike* EP-07 | HU-07-01, HU-07-02 |
+| Límites de audio en producción (PAPI-02) | Medición en EP-06 | HU-06-06 |
