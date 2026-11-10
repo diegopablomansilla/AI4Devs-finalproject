@@ -1,5 +1,5 @@
 #!/usr/bin/env sh
-# T-00-03: check-workspace allowlist for domain (thiserror only).
+# T-00-04: check-workspace allowlist for domain (base types).
 set -eu
 
 REPO_ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
@@ -48,8 +48,8 @@ copy_workspace() {
   printf '%s' "${tmp}"
 }
 
-# happy: repo with domain + thiserror
-assert_ok 'repo con domain/thiserror' "${REPO_ROOT}"
+# happy: repo with domain allowlist
+assert_ok 'repo con domain allowlist' "${REPO_ROOT}"
 
 tmp=$(copy_workspace)
 cleanup() {
@@ -57,7 +57,7 @@ cleanup() {
 }
 trap cleanup EXIT HUP INT TERM
 
-# unhappy: domain declares ulid
+# happy: domain declares full allowlist
 cat >"${tmp}/vortex-core/crates/domain/Cargo.toml" <<'EOF'
 [package]
 name = "domain"
@@ -68,11 +68,33 @@ publish = false
 [dependencies]
 thiserror = { workspace = true }
 ulid = { workspace = true }
+rust_decimal = { workspace = true }
+serde = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }
 
 [lints]
 workspace = true
 EOF
-assert_fails_with 'domain con ulid extra' "${tmp}" 'domain'
+assert_ok 'domain con allowlist completa' "${tmp}"
+
+# unhappy: domain declares clap
+cat >"${tmp}/vortex-core/crates/domain/Cargo.toml" <<'EOF'
+[package]
+name = "domain"
+version = "0.1.0"
+edition.workspace = true
+publish = false
+
+[dependencies]
+thiserror = { workspace = true }
+clap = { workspace = true }
+
+[lints]
+workspace = true
+EOF
+assert_fails_with 'domain con clap' "${tmp}" 'domain'
 
 # unhappy: api declares dependencies
 cp "${REPO_ROOT}/vortex-core/crates/domain/Cargo.toml" "${tmp}/vortex-core/crates/domain/Cargo.toml"

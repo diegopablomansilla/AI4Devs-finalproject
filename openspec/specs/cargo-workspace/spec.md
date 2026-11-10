@@ -88,6 +88,7 @@ Cada path `crates/*` MUST ser un crate lib con `edition = "2024"` (propia o here
 | ulid | 3.0.0 |
 | thiserror | 2.0.21 |
 | serde | 1.0.229 |
+| serde_json | 1.0.154 |
 | tracing | 0.1.44 |
 | tracing-appender | 0.2.5 |
 | metrics | 0.24.6 |
@@ -95,7 +96,7 @@ Cada path `crates/*` MUST ser un crate lib con `edition = "2024"` (propia o here
 | rcgen | 0.14.10 |
 | clap | 4.6.7 |
 
-El crate `domain` MAY declarar `thiserror` en `[dependencies]` con `workspace = true`. `domain` MUST NOT declarar otra entrada en `[dependencies]` ni `[dev-dependencies]`. En particular, `domain` MUST NOT depender de `surrealdb`, `meilisearch-sdk`, `reqwest`, `ort` ni `whisper-rs`. Los demás crates lib MUST NOT declarar `[dependencies]` ni `[dev-dependencies]`.
+El crate `domain` MAY declarar en `[dependencies]` únicamente `thiserror`, `ulid`, `rust_decimal` y `serde`, cada una con `workspace = true`. `domain` MAY declarar `serde_json` en `[dev-dependencies]` con `workspace = true` y MUST NOT declarar otra entrada ahí. `domain` MUST NOT declarar `serde_json` en `[dependencies]`. En particular, `domain` MUST NOT depender de `surrealdb`, `meilisearch-sdk`, `reqwest`, `ort` ni `whisper-rs`. Los demás crates lib MUST NOT declarar `[dependencies]` ni `[dev-dependencies]`.
 
 #### Scenario: Pins exactos
 
@@ -110,13 +111,18 @@ El crate `domain` MAY declarar `thiserror` en `[dependencies]` con `workspace = 
 
 #### Scenario: Un lib declara dependencias
 
-- **WHEN** el `Cargo.toml` de un lib que no es `domain` contiene `[dependencies]` o `[dev-dependencies]`, o `domain` declara una crate distinta de `thiserror`
+- **WHEN** el `Cargo.toml` de un lib que no es `domain` contiene `[dependencies]` o `[dev-dependencies]`, o `domain` declara una crate fuera de su allowlist (`thiserror`, `ulid`, `rust_decimal`, `serde` en `[dependencies]`; `serde_json` en `[dev-dependencies]`)
 - **THEN** la verificación del workspace termina con código distinto de 0
 - **AND** el mensaje nombra ese crate
 
 #### Scenario: domain declara thiserror
 
 - **WHEN** `vortex-core/crates/domain/Cargo.toml` declara `thiserror` en `[dependencies]` con `workspace = true` y ninguna otra dependencia
+- **THEN** la verificación del workspace termina con código 0
+
+#### Scenario: domain declara la allowlist de tipos base
+
+- **WHEN** `vortex-core/crates/domain/Cargo.toml` declara `thiserror`, `ulid`, `rust_decimal` y `serde` en `[dependencies]` y `serde_json` en `[dev-dependencies]`, todas con `workspace = true`, y ninguna otra crate
 - **THEN** la verificación del workspace termina con código 0
 
 #### Scenario: Un lib distinto de domain declara dependencias
@@ -127,7 +133,7 @@ El crate `domain` MAY declarar `thiserror` en `[dependencies]` con `workspace = 
 
 #### Scenario: domain declara una dependencia distinta de thiserror
 
-- **WHEN** `crates/domain/Cargo.toml` declara en `[dependencies]` una crate que no es `thiserror` (por ejemplo `ulid` o `surrealdb`)
+- **WHEN** `crates/domain/Cargo.toml` declara en `[dependencies]` o `[dev-dependencies]` una crate fuera de la allowlist (por ejemplo `clap` o `surrealdb`)
 - **THEN** la verificación del workspace termina con código distinto de 0
 - **AND** el mensaje nombra `domain`
 
@@ -162,7 +168,7 @@ El crate `domain` MAY declarar `thiserror` en `[dependencies]` con `workspace = 
 
 ### Requirement: El workspace lib compila, testea y pasa Clippy
 
-Sobre `vortex-core`, `cargo build --workspace`, `cargo clippy --workspace -- -D warnings` y `cargo test --workspace` MUST terminar con código 0. `cargo test --workspace` MUST ejecutar los tests unitarios de `domain` de la taxonomía de errores. El grafo de paquetes MUST incluir el package `vortex`. Los crates lib distintos de `domain` MAY seguir sin lógica de producto.
+Sobre `vortex-core`, `cargo build --workspace`, `cargo clippy --workspace -- -D warnings` y `cargo test --workspace` MUST terminar con código 0. `cargo test --workspace` MUST ejecutar los tests unitarios de `domain` de la taxonomía de errores y de los tipos base (`Id`, `Decimal`, `Timestamp`). El grafo de paquetes MUST incluir el package `vortex`. Los crates lib distintos de `domain` MAY seguir sin lógica de producto.
 
 #### Scenario: Build, tests y clippy en verde
 
@@ -176,6 +182,6 @@ Sobre `vortex-core`, `cargo build --workspace`, `cargo clippy --workspace -- -D 
 
 #### Scenario: Árbol de workspace inválido
 
-- **WHEN** falta un miembro (incluido `bin/vortex`), un pin no es exacto, un lib distinto de `domain` declara dependencias, o `domain` declara una crate que no es `thiserror`
+- **WHEN** falta un miembro (incluido `bin/vortex`), un pin no es exacto, un lib distinto de `domain` declara dependencias, o `domain` declara una crate fuera de su allowlist
 - **THEN** la verificación del workspace termina con código distinto de 0
 - **AND** no se considera cumplido el criterio de este change

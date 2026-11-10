@@ -1,5 +1,5 @@
 #!/usr/bin/env sh
-# Verifica el workspace Cargo vortex-core (T-00-01-03; allowlist domain: T-00-03).
+# Verifica el workspace Cargo vortex-core (T-00-01-03; allowlist domain: T-00-04).
 set -eu
 
 if [ -n "${CHECK_ROOT:-}" ]; then
@@ -13,26 +13,50 @@ fail() {
   exit 1
 }
 
-# `domain` may declare only `thiserror` with workspace = true in [dependencies].
+# `domain` allowlist: [dependencies] thiserror|ulid|rust_decimal|serde; [dev-dependencies] serde_json only.
 domain_deps_allowed() {
   crate_toml=$1
+
   if grep -Eq '^\[dev-dependencies\]' "${crate_toml}"; then
-    return 1
+    dev_other=$(
+      awk '
+        /^\[dev-dependencies\]/ { indev = 1; next }
+        /^\[/ { indev = 0 }
+        indev && /^[^[:space:]#]/ { print }
+      ' "${crate_toml}" | grep -v -E '^serde_json[[:space:]]*=' || true
+    )
+    if [ -n "${dev_other}" ]; then
+      return 1
+    fi
+    if grep -Eq '^\[dev-dependencies\]' "${crate_toml}" \
+      && grep -E '^serde_json[[:space:]]*=' "${crate_toml}" >/dev/null 2>&1; then
+      grep -E '^serde_json[[:space:]]*=' "${crate_toml}" | grep -Eq 'workspace[[:space:]]*=[[:space:]]*true' \
+        || return 1
+    fi
   fi
+
   if ! grep -Eq '^\[dependencies\]' "${crate_toml}"; then
     return 0
   fi
+
   other_deps=$(
     awk '
       /^\[dependencies\]/ { indeps = 1; next }
       /^\[/ { indeps = 0 }
       indeps && /^[^[:space:]#]/ { print }
-    ' "${crate_toml}" | grep -v -E '^thiserror[[:space:]]*=' || true
+    ' "${crate_toml}" | grep -v -E '^(thiserror|ulid|rust_decimal|serde)[[:space:]]*=' || true
   )
   if [ -n "${other_deps}" ]; then
     return 1
   fi
-  grep -E '^thiserror[[:space:]]*=' "${crate_toml}" | grep -Eq 'workspace[[:space:]]*=[[:space:]]*true'
+
+  for dep in thiserror ulid rust_decimal serde; do
+    if grep -E "^${dep}[[:space:]]*=" "${crate_toml}" >/dev/null 2>&1; then
+      grep -E "^${dep}[[:space:]]*=" "${crate_toml}" | grep -Eq 'workspace[[:space:]]*=[[:space:]]*true' \
+        || return 1
+    fi
+  done
+  return 0
 }
 
 WS="${ROOT}/vortex-core"
@@ -115,6 +139,7 @@ check_pin rust_decimal 1.43.0
 check_pin ulid 3.0.0
 check_pin thiserror 2.0.21
 check_pin serde 1.0.229
+check_pin serde_json 1.0.154
 check_pin tracing 0.1.44
 check_pin tracing-appender 0.2.5
 check_pin metrics 0.24.6
@@ -138,18 +163,14 @@ for member in ${REQUIRED_MEMBERS}; do
     fail "el crate ${crate_name} no hereda lints del workspace ([lints] workspace = true)"
   fi
 
-  if grep -Eq '^\[dependencies\]' "${crate_toml}"; then
+  if grep -Eq '^\[(dependencies|dev-dependencies)\]' "${crate_toml}"; then
     if [ "${crate_name}" = "domain" ]; then
       if ! domain_deps_allowed "${crate_toml}"; then
-        fail "el crate domain solo puede declarar thiserror en [dependencies]"
+        fail "el crate domain declara dependencias fuera de la allowlist de tipos base"
       fi
     else
       fail "el crate ${crate_name} no debe declarar [dependencies] en este cambio"
     fi
-  fi
-
-  if grep -Eq '^\[dev-dependencies\]' "${crate_toml}"; then
-    fail "el crate ${crate_name} no debe declarar [dev-dependencies] en este cambio"
   fi
 done
 

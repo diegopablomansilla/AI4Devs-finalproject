@@ -6,6 +6,12 @@ publish = false
 
 [dependencies]
 thiserror = { workspace = true }
+ulid = { workspace = true }
+rust_decimal = { workspace = true }
+serde = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }
 
 [lints]
 workspace = true
