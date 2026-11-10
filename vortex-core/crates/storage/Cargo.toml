@@ -5,7 +5,7 @@ edition.workspace = true
 publish = false
 
 [dependencies]
-surrealdb = { workspace = true, default-features = false, features = ["kv-rocksdb"] }
+surrealdb = { workspace = true, default-features = false, features = ["kv-rocksdb", "kv-mem"] }
 thiserror = { workspace = true }
 sha2 = { workspace = true }
 

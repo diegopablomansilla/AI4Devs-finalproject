@@ -101,6 +101,8 @@ storage_deps_allowed() {
       || return 1
     grep -E '^surrealdb[[:space:]]*=' "${crate_toml}" | grep -Fq 'kv-rocksdb' \
       || return 1
+    grep -E '^surrealdb[[:space:]]*=' "${crate_toml}" | grep -Fq 'kv-mem' \
+      || return 1
   fi
 
   if grep -E '^thiserror[[:space:]]*=' "${crate_toml}" >/dev/null 2>&1; then
