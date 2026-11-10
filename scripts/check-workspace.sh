@@ -1,5 +1,5 @@
 #!/usr/bin/env sh
-# Verifica el workspace Cargo vortex-core (T-00-01-03; allowlist domain: T-00-04).
+# Verifica el workspace Cargo vortex-core (T-00-01-03; allowlist domain: T-00-04; vortex: T-00-05).
 set -eu
 
 if [ -n "${CHECK_ROOT:-}" ]; then
@@ -51,6 +51,38 @@ domain_deps_allowed() {
   fi
 
   for dep in thiserror ulid rust_decimal serde; do
+    if grep -E "^${dep}[[:space:]]*=" "${crate_toml}" >/dev/null 2>&1; then
+      grep -E "^${dep}[[:space:]]*=" "${crate_toml}" | grep -Eq 'workspace[[:space:]]*=[[:space:]]*true' \
+        || return 1
+    fi
+  done
+  return 0
+}
+
+# `vortex` allowlist: [dependencies] toml|serde|thiserror only.
+vortex_deps_allowed() {
+  crate_toml=$1
+
+  if grep -Eq '^\[dev-dependencies\]' "${crate_toml}"; then
+    return 1
+  fi
+
+  if ! grep -Eq '^\[dependencies\]' "${crate_toml}"; then
+    return 0
+  fi
+
+  other_deps=$(
+    awk '
+      /^\[dependencies\]/ { indeps = 1; next }
+      /^\[/ { indeps = 0 }
+      indeps && /^[^[:space:]#]/ { print }
+    ' "${crate_toml}" | grep -v -E '^(toml|serde|thiserror)[[:space:]]*=' || true
+  )
+  if [ -n "${other_deps}" ]; then
+    return 1
+  fi
+
+  for dep in toml serde thiserror; do
     if grep -E "^${dep}[[:space:]]*=" "${crate_toml}" >/dev/null 2>&1; then
       grep -E "^${dep}[[:space:]]*=" "${crate_toml}" | grep -Eq 'workspace[[:space:]]*=[[:space:]]*true' \
         || return 1
@@ -146,6 +178,7 @@ check_pin metrics 0.24.6
 check_pin metrics-exporter-prometheus 0.18.3
 check_pin rcgen 0.14.10
 check_pin clap 4.6.7
+check_pin toml 1.2.1
 
 # --- cada lib: lints heredados, sin dependencias ---
 for member in ${REQUIRED_MEMBERS}; do
@@ -200,12 +233,10 @@ if ! grep -Eq '^workspace[[:space:]]*=[[:space:]]*true' "${BIN_TOML}"; then
   fail 'el crate vortex no hereda lints del workspace ([lints] workspace = true)'
 fi
 
-if grep -Eq '^\[dependencies\]' "${BIN_TOML}"; then
-  fail 'el crate vortex no debe declarar [dependencies] en este cambio'
-fi
-
-if grep -Eq '^\[dev-dependencies\]' "${BIN_TOML}"; then
-  fail 'el crate vortex no debe declarar [dev-dependencies] en este cambio'
+if grep -Eq '^\[(dependencies|dev-dependencies)\]' "${BIN_TOML}"; then
+  if ! vortex_deps_allowed "${BIN_TOML}"; then
+    fail 'el crate vortex declara dependencias fuera de la allowlist de configuración'
+  fi
 fi
 
 exit 0

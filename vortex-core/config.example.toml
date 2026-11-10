@@ -1,0 +1,30 @@
+# Ejemplo de configuración de Vortex Core (T-00-05).
+# Copie a su instalación y ajuste las rutas.
+
+[paths]
+datos = "/var/lib/vortex/datos"
+modelos = "/var/lib/vortex/modelos"
+backups = "/var/lib/vortex/backups"
+web = "/opt/vectra-web"
+
+[server]
+bind = "127.0.0.1:8080"
+hostname = "localhost"
+
+[negocio]
+moneda = "ARS"
+
+[meilisearch]
+url = "http://127.0.0.1:7700"
+# api_key = ""
+
+[ollama]
+url = "http://127.0.0.1:11434"
+
+[backup]
+hora = "03:00"
+retencion = 14
+
+[logs]
+nivel = "info"
+retencion = 14
