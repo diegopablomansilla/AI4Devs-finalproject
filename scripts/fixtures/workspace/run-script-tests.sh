@@ -116,7 +116,7 @@ workspace = true
 EOF
 assert_ok 'api con allowlist axum' "${tmp}"
 
-# unhappy: api declares serde outside allowlist
+# happy: api declares full T-00-11 allowlist
 cat >"${tmp}/vortex-core/crates/api/Cargo.toml" <<'EOF'
 [package]
 name = "api"
@@ -125,12 +125,35 @@ edition.workspace = true
 publish = false
 
 [dependencies]
-serde = { workspace = true }
+axum = { workspace = true }
+domain = { path = "../domain" }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "net"] }
 
 [lints]
 workspace = true
 EOF
-assert_fails_with 'api con serde' "${tmp}" 'api'
+assert_ok 'api con allowlist problem+json' "${tmp}"
+
+# unhappy: api declares clap outside allowlist
+cat >"${tmp}/vortex-core/crates/api/Cargo.toml" <<'EOF'
+[package]
+name = "api"
+version = "0.1.0"
+edition.workspace = true
+publish = false
+
+[dependencies]
+clap = { workspace = true }
+
+[lints]
+workspace = true
+EOF
+assert_fails_with 'api con clap' "${tmp}" 'api'
 
 # unhappy: catalog declares dependencies
 cp "${REPO_ROOT}/vortex-core/crates/api/Cargo.toml" "${tmp}/vortex-core/crates/api/Cargo.toml"

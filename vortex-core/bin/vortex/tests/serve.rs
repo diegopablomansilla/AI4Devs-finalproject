@@ -59,7 +59,7 @@ fn ephemeral_bind() -> String {
     addr.to_string()
 }
 
-fn http_get_status(addr: SocketAddr, path: &str) -> Option<u16> {
+fn http_get_problem(addr: SocketAddr, path: &str) -> Option<(u16, String, serde_json::Value)> {
     use std::io::{Read, Write};
     let mut stream = std::net::TcpStream::connect(addr).ok()?;
     stream.set_read_timeout(Some(Duration::from_secs(2))).ok()?;
@@ -70,19 +70,40 @@ fn http_get_status(addr: SocketAddr, path: &str) -> Option<u16> {
     let n = stream.read(&mut buf).ok()?;
     let response = String::from_utf8_lossy(&buf[..n]);
     let status_line = response.lines().next()?;
-    status_line.split_whitespace().nth(1)?.parse().ok()
+    let status: u16 = status_line.split_whitespace().nth(1)?.parse().ok()?;
+    let mut ctype = String::new();
+    let mut body_start = 0usize;
+    for (i, _) in response.match_indices("\r\n\r\n") {
+        body_start = i + 4;
+        break;
+    }
+    for line in response.lines() {
+        if line.is_empty() {
+            break;
+        }
+        if let Some(v) = line
+            .strip_prefix("Content-Type:")
+            .or_else(|| line.strip_prefix("content-type:"))
+        {
+            ctype = v.trim().split(';').next().unwrap_or(v).trim().to_string();
+        }
+    }
+    let json: serde_json::Value = serde_json::from_slice(&buf[body_start..n]).ok()?;
+    Some((status, ctype, json))
 }
 
-fn wait_for_http_404(bind: &str, timeout: Duration) -> bool {
+fn wait_for_http_404(bind: &str, timeout: Duration) -> Option<(String, serde_json::Value)> {
     let addr: SocketAddr = bind.parse().expect("bind addr");
     let start = Instant::now();
     while start.elapsed() < timeout {
-        if http_get_status(addr, "/no-such-route") == Some(404) {
-            return true;
+        if let Some((status, ctype, json)) = http_get_problem(addr, "/no-such-route") {
+            if status == 404 && ctype == "application/problem+json" {
+                return Some((ctype, json));
+            }
         }
         std::thread::sleep(Duration::from_millis(50));
     }
-    false
+    None
 }
 
 fn temp_dir() -> PathBuf {
@@ -167,10 +188,9 @@ fn vortex_serve_starts_and_returns_404() {
         .stderr(Stdio::null())
         .spawn()
         .expect("spawn serve");
-    assert!(
-        wait_for_http_404(&bind, Duration::from_secs(5)),
-        "serve must listen and return 404"
-    );
+    let problem = wait_for_http_404(&bind, Duration::from_secs(5))
+        .expect("serve must listen and return 404 problem+json");
+    assert_eq!(problem.1["code"], "not_found");
     #[cfg(unix)]
     {
         let _ = Command::new("kill")
@@ -203,7 +223,7 @@ fn vortex_serve_exits_clean_on_sigterm() {
     let path = write_config(&dir, &bind);
     let mut child = spawn_serve(&bind, &path);
     assert!(
-        wait_for_http_404(&bind, Duration::from_secs(5)),
+        wait_for_http_404(&bind, Duration::from_secs(5)).is_some(),
         "server did not start"
     );
     Command::new("kill")
@@ -226,7 +246,7 @@ fn vortex_serve_exits_clean_on_sigint() {
     let path = write_config(&dir, &bind);
     let mut child = spawn_serve(&bind, &path);
     assert!(
-        wait_for_http_404(&bind, Duration::from_secs(5)),
+        wait_for_http_404(&bind, Duration::from_secs(5)).is_some(),
         "server did not start"
     );
     Command::new("kill")

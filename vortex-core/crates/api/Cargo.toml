@@ -6,6 +6,10 @@ publish = false
 
 [dependencies]
 axum = { workspace = true }
+domain = { path = "../domain" }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "net", "io-util", "time"] }

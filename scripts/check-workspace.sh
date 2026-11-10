@@ -117,7 +117,7 @@ storage_deps_allowed() {
   return 0
 }
 
-# `api` allowlist: [dependencies] axum; [dev-dependencies] tokio only.
+# `api` allowlist (T-00-11): [dependencies] axum, domain, serde, serde_json, thiserror; [dev-dependencies] tokio only.
 api_deps_allowed() {
   crate_toml=$1
 
@@ -148,7 +148,7 @@ api_deps_allowed() {
       /^\[dependencies\]/ { indeps = 1; next }
       /^\[/ { indeps = 0 }
       indeps && /^[^[:space:]#]/ { print }
-    ' "${crate_toml}" | grep -v -E '^axum[[:space:]]*=' || true
+    ' "${crate_toml}" | grep -v -E '^(axum|domain|serde|serde_json|thiserror)[[:space:]]*=' || true
   )
   if [ -n "${other_deps}" ]; then
     return 1
@@ -156,6 +156,22 @@ api_deps_allowed() {
 
   if grep -E '^axum[[:space:]]*=' "${crate_toml}" >/dev/null 2>&1; then
     grep -E '^axum[[:space:]]*=' "${crate_toml}" | grep -Eq 'workspace[[:space:]]*=[[:space:]]*true' \
+      || return 1
+  fi
+  if grep -E '^serde[[:space:]]*=' "${crate_toml}" >/dev/null 2>&1; then
+    grep -E '^serde[[:space:]]*=' "${crate_toml}" | grep -Eq 'workspace[[:space:]]*=[[:space:]]*true' \
+      || return 1
+  fi
+  if grep -E '^serde_json[[:space:]]*=' "${crate_toml}" >/dev/null 2>&1; then
+    grep -E '^serde_json[[:space:]]*=' "${crate_toml}" | grep -Eq 'workspace[[:space:]]*=[[:space:]]*true' \
+      || return 1
+  fi
+  if grep -E '^thiserror[[:space:]]*=' "${crate_toml}" >/dev/null 2>&1; then
+    grep -E '^thiserror[[:space:]]*=' "${crate_toml}" | grep -Eq 'workspace[[:space:]]*=[[:space:]]*true' \
+      || return 1
+  fi
+  if grep -E '^domain[[:space:]]*=' "${crate_toml}" >/dev/null 2>&1; then
+    grep -E '^domain[[:space:]]*=' "${crate_toml}" | grep -Eq 'path[[:space:]]*=' \
       || return 1
   fi
   return 0
