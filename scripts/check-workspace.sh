@@ -117,7 +117,51 @@ storage_deps_allowed() {
   return 0
 }
 
-# `vortex` allowlist: [dependencies] config + tracing stack + clap; [dev-dependencies] serde_json only.
+# `api` allowlist: [dependencies] axum; [dev-dependencies] tokio only.
+api_deps_allowed() {
+  crate_toml=$1
+
+  if grep -Eq '^\[dev-dependencies\]' "${crate_toml}"; then
+    dev_other=$(
+      awk '
+        /^\[dev-dependencies\]/ { indev = 1; next }
+        /^\[/ { indev = 0 }
+        indev && /^[^[:space:]#]/ { print }
+      ' "${crate_toml}" | grep -v -E '^tokio[[:space:]]*=' || true
+    )
+    if [ -n "${dev_other}" ]; then
+      return 1
+    fi
+    if grep -Eq '^\[dev-dependencies\]' "${crate_toml}" \
+      && grep -E '^tokio[[:space:]]*=' "${crate_toml}" >/dev/null 2>&1; then
+      grep -E '^tokio[[:space:]]*=' "${crate_toml}" | grep -Eq 'workspace[[:space:]]*=[[:space:]]*true' \
+        || return 1
+    fi
+  fi
+
+  if ! grep -Eq '^\[dependencies\]' "${crate_toml}"; then
+    return 0
+  fi
+
+  other_deps=$(
+    awk '
+      /^\[dependencies\]/ { indeps = 1; next }
+      /^\[/ { indeps = 0 }
+      indeps && /^[^[:space:]#]/ { print }
+    ' "${crate_toml}" | grep -v -E '^axum[[:space:]]*=' || true
+  )
+  if [ -n "${other_deps}" ]; then
+    return 1
+  fi
+
+  if grep -E '^axum[[:space:]]*=' "${crate_toml}" >/dev/null 2>&1; then
+    grep -E '^axum[[:space:]]*=' "${crate_toml}" | grep -Eq 'workspace[[:space:]]*=[[:space:]]*true' \
+      || return 1
+  fi
+  return 0
+}
+
+# `vortex` allowlist: [dependencies] config + tracing stack + clap + api + tokio + axum; [dev-dependencies] serde_json only.
 vortex_deps_allowed() {
   crate_toml=$1
 
@@ -148,18 +192,22 @@ vortex_deps_allowed() {
       /^\[dependencies\]/ { indeps = 1; next }
       /^\[/ { indeps = 0 }
       indeps && /^[^[:space:]#]/ { print }
-    ' "${crate_toml}" | grep -v -E '^(toml|serde|thiserror|tracing|tracing-subscriber|tracing-appender|clap)[[:space:]]*=' || true
+    ' "${crate_toml}" | grep -v -E '^(toml|serde|thiserror|tracing|tracing-subscriber|tracing-appender|clap|api|tokio|axum)[[:space:]]*=' || true
   )
   if [ -n "${other_deps}" ]; then
     return 1
   fi
 
-  for dep in toml serde thiserror tracing tracing-subscriber tracing-appender clap; do
+  for dep in toml serde thiserror tracing tracing-subscriber tracing-appender clap tokio axum; do
     if grep -E "^${dep}[[:space:]]*=" "${crate_toml}" >/dev/null 2>&1; then
       grep -E "^${dep}[[:space:]]*=" "${crate_toml}" | grep -Eq 'workspace[[:space:]]*=[[:space:]]*true' \
         || return 1
     fi
   done
+  if grep -E '^api[[:space:]]*=' "${crate_toml}" >/dev/null 2>&1; then
+    grep -E '^api[[:space:]]*=' "${crate_toml}" | grep -Fq 'path' \
+      || return 1
+  fi
   return 0
 }
 
@@ -278,6 +326,10 @@ for member in ${REQUIRED_MEMBERS}; do
     elif [ "${crate_name}" = "storage" ]; then
       if ! storage_deps_allowed "${crate_toml}"; then
         fail "el crate storage declara dependencias fuera de la allowlist de SurrealDB"
+      fi
+    elif [ "${crate_name}" = "api" ]; then
+      if ! api_deps_allowed "${crate_toml}"; then
+        fail "el crate api declara dependencias fuera de la allowlist del Gateway"
       fi
     else
       fail "el crate ${crate_name} no debe declarar [dependencies] en este cambio"

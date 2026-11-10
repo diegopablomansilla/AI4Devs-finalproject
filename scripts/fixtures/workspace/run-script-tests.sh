@@ -96,8 +96,27 @@ workspace = true
 EOF
 assert_fails_with 'domain con clap' "${tmp}" 'domain'
 
-# unhappy: api declares dependencies
+# happy: api declares axum allowlist
 cp "${REPO_ROOT}/vortex-core/crates/domain/Cargo.toml" "${tmp}/vortex-core/crates/domain/Cargo.toml"
+cat >"${tmp}/vortex-core/crates/api/Cargo.toml" <<'EOF'
+[package]
+name = "api"
+version = "0.1.0"
+edition.workspace = true
+publish = false
+
+[dependencies]
+axum = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "net"] }
+
+[lints]
+workspace = true
+EOF
+assert_ok 'api con allowlist axum' "${tmp}"
+
+# unhappy: api declares serde outside allowlist
 cat >"${tmp}/vortex-core/crates/api/Cargo.toml" <<'EOF'
 [package]
 name = "api"
@@ -111,10 +130,28 @@ serde = { workspace = true }
 [lints]
 workspace = true
 EOF
-assert_fails_with 'api con dependencies' "${tmp}" 'api'
+assert_fails_with 'api con serde' "${tmp}" 'api'
+
+# unhappy: catalog declares dependencies
+cp "${REPO_ROOT}/vortex-core/crates/api/Cargo.toml" "${tmp}/vortex-core/crates/api/Cargo.toml"
+cat >"${tmp}/vortex-core/crates/catalog/Cargo.toml" <<'EOF'
+[package]
+name = "catalog"
+version = "0.1.0"
+edition.workspace = true
+publish = false
+
+[dependencies]
+serde = { workspace = true }
+
+[lints]
+workspace = true
+EOF
+assert_fails_with 'catalog con dependencies' "${tmp}" 'catalog'
 
 # happy: storage declares surrealdb allowlist
 cp "${REPO_ROOT}/vortex-core/crates/api/Cargo.toml" "${tmp}/vortex-core/crates/api/Cargo.toml"
+cp "${REPO_ROOT}/vortex-core/crates/catalog/Cargo.toml" "${tmp}/vortex-core/crates/catalog/Cargo.toml"
 cp "${REPO_ROOT}/vortex-core/crates/domain/Cargo.toml" "${tmp}/vortex-core/crates/domain/Cargo.toml"
 cat >"${tmp}/vortex-core/crates/storage/Cargo.toml" <<'EOF'
 [package]
@@ -124,7 +161,7 @@ edition.workspace = true
 publish = false
 
 [dependencies]
-surrealdb = { workspace = true, default-features = false, features = ["kv-rocksdb"] }
+surrealdb = { workspace = true, default-features = false, features = ["kv-rocksdb", "kv-mem"] }
 thiserror = { workspace = true }
 sha2 = { workspace = true }
 

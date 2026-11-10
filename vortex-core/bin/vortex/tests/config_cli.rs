@@ -21,10 +21,10 @@ fn vortex_without_subcommand_does_not_load_config() {
 }
 
 #[test]
-fn vortex_serve_with_valid_config_still_stub() {
+fn vortex_reindex_with_valid_config_still_stub() {
     let path = example_config();
     let output = Command::new(vortex_bin())
-        .args(["--config", path.to_str().unwrap(), "serve"])
+        .args(["--config", path.to_str().unwrap(), "reindex"])
         .output()
         .expect("spawn vortex");
     assert_eq!(output.status.code(), Some(1));
@@ -33,9 +33,9 @@ fn vortex_serve_with_valid_config_still_stub() {
 }
 
 #[test]
-fn vortex_serve_with_invalid_config_still_stub() {
+fn vortex_reindex_with_missing_config_still_stub() {
     let output = Command::new(vortex_bin())
-        .args(["--config", "/nonexistent/vortex-config.toml", "serve"])
+        .args(["--config", "/nonexistent/vortex-config.toml", "reindex"])
         .output()
         .expect("spawn vortex");
     assert_eq!(output.status.code(), Some(1));
