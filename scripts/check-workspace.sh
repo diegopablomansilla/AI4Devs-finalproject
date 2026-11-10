@@ -1,5 +1,5 @@
 #!/usr/bin/env sh
-# Verifica el workspace Cargo vortex-core (T-00-01-03; allowlist domain: T-00-04; vortex: T-00-05).
+# Verifica el workspace Cargo vortex-core (T-00-01-03; allowlist domain: T-00-04; vortex: T-00-05, T-00-06).
 set -eu
 
 if [ -n "${CHECK_ROOT:-}" ]; then
@@ -59,12 +59,26 @@ domain_deps_allowed() {
   return 0
 }
 
-# `vortex` allowlist: [dependencies] toml|serde|thiserror only.
+# `vortex` allowlist: [dependencies] config + tracing stack; [dev-dependencies] serde_json only.
 vortex_deps_allowed() {
   crate_toml=$1
 
   if grep -Eq '^\[dev-dependencies\]' "${crate_toml}"; then
-    return 1
+    dev_other=$(
+      awk '
+        /^\[dev-dependencies\]/ { indev = 1; next }
+        /^\[/ { indev = 0 }
+        indev && /^[^[:space:]#]/ { print }
+      ' "${crate_toml}" | grep -v -E '^serde_json[[:space:]]*=' || true
+    )
+    if [ -n "${dev_other}" ]; then
+      return 1
+    fi
+    if grep -Eq '^\[dev-dependencies\]' "${crate_toml}" \
+      && grep -E '^serde_json[[:space:]]*=' "${crate_toml}" >/dev/null 2>&1; then
+      grep -E '^serde_json[[:space:]]*=' "${crate_toml}" | grep -Eq 'workspace[[:space:]]*=[[:space:]]*true' \
+        || return 1
+    fi
   fi
 
   if ! grep -Eq '^\[dependencies\]' "${crate_toml}"; then
@@ -76,13 +90,13 @@ vortex_deps_allowed() {
       /^\[dependencies\]/ { indeps = 1; next }
       /^\[/ { indeps = 0 }
       indeps && /^[^[:space:]#]/ { print }
-    ' "${crate_toml}" | grep -v -E '^(toml|serde|thiserror)[[:space:]]*=' || true
+    ' "${crate_toml}" | grep -v -E '^(toml|serde|thiserror|tracing|tracing-subscriber|tracing-appender)[[:space:]]*=' || true
   )
   if [ -n "${other_deps}" ]; then
     return 1
   fi
 
-  for dep in toml serde thiserror; do
+  for dep in toml serde thiserror tracing tracing-subscriber tracing-appender; do
     if grep -E "^${dep}[[:space:]]*=" "${crate_toml}" >/dev/null 2>&1; then
       grep -E "^${dep}[[:space:]]*=" "${crate_toml}" | grep -Eq 'workspace[[:space:]]*=[[:space:]]*true' \
         || return 1
@@ -173,6 +187,7 @@ check_pin thiserror 2.0.21
 check_pin serde 1.0.229
 check_pin serde_json 1.0.154
 check_pin tracing 0.1.44
+check_pin tracing-subscriber 0.3.23
 check_pin tracing-appender 0.2.5
 check_pin metrics 0.24.6
 check_pin metrics-exporter-prometheus 0.18.3

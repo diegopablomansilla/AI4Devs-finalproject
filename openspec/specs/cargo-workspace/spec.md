@@ -4,7 +4,7 @@
 
 Define el workspace Cargo de Vortex Core con los crates lib, el binario `bin/vortex` (composition root de configuración), lints heredados y las dependencias del stack fijadas con versión exacta.
 
-Ticket padre: T-00-01. Changes: T-00-01-02, T-00-01-03, T-00-05. HU: HU-00-01, HU-00-06.
+Ticket padre: T-00-01. Changes: T-00-01-02, T-00-01-03, T-00-05, T-00-06. HU: HU-00-01, HU-00-06, HU-00-09.
 
 ## Requirements
 
@@ -90,6 +90,7 @@ Cada path `crates/*` MUST ser un crate lib con `edition = "2024"` (propia o here
 | serde | 1.0.229 |
 | serde_json | 1.0.154 |
 | tracing | 0.1.44 |
+| tracing-subscriber | 0.3.23 |
 | tracing-appender | 0.2.5 |
 | metrics | 0.24.6 |
 | metrics-exporter-prometheus | 0.18.3 |
@@ -97,7 +98,7 @@ Cada path `crates/*` MUST ser un crate lib con `edition = "2024"` (propia o here
 | clap | 4.6.7 |
 | toml | 1.2.1 |
 
-El crate `domain` MAY declarar en `[dependencies]` únicamente `thiserror`, `ulid`, `rust_decimal` y `serde`, cada una con `workspace = true`. `domain` MAY declarar `serde_json` en `[dev-dependencies]` con `workspace = true` y MUST NOT declarar otra entrada ahí. `domain` MUST NOT declarar `serde_json` en `[dependencies]`. En particular, `domain` MUST NOT depender de `surrealdb`, `meilisearch-sdk`, `reqwest`, `ort` ni `whisper-rs`. Los demás crates lib MUST NOT declarar `[dependencies]` ni `[dev-dependencies]`. El crate binario `vortex` MAY declarar `toml`, `serde` y `thiserror` según el requirement «Crate binario vortex con Config».
+El crate `domain` MAY declarar en `[dependencies]` únicamente `thiserror`, `ulid`, `rust_decimal` y `serde`, cada una con `workspace = true`. `domain` MAY declarar `serde_json` en `[dev-dependencies]` con `workspace = true` y MUST NOT declarar otra entrada ahí. `domain` MUST NOT declarar `serde_json` en `[dependencies]`. En particular, `domain` MUST NOT depender de `surrealdb`, `meilisearch-sdk`, `reqwest`, `ort` ni `whisper-rs`. Los demás crates lib MUST NOT declarar `[dependencies]` ni `[dev-dependencies]`. El crate binario `vortex` MAY declarar dependencias según el requirement «Crate binario vortex con Config».
 
 #### Scenario: Pins exactos
 
@@ -140,15 +141,16 @@ El crate `domain` MAY declarar en `[dependencies]` únicamente `thiserror`, `uli
 
 ### Requirement: Crate binario vortex con Config
 
-`vortex-core/bin/vortex` MUST ser un crate binario con `package.name = "vortex"`, `edition = "2024"` (propia o heredada del workspace), `[lints] workspace = true` y `src/main.rs` que define `fn main`. MAY declarar en `[dependencies]` únicamente `toml`, `serde` y `thiserror`, cada una con `workspace = true` (`serde` MAY activar la feature `derive`). MUST NOT declarar `clap`, otras crates, ni `[dev-dependencies]`. El binario MUST cargar y validar el TOML de configuración al arrancar (capability `vortex-config`).
+`vortex-core/bin/vortex` MUST ser un crate binario con `package.name = "vortex"`, `edition = "2024"` (propia o heredada del workspace), `[lints] workspace = true` y `src/main.rs` que define `fn main`. MAY declarar en `[dependencies]` únicamente `toml`, `serde`, `thiserror`, `tracing`, `tracing-subscriber` y `tracing-appender`, cada una con `workspace = true` (`serde` MAY activar la feature `derive`; `tracing-subscriber` MAY activar features `json` y `env-filter`). MAY declarar `serde_json` en `[dev-dependencies]` con `workspace = true` y MUST NOT declarar otra entrada ahí. MUST NOT declarar `clap`, `metrics` ni otras crates, ni `serde_json` en `[dependencies]`. El binario MUST cargar y validar el TOML de configuración al arrancar (capability `vortex-config`) y MUST exponer la inicialización de logging (capability `vortex-logging`).
 
 #### Scenario: Binario con Config presente
 
 - **WHEN** se inspecciona `vortex-core/bin/vortex`
 - **THEN** `Cargo.toml` declara `name = "vortex"`, edición 2024 y hereda los lints del workspace
 - **AND** existe `src/main.rs` y contiene `fn main`
-- **AND** `Cargo.toml` declara `toml`, `serde` y `thiserror` con `workspace = true` y ninguna otra crate en `[dependencies]`
-- **AND** no declara `[dev-dependencies]`
+- **AND** `Cargo.toml` declara `toml`, `serde` y `thiserror` con `workspace = true`
+- **AND** las únicas otras entradas permitidas en `[dependencies]` son `tracing`, `tracing-subscriber` y `tracing-appender` (todas `workspace = true`)
+- **AND** si declara `[dev-dependencies]`, la única crate permitida es `serde_json` con `workspace = true`
 
 #### Scenario: Falta main.rs
 
@@ -158,7 +160,7 @@ El crate `domain` MAY declarar en `[dependencies]` únicamente `thiserror`, `uli
 
 #### Scenario: El binario declara una dependencia fuera de la allowlist
 
-- **WHEN** `vortex-core/bin/vortex/Cargo.toml` declara `clap` u otra crate distinta de `toml`, `serde` y `thiserror`, o declara `[dev-dependencies]`
+- **WHEN** `vortex-core/bin/vortex/Cargo.toml` declara `clap`, `metrics` u otra crate distinta de `{toml, serde, thiserror, tracing, tracing-subscriber, tracing-appender}` en `[dependencies]`, o declara en `[dev-dependencies]` una crate distinta de `serde_json`
 - **THEN** la verificación del workspace termina con código distinto de 0
 - **AND** el mensaje nombra `vortex`
 
@@ -170,7 +172,7 @@ El crate `domain` MAY declarar en `[dependencies]` únicamente `thiserror`, `uli
 
 ### Requirement: El workspace lib compila, testea y pasa Clippy
 
-Sobre `vortex-core`, `cargo build --workspace`, `cargo clippy --workspace -- -D warnings` y `cargo test --workspace` MUST terminar con código 0. `cargo test --workspace` MUST ejecutar los tests unitarios de `domain` de la taxonomía de errores y de los tipos base (`Id`, `Decimal`, `Timestamp`) y los tests de carga/validación de configuración del package `vortex`. El grafo de paquetes MUST incluir el package `vortex`. Los crates lib distintos de `domain` MAY seguir sin lógica de producto.
+Sobre `vortex-core`, `cargo build --workspace`, `cargo clippy --workspace -- -D warnings` y `cargo test --workspace` MUST terminar con código 0. `cargo test --workspace` MUST ejecutar los tests unitarios de `domain` de la taxonomía de errores y de los tipos base (`Id`, `Decimal`, `Timestamp`) y los tests de carga/validación de configuración y de logging del package `vortex`. El grafo de paquetes MUST incluir el package `vortex`. Los crates lib distintos de `domain` MAY seguir sin lógica de producto.
 
 #### Scenario: Build, tests y clippy en verde
 
@@ -184,6 +186,6 @@ Sobre `vortex-core`, `cargo build --workspace`, `cargo clippy --workspace -- -D 
 
 #### Scenario: Árbol de workspace inválido
 
-- **WHEN** falta un miembro (incluido `bin/vortex`), un pin no es exacto, un lib distinto de `domain` declara dependencias, `domain` declara una crate fuera de su allowlist, o `bin/vortex` declara una crate fuera de `{toml, serde, thiserror}`
+- **WHEN** falta un miembro (incluido `bin/vortex`), un pin no es exacto, un lib distinto de `domain` declara dependencias, `domain` declara una crate fuera de su allowlist, o `bin/vortex` declara una crate fuera de `{toml, serde, thiserror, tracing, tracing-subscriber, tracing-appender}` en `[dependencies]` o distinta de `serde_json` en `[dev-dependencies]`
 - **THEN** la verificación del workspace termina con código distinto de 0
 - **AND** no se considera cumplido el criterio de este change
