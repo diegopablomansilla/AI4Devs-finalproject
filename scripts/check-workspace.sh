@@ -117,6 +117,36 @@ storage_deps_allowed() {
   return 0
 }
 
+# `supervisor` allowlist (T-00-13): [dependencies] path domain only.
+supervisor_deps_allowed() {
+  crate_toml=$1
+
+  if grep -Eq '^\[dev-dependencies\]' "${crate_toml}"; then
+    return 1
+  fi
+
+  if ! grep -Eq '^\[dependencies\]' "${crate_toml}"; then
+    return 0
+  fi
+
+  other_deps=$(
+    awk '
+      /^\[dependencies\]/ { indeps = 1; next }
+      /^\[/ { indeps = 0 }
+      indeps && /^[^[:space:]#]/ { print }
+    ' "${crate_toml}" | grep -v -E '^domain[[:space:]]*=' || true
+  )
+  if [ -n "${other_deps}" ]; then
+    return 1
+  fi
+
+  if grep -E '^domain[[:space:]]*=' "${crate_toml}" >/dev/null 2>&1; then
+    grep -E '^domain[[:space:]]*=' "${crate_toml}" | grep -Eq 'path[[:space:]]*=' \
+      || return 1
+  fi
+  return 0
+}
+
 # `api` allowlist (T-00-11 + T-00-12): [dependencies] axum, domain, serde, serde_json, thiserror, tower-http, tracing; [dev-dependencies] tokio, tracing-subscriber.
 api_deps_allowed() {
   crate_toml=$1
@@ -221,7 +251,7 @@ vortex_deps_allowed() {
       /^\[dependencies\]/ { indeps = 1; next }
       /^\[/ { indeps = 0 }
       indeps && /^[^[:space:]#]/ { print }
-    ' "${crate_toml}" | grep -v -E '^(toml|serde|thiserror|tracing|tracing-subscriber|tracing-appender|clap|api|tokio|axum)[[:space:]]*=' || true
+    ' "${crate_toml}" | grep -v -E '^(toml|serde|thiserror|tracing|tracing-subscriber|tracing-appender|clap|api|supervisor|tokio|axum)[[:space:]]*=' || true
   )
   if [ -n "${other_deps}" ]; then
     return 1
@@ -235,6 +265,10 @@ vortex_deps_allowed() {
   done
   if grep -E '^api[[:space:]]*=' "${crate_toml}" >/dev/null 2>&1; then
     grep -E '^api[[:space:]]*=' "${crate_toml}" | grep -Fq 'path' \
+      || return 1
+  fi
+  if grep -E '^supervisor[[:space:]]*=' "${crate_toml}" >/dev/null 2>&1; then
+    grep -E '^supervisor[[:space:]]*=' "${crate_toml}" | grep -Fq 'path' \
       || return 1
   fi
   return 0
@@ -359,6 +393,10 @@ for member in ${REQUIRED_MEMBERS}; do
     elif [ "${crate_name}" = "api" ]; then
       if ! api_deps_allowed "${crate_toml}"; then
         fail "el crate api declara dependencias fuera de la allowlist del Gateway"
+      fi
+    elif [ "${crate_name}" = "supervisor" ]; then
+      if ! supervisor_deps_allowed "${crate_toml}"; then
+        fail "el crate supervisor declara dependencias fuera de la allowlist del registro de salud"
       fi
     else
       fail "el crate ${crate_name} no debe declarar [dependencies] en este cambio"

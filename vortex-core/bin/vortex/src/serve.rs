@@ -2,8 +2,11 @@
 
 use std::path::PathBuf;
 
+use std::sync::Arc;
+
 use api::{AppState, build_router};
 use axum::serve;
+use supervisor::HealthRegistry;
 use tokio::net::TcpListener;
 
 use crate::config::{Config, ConfigError};
@@ -63,7 +66,8 @@ async fn serve_config(config: Config) -> i32 {
         }
     };
 
-    let router = build_router(AppState::new());
+    let health = Arc::new(HealthRegistry::new(env!("CARGO_PKG_VERSION")));
+    let router = build_router(AppState::with_health(health));
     if let Err(e) = serve(listener, router)
         .with_graceful_shutdown(shutdown_signal())
         .await
