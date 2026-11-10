@@ -10,7 +10,7 @@ Ticket padre: T-00-10, T-00-11, T-00-12, T-00-13. HU: HU-00-05, HU-00-06, HU-00-
 
 ### Requirement: build_router expone un router HTTP con AppState clonable
 
-El crate `api` MUST exportar `build_router` que acepta un `AppState` y MUST devolver el router HTTP del Gateway. `AppState` MUST ser clonable y MUST poder compartirse entre peticiones (servicios inyectados como `Arc<dyn …>` cuando existan). `AppState` MUST incluir un `HealthReport` (inyectado; MAY usar un snapshot por defecto con los seis componentes en `disabled` para tests). El router MUST registrar `GET /health` (requirement «GET /health expone el snapshot agregado»). El router MUST NOT registrar rutas de negocio, `/metrics` ni estáticos. Una petición a una ruta no registrada MUST responder `404` con `Content-Type: application/problem+json` y `code` `not_found` (requirement «404 y 500 genéricos sin detalles internos»).
+El crate `api` MUST exportar `build_router` que acepta un `AppState` y MUST devolver el router HTTP del Gateway. `AppState` MUST ser clonable y MUST poder compartirse entre peticiones (servicios inyectados como `Arc<dyn …>` cuando existan). `AppState` MUST incluir un `HealthReport` (inyectado; MAY usar un snapshot por defecto con los seis componentes en `disabled` para tests). El router MUST registrar `GET /health` (requirement «GET /health expone el snapshot agregado»). El router MUST registrar `GET /metrics` (requirement «GET /metrics expone texto Prometheus»). El router MUST NOT registrar rutas de negocio ni estáticos. Una petición a una ruta no registrada MUST responder `404` con `Content-Type: application/problem+json` y `code` `not_found` (requirement «404 y 500 genéricos sin detalles internos»).
 
 #### Scenario: ruta inexistente responde 404 (happy)
 
@@ -31,9 +31,15 @@ El crate `api` MUST exportar `build_router` que acepta un `AppState` y MUST devo
 - **THEN** la respuesta no tiene estado 404
 - **AND** el JSON no tiene `code` `not_found`
 
+#### Scenario: GET /metrics está registrado (happy)
+
+- **WHEN** se envía `GET /metrics` al router de `build_router`
+- **THEN** la respuesta no tiene estado 404
+- **AND** el cuerpo no tiene `code` `not_found`
+
 ### Requirement: GET /health expone el snapshot agregado
 
-El router de `build_router` MUST registrar `GET /health`. La respuesta MUST tener `Content-Type: application/json` y un cuerpo alineado al esquema `Health` de `docs/openapi.yaml`: `status` (`ok` | `degraded` | `starting` | `down`), `version` (string), `uptimeSeconds` (entero ≥ 0) y `components` con `storage`, `meilisearch`, `llm`, `speech`, `textEmbeddings` y `sync`, cada uno con `status` de componente. HTTP MUST ser **200** cuando el agregado es `ok` o `degraded`, y **503** cuando es `starting` o `down`. El cuerpo MUST NOT ser `application/problem+json`. Este change MUST NOT registrar `/metrics`, rutas de negocio ni estáticos. `GET /health` MUST NOT enviar `Cache-Control: no-store` por el middleware de `/api/*`.
+El router de `build_router` MUST registrar `GET /health`. La respuesta MUST tener `Content-Type: application/json` y un cuerpo alineado al esquema `Health` de `docs/openapi.yaml`: `status` (`ok` | `degraded` | `starting` | `down`), `version` (string), `uptimeSeconds` (entero ≥ 0) y `components` con `storage`, `meilisearch`, `llm`, `speech`, `textEmbeddings` y `sync`, cada uno con `status` de componente. HTTP MUST ser **200** cuando el agregado es `ok` o `degraded`, y **503** cuando es `starting` o `down`. El cuerpo MUST NOT ser `application/problem+json`. Este change MUST NOT registrar rutas de negocio ni estáticos. `GET /health` MUST NOT enviar `Cache-Control: no-store` por el middleware de `/api/*`.
 
 #### Scenario: GET /health ok es 200 (happy)
 
@@ -84,7 +90,7 @@ El router de `build_router` MUST registrar `GET /health`. La respuesta MUST tene
 
 ### Requirement: vortex serve escucha HTTP en server.bind
 
-`vortex serve` MUST dejar de responder `no implementado`. MUST resolver el path de configuración como en `vortex-config` (`--config` gana sobre `VORTEX_CONFIG`), MUST cargar y validar el TOML, y MUST escuchar HTTP (sin TLS) en la dirección `server.bind`. MUST cablear un registro de salud que implementa `HealthReport`. MUST NOT abrir Storage, MUST NOT instalar el subscriber de logging, MUST NOT arrancar sidecars. Una petición HTTP a una ruta no registrada MUST responder 404 con `Content-Type: application/problem+json` y `code` `not_found`. `GET /health` contra ese bind MUST responder según el requirement «GET /health expone el snapshot agregado».
+`vortex serve` MUST dejar de responder `no implementado`. MUST resolver el path de configuración como en `vortex-config` (`--config` gana sobre `VORTEX_CONFIG`), MUST cargar y validar el TOML, y MUST escuchar HTTP (sin TLS) en la dirección `server.bind`. MUST cablear un registro de salud que implementa `HealthReport`. MUST NOT abrir Storage, MUST NOT instalar el subscriber de logging, MUST NOT arrancar sidecars. Una petición HTTP a una ruta no registrada MUST responder 404 con `Content-Type: application/problem+json` y `code` `not_found`. `GET /health` contra ese bind MUST responder según el requirement «GET /health expone el snapshot agregado». `GET /metrics` contra ese bind MUST responder según el requirement «GET /metrics expone texto Prometheus».
 
 #### Scenario: vortex serve arranca y responde 404 (happy)
 
@@ -101,6 +107,15 @@ El router de `build_router` MUST registrar `GET /health`. La respuesta MUST tene
 - **THEN** la respuesta tiene `Content-Type: application/json`
 - **AND** el JSON tiene `status`, `version`, `uptimeSeconds` y `components` con los seis nombres
 - **AND** el JSON no tiene `code` de `problem+json`
+
+#### Scenario: vortex serve GET /metrics responde Prometheus (happy)
+
+- **WHEN** se ejecuta `vortex serve --config <toml-válido>` escuchando en un bind de prueba
+- **AND** se envía `GET /health` contra ese bind
+- **AND** se envía `GET /metrics` contra ese bind
+- **THEN** la respuesta de `/metrics` tiene estado HTTP 200
+- **AND** `Content-Type` empieza por `text/plain`
+- **AND** el cuerpo incluye `http_request_duration_seconds`
 
 #### Scenario: vortex serve sin path de configuración (unhappy)
 
@@ -400,8 +415,14 @@ Antes de archive, la suite MUST incluir estos tests (nombres estables; crate / t
 | `get_health_is_not_problem_json` | `api` | integración del crate |
 | `post_health_is_not_200_health` | `api` | integración del crate |
 | `vortex_serve_get_health_returns_json` | `vortex` | binario |
+| `get_metrics_returns_prometheus_text` | `api` | integración del crate |
+| `get_metrics_includes_prior_request_histogram` | `api` | integración del crate |
+| `get_metrics_is_not_problem_json` | `api` | integración del crate |
+| `get_metrics_omits_cache_control_no_store` | `api` | integración del crate |
+| `post_metrics_is_not_prometheus_200` | `api` | integración del crate |
+| `vortex_serve_get_metrics_returns_prometheus` | `vortex` | binario |
 
-`cargo test --workspace` (manifiesto `vortex-core/Cargo.toml`) MUST ejecutarlos. Los tests de `problem+json` MUST asertar estado HTTP, `Content-Type: application/problem+json` y `code`. Los de middleware MUST cubrir cuerpo excedido, timeout y cabeceras (`Cache-Control`, `Content-Encoding`). Los de `/health` MUST asertar 200/503, `Content-Type: application/json` y `status` agregado. Los stubs de los demás subcomandos MUST seguir cubiertos.
+`cargo test --workspace` (manifiesto `vortex-core/Cargo.toml`) MUST ejecutarlos. Los tests de `problem+json` MUST asertar estado HTTP, `Content-Type: application/problem+json` y `code`. Los de middleware MUST cubrir cuerpo excedido, timeout y cabeceras (`Cache-Control`, `Content-Encoding`). Los de `/health` MUST asertar 200/503, `Content-Type: application/json` y `status` agregado. Los de `/metrics` MUST asertar 200, `text/plain` y el histograma de una petición previa. Los stubs de los demás subcomandos MUST seguir cubiertos.
 
 #### Scenario: la suite acordada cubre happy y unhappy (happy)
 
@@ -411,3 +432,41 @@ Antes de archive, la suite MUST incluir estos tests (nombres estables; crate / t
 - **AND** los de JSON inválido, 500 sin leak, config ausente/inválida y bind ocupado pasan
 - **AND** los de cuerpo excedido, timeout, cabeceras y span HTTP pasan
 - **AND** los de `GET /health` (200 `ok`/`degraded`, 503 `starting`/`down`, no `problem+json`) pasan
+- **AND** los de `GET /metrics` (200 `text/plain`, histograma de petición previa, no `problem+json`, `POST` no es scrape) pasan
+
+### Requirement: GET /metrics expone texto Prometheus
+
+El router de `build_router` MUST registrar `GET /metrics`. La respuesta MUST tener estado HTTP **200** y `Content-Type` que empiece por `text/plain` (MAY incluir parámetros `version` y `charset`). El cuerpo MUST ser texto de exposición Prometheus válido: al menos una línea `# TYPE` o una serie con nombre Prometheus, sin JSON de `problem+json`. Tras una petición HTTP previa distinta del scrape (p. ej. `GET /health`), el cuerpo MUST incluir el histograma `http_request_duration_seconds` de esa petición (capability `prometheus-metrics`). `GET /metrics` MUST NOT enviar `Cache-Control: no-store` por el middleware de `/api/*`. El cuerpo MUST NOT ser `application/problem+json`. Este change MUST NOT registrar rutas de negocio ni estáticos. El path y el content type MUST alinearse con `GET /metrics` en `docs/openapi.yaml` (sin modificar ese archivo).
+
+#### Scenario: GET /metrics es 200 text/plain (happy)
+
+- **WHEN** se envía `GET /metrics` al router de `build_router`
+- **THEN** la respuesta tiene estado HTTP 200
+- **AND** `Content-Type` empieza por `text/plain`
+- **AND** el cuerpo no está vacío
+- **AND** el cuerpo no es JSON con `code` de problema
+
+#### Scenario: GET /metrics incluye el histograma de una petición previa (happy)
+
+- **WHEN** se envía `GET /health` al router
+- **AND** después se envía `GET /metrics`
+- **THEN** la respuesta de `/metrics` tiene estado 200
+- **AND** el cuerpo incluye `http_request_duration_seconds`
+- **AND** incluye `route="/health"` y `method="GET"`
+
+#### Scenario: GET /metrics no lleva no-store (happy)
+
+- **WHEN** se envía `GET /metrics`
+- **THEN** la respuesta no incluye `Cache-Control: no-store`
+
+#### Scenario: GET /metrics no es problem+json (unhappy)
+
+- **WHEN** se envía `GET /metrics`
+- **THEN** `Content-Type` no es `application/problem+json`
+- **AND** el cuerpo no tiene `code` de problema
+
+#### Scenario: POST /metrics no es scrape 200 (unhappy)
+
+- **WHEN** se envía `POST /metrics` al router de `build_router`
+- **THEN** la respuesta no tiene estado 200 con cuerpo de exposición Prometheus
+- **AND** el cuerpo no se presenta como scrape exitoso de este endpoint
