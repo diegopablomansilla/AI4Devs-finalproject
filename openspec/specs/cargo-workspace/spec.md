@@ -2,9 +2,9 @@
 
 ## Purpose
 
-Define el workspace Cargo de Vortex Core con los crates lib vacíos, el binario `bin/vortex` vacío, lints heredados y las dependencias del stack fijadas con versión exacta, para que el código de dominio y la CLI se agreguen después sobre una base reproducible.
+Define el workspace Cargo de Vortex Core con los crates lib, el binario `bin/vortex` (composition root de configuración), lints heredados y las dependencias del stack fijadas con versión exacta.
 
-Ticket padre: T-00-01. Changes: T-00-01-02, T-00-01-03. HU: HU-00-01.
+Ticket padre: T-00-01. Changes: T-00-01-02, T-00-01-03, T-00-05. HU: HU-00-01, HU-00-06.
 
 ## Requirements
 
@@ -95,8 +95,9 @@ Cada path `crates/*` MUST ser un crate lib con `edition = "2024"` (propia o here
 | metrics-exporter-prometheus | 0.18.3 |
 | rcgen | 0.14.10 |
 | clap | 4.6.7 |
+| toml | 1.2.1 |
 
-El crate `domain` MAY declarar en `[dependencies]` únicamente `thiserror`, `ulid`, `rust_decimal` y `serde`, cada una con `workspace = true`. `domain` MAY declarar `serde_json` en `[dev-dependencies]` con `workspace = true` y MUST NOT declarar otra entrada ahí. `domain` MUST NOT declarar `serde_json` en `[dependencies]`. En particular, `domain` MUST NOT depender de `surrealdb`, `meilisearch-sdk`, `reqwest`, `ort` ni `whisper-rs`. Los demás crates lib MUST NOT declarar `[dependencies]` ni `[dev-dependencies]`.
+El crate `domain` MAY declarar en `[dependencies]` únicamente `thiserror`, `ulid`, `rust_decimal` y `serde`, cada una con `workspace = true`. `domain` MAY declarar `serde_json` en `[dev-dependencies]` con `workspace = true` y MUST NOT declarar otra entrada ahí. `domain` MUST NOT declarar `serde_json` en `[dependencies]`. En particular, `domain` MUST NOT depender de `surrealdb`, `meilisearch-sdk`, `reqwest`, `ort` ni `whisper-rs`. Los demás crates lib MUST NOT declarar `[dependencies]` ni `[dev-dependencies]`. El crate binario `vortex` MAY declarar `toml`, `serde` y `thiserror` según el requirement «Crate binario vortex con Config».
 
 #### Scenario: Pins exactos
 
@@ -137,16 +138,17 @@ El crate `domain` MAY declarar en `[dependencies]` únicamente `thiserror`, `uli
 - **THEN** la verificación del workspace termina con código distinto de 0
 - **AND** el mensaje nombra `domain`
 
-### Requirement: Crate binario vortex vacío
+### Requirement: Crate binario vortex con Config
 
-`vortex-core/bin/vortex` MUST ser un crate binario con `package.name = "vortex"`, `edition = "2024"` (propia o heredada del workspace), `[lints] workspace = true` y `src/main.rs` que define `fn main` sin lógica de producto. MUST NOT declarar `[dependencies]` ni `[dev-dependencies]`.
+`vortex-core/bin/vortex` MUST ser un crate binario con `package.name = "vortex"`, `edition = "2024"` (propia o heredada del workspace), `[lints] workspace = true` y `src/main.rs` que define `fn main`. MAY declarar en `[dependencies]` únicamente `toml`, `serde` y `thiserror`, cada una con `workspace = true` (`serde` MAY activar la feature `derive`). MUST NOT declarar `clap`, otras crates, ni `[dev-dependencies]`. El binario MUST cargar y validar el TOML de configuración al arrancar (capability `vortex-config`).
 
-#### Scenario: Binario vacío presente
+#### Scenario: Binario con Config presente
 
 - **WHEN** se inspecciona `vortex-core/bin/vortex`
 - **THEN** `Cargo.toml` declara `name = "vortex"`, edición 2024 y hereda los lints del workspace
 - **AND** existe `src/main.rs` y contiene `fn main`
-- **AND** `Cargo.toml` no declara `[dependencies]` ni `[dev-dependencies]`
+- **AND** `Cargo.toml` declara `toml`, `serde` y `thiserror` con `workspace = true` y ninguna otra crate en `[dependencies]`
+- **AND** no declara `[dev-dependencies]`
 
 #### Scenario: Falta main.rs
 
@@ -154,9 +156,9 @@ El crate `domain` MAY declarar en `[dependencies]` únicamente `thiserror`, `uli
 - **THEN** la verificación del workspace termina con código distinto de 0
 - **AND** el mensaje indica que falta el binario o `main.rs`
 
-#### Scenario: El binario declara dependencias
+#### Scenario: El binario declara una dependencia fuera de la allowlist
 
-- **WHEN** `vortex-core/bin/vortex/Cargo.toml` contiene `[dependencies]` o `[dev-dependencies]`
+- **WHEN** `vortex-core/bin/vortex/Cargo.toml` declara `clap` u otra crate distinta de `toml`, `serde` y `thiserror`, o declara `[dev-dependencies]`
 - **THEN** la verificación del workspace termina con código distinto de 0
 - **AND** el mensaje nombra `vortex`
 
@@ -168,7 +170,7 @@ El crate `domain` MAY declarar en `[dependencies]` únicamente `thiserror`, `uli
 
 ### Requirement: El workspace lib compila, testea y pasa Clippy
 
-Sobre `vortex-core`, `cargo build --workspace`, `cargo clippy --workspace -- -D warnings` y `cargo test --workspace` MUST terminar con código 0. `cargo test --workspace` MUST ejecutar los tests unitarios de `domain` de la taxonomía de errores y de los tipos base (`Id`, `Decimal`, `Timestamp`). El grafo de paquetes MUST incluir el package `vortex`. Los crates lib distintos de `domain` MAY seguir sin lógica de producto.
+Sobre `vortex-core`, `cargo build --workspace`, `cargo clippy --workspace -- -D warnings` y `cargo test --workspace` MUST terminar con código 0. `cargo test --workspace` MUST ejecutar los tests unitarios de `domain` de la taxonomía de errores y de los tipos base (`Id`, `Decimal`, `Timestamp`) y los tests de carga/validación de configuración del package `vortex`. El grafo de paquetes MUST incluir el package `vortex`. Los crates lib distintos de `domain` MAY seguir sin lógica de producto.
 
 #### Scenario: Build, tests y clippy en verde
 
@@ -182,6 +184,6 @@ Sobre `vortex-core`, `cargo build --workspace`, `cargo clippy --workspace -- -D 
 
 #### Scenario: Árbol de workspace inválido
 
-- **WHEN** falta un miembro (incluido `bin/vortex`), un pin no es exacto, un lib distinto de `domain` declara dependencias, o `domain` declara una crate fuera de su allowlist
+- **WHEN** falta un miembro (incluido `bin/vortex`), un pin no es exacto, un lib distinto de `domain` declara dependencias, `domain` declara una crate fuera de su allowlist, o `bin/vortex` declara una crate fuera de `{toml, serde, thiserror}`
 - **THEN** la verificación del workspace termina con código distinto de 0
 - **AND** no se considera cumplido el criterio de este change

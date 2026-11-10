@@ -1,5 +1,5 @@
 #!/usr/bin/env sh
-# T-00-04: check-workspace allowlist for domain (base types).
+# T-00-04 / T-00-05: check-workspace allowlist for domain and vortex.
 set -eu
 
 REPO_ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
@@ -112,5 +112,28 @@ serde = { workspace = true }
 workspace = true
 EOF
 assert_fails_with 'api con dependencies' "${tmp}" 'api'
+
+# happy: vortex declares config allowlist
+cp "${REPO_ROOT}/vortex-core/crates/api/Cargo.toml" "${tmp}/vortex-core/crates/api/Cargo.toml"
+cp "${REPO_ROOT}/vortex-core/crates/domain/Cargo.toml" "${tmp}/vortex-core/crates/domain/Cargo.toml"
+cp "${REPO_ROOT}/vortex-core/bin/vortex/Cargo.toml" "${tmp}/vortex-core/bin/vortex/Cargo.toml"
+assert_ok 'vortex con allowlist de configuración' "${tmp}"
+
+# unhappy: vortex declares clap
+cat >"${tmp}/vortex-core/bin/vortex/Cargo.toml" <<'EOF'
+[package]
+name = "vortex"
+version = "0.1.0"
+edition.workspace = true
+publish = false
+
+[dependencies]
+toml = { workspace = true }
+clap = { workspace = true }
+
+[lints]
+workspace = true
+EOF
+assert_fails_with 'vortex con clap' "${tmp}" 'vortex'
 
 printf 'workspace fixture: all scenarios passed\n'
