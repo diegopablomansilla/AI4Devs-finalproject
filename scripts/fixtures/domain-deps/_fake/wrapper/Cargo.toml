@@ -1,0 +1,11 @@
+[package]
+name = "wrapper"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+reqwest = { path = "../reqwest" }
+
+[lib]
+path = "lib.rs"
