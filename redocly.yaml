@@ -1,0 +1,5 @@
+extends:
+  - recommended
+apis:
+  vortex@v1:
+    root: docs/openapi.yaml

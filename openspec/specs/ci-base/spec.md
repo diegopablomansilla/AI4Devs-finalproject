@@ -86,7 +86,7 @@ Sobre un checkout que cumple las specs `cargo-workspace` y `rust-toolchain`, los
 
 ### Requirement: Script de verificación del contrato CI
 
-El repositorio MUST contener `scripts/check-ci.sh`, ejecutable, que comprueba las reglas de este spec sobre el workflow YAML **y** la presencia del job `domain-deps` que ejecuta `scripts/check-domain-deps.sh` (spec `domain-deps`). La raíz MUST ser `CHECK_ROOT` si está definida, o la raíz del repositorio en caso contrario. El script MUST terminar con código 0 cuando el árbol cumple ese contrato. MUST NOT exigir que GitHub Actions haya corrido: verifica el archivo y, cuando aplique, los comandos cargo en local. MUST NOT tratar la mención de `check-domain-deps` como extra fuera de alcance. MUST seguir rechazando Meilisearch, Ollama, Whisper, Redocly, `docs/openapi.yaml` y un job que ejecute `check-ci.sh` en GitHub.
+El repositorio MUST contener `scripts/check-ci.sh`, ejecutable, que comprueba las reglas de este spec sobre el workflow YAML **y** la presencia del job `domain-deps` que ejecuta `scripts/check-domain-deps.sh` (spec `domain-deps`) **y** la presencia del job `openapi-lint` que ejecuta el lint Redocly de `docs/openapi.yaml` (spec `openapi-lint`). La raíz MUST ser `CHECK_ROOT` si está definida, o la raíz del repositorio en caso contrario. El script MUST terminar con código 0 cuando el árbol cumple ese contrato. MUST NOT exigir que GitHub Actions haya corrido: verifica el archivo y, cuando aplique, los comandos cargo en local. MUST NOT tratar la mención de `check-domain-deps`, `redocly` ni `docs/openapi.yaml` como extra fuera de alcance. MUST exigir `redocly.yaml` en la raíz de verificación. MUST seguir rechazando Meilisearch, Ollama, Whisper y un job que ejecute `check-ci.sh` en GitHub.
 
 #### Scenario: Script presente
 
@@ -95,7 +95,7 @@ El repositorio MUST contener `scripts/check-ci.sh`, ejecutable, que comprueba la
 
 #### Scenario: Contrato válido
 
-- **WHEN** se ejecuta el script sobre el repositorio con `.github/workflows/ci.yml` correcto (jobs `fmt`, `clippy`, `test` y `domain-deps`)
+- **WHEN** se ejecuta el script sobre el repositorio con `.github/workflows/ci.yml` correcto (jobs `fmt`, `clippy`, `test`, `domain-deps` y `openapi-lint`) y `redocly.yaml` presente
 - **THEN** termina con código 0
 
 #### Scenario: Falta el job domain-deps
@@ -104,17 +104,24 @@ El repositorio MUST contener `scripts/check-ci.sh`, ejecutable, que comprueba la
 - **THEN** el script termina con código distinto de 0
 - **AND** el mensaje nombra `domain-deps` o `check-domain-deps`
 
-### Requirement: El workflow no incluye motores reales ni lint OpenAPI
+#### Scenario: Falta el job openapi-lint
 
-`.github/workflows/ci.yml` MUST NOT instalar ni invocar Meilisearch, Ollama, Whisper ni el *lint* Redocly de `docs/openapi.yaml`. Esos chequeos pertenecen a T-09-05, T-09-13, T-09-18 y T-09-03.
+- **WHEN** `.github/workflows/ci.yml` declara `fmt`, `clippy`, `test` y `domain-deps` pero no el job `openapi-lint` (o no invoca `@redocly/cli lint docs/openapi.yaml`)
+- **THEN** el script termina con código distinto de 0
+- **AND** el mensaje nombra `openapi-lint` o `redocly`
 
-#### Scenario: Workflow mínimo
+### Requirement: El workflow no incluye motores reales
+
+`.github/workflows/ci.yml` MUST NOT instalar ni invocar Meilisearch, Ollama ni Whisper. Esos chequeos pertenecen a T-09-05, T-09-13 y T-09-18. El *lint* Redocly de `docs/openapi.yaml` MUST figurar en el workflow (capability `openapi-lint`).
+
+#### Scenario: Workflow sin sidecars
 
 - **WHEN** se inspecciona `.github/workflows/ci.yml`
-- **THEN** no menciona Meilisearch, Ollama, Whisper, Redocly ni `docs/openapi.yaml`
+- **THEN** no menciona Meilisearch, Ollama ni Whisper
+- **AND** sí menciona Redocly y `docs/openapi.yaml` (job `openapi-lint`)
 
-#### Scenario: Extra fuera de alcance
+#### Scenario: Extra de sidecar fuera de alcance
 
-- **WHEN** el workflow declara un paso o job que invoca Meilisearch, Ollama, Whisper o Redocly
+- **WHEN** el workflow declara un paso o job que invoca Meilisearch, Ollama o Whisper
 - **THEN** la verificación del contrato de CI termina con código distinto de 0
 - **AND** el mensaje nombra el extra

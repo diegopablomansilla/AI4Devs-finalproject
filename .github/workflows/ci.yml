@@ -92,3 +92,10 @@ jobs:
             macos-14-domain-deps-
       - name: domain dependency tree
         run: ./scripts/check-domain-deps.sh
+
+  openapi-lint:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - name: OpenAPI lint
+        run: npx --yes @redocly/cli@1 lint docs/openapi.yaml
