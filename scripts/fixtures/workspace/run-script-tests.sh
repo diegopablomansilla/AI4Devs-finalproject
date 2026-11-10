@@ -119,7 +119,7 @@ cp "${REPO_ROOT}/vortex-core/crates/domain/Cargo.toml" "${tmp}/vortex-core/crate
 cp "${REPO_ROOT}/vortex-core/bin/vortex/Cargo.toml" "${tmp}/vortex-core/bin/vortex/Cargo.toml"
 assert_ok 'vortex con allowlist de configuración' "${tmp}"
 
-# unhappy: vortex declares clap
+# unhappy: vortex declares metrics
 cat >"${tmp}/vortex-core/bin/vortex/Cargo.toml" <<'EOF'
 [package]
 name = "vortex"
@@ -129,11 +129,11 @@ publish = false
 
 [dependencies]
 toml = { workspace = true }
-clap = { workspace = true }
+metrics = { workspace = true }
 
 [lints]
 workspace = true
 EOF
-assert_fails_with 'vortex con clap' "${tmp}" 'vortex'
+assert_fails_with 'vortex con metrics' "${tmp}" 'vortex'
 
 printf 'workspace fixture: all scenarios passed\n'

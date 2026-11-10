@@ -1,4 +1,5 @@
 //! Vortex Core configuration (T-00-05).
+#![allow(dead_code)] // `from_path` se engancha en T-00-10; el módulo se ejerce desde tests unitarios.
 
 use serde::Deserialize;
 use std::net::SocketAddr;
