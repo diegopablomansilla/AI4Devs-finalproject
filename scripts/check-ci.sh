@@ -1,5 +1,5 @@
 #!/usr/bin/env sh
-# Verifica el contrato de GitHub Actions CI (T-09-01, job domain-deps T-00-02).
+# Verifica el contrato de GitHub Actions CI (T-09-01, domain-deps T-00-02, openapi-lint T-09-03).
 set -eu
 
 if [ -n "${CHECK_ROOT:-}" ]; then
@@ -71,10 +71,10 @@ if ! grep -q 'cargo test --workspace' "${WORKFLOW}"; then
   fail 'el job test debe ejecutar cargo test --workspace'
 fi
 
-# --- non-goals (motores, OpenAPI, harness local en GitHub) ---
-for forbidden in Meilisearch meilisearch Ollama Whisper Redocly redocly 'docs/openapi.yaml' check-ci.sh; do
+# --- non-goals (sidecars, harness local en GitHub) ---
+for forbidden in Meilisearch meilisearch Ollama Whisper check-ci.sh; do
   if grep -qF "${forbidden}" "${WORKFLOW}"; then
-    fail "el workflow no debe mencionar ${forbidden} (fuera de alcance T-09-01)"
+    fail "el workflow no debe mencionar ${forbidden} (fuera de alcance T-09-01/T-09-03)"
   fi
 done
 
@@ -86,5 +86,21 @@ fi
 if ! grep -q 'scripts/check-domain-deps.sh' "${WORKFLOW}"; then
   fail 'el job domain-deps debe ejecutar scripts/check-domain-deps.sh'
 fi
+
+# --- job openapi-lint (T-09-03) ---
+if ! grep -Eq '^[[:space:]]{2}openapi-lint:' "${WORKFLOW}"; then
+  fail 'falta el job: openapi-lint'
+fi
+
+if ! grep -q '@redocly/cli' "${WORKFLOW}"; then
+  fail 'el job openapi-lint debe invocar @redocly/cli'
+fi
+
+if ! grep -q 'lint docs/openapi.yaml' "${WORKFLOW}"; then
+  fail 'el job openapi-lint debe ejecutar lint docs/openapi.yaml'
+fi
+
+REDOCLY_CFG="${ROOT}/redocly.yaml"
+[ -f "${REDOCLY_CFG}" ] || fail 'falta redocly.yaml'
 
 exit 0

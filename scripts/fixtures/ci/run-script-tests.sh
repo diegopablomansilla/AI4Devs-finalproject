@@ -33,8 +33,10 @@ assert_fails_with "${SCENARIOS}/missing-fmt-job" 'job: fmt'
 assert_fails_with "${SCENARIOS}/ubuntu-runner" ubuntu
 assert_fails_with "${SCENARIOS}/no-pr-trigger" pull_request
 assert_fails_with "${SCENARIOS}/bad-fmt-command" 'fmt --all'
-assert_fails_with "${SCENARIOS}/redocly-extra" redocly
 assert_fails_with "${SCENARIOS}/missing-domain-deps-job" domain-deps
+assert_fails_with "${SCENARIOS}/missing-openapi-job" openapi-lint
+assert_fails_with "${SCENARIOS}/meilisearch-extra" Meilisearch
+assert_fails_with "${SCENARIOS}/missing-redocly-yaml" redocly.yaml
 
 CHECK_ROOT="${REPO_ROOT}" "${SCRIPT}"
 
