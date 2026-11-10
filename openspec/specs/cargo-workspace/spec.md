@@ -95,7 +95,7 @@ Cada path `crates/*` MUST ser un crate lib con `edition = "2024"` (propia o here
 | rcgen | 0.14.10 |
 | clap | 4.6.7 |
 
-Ningún crate lib MUST declarar `[dependencies]` ni `[dev-dependencies]` en este cambio. En particular, `domain` MUST NOT depender de `surrealdb`, `meilisearch-sdk`, `reqwest`, `ort` ni `whisper-rs`.
+El crate `domain` MAY declarar `thiserror` en `[dependencies]` con `workspace = true`. `domain` MUST NOT declarar otra entrada en `[dependencies]` ni `[dev-dependencies]`. En particular, `domain` MUST NOT depender de `surrealdb`, `meilisearch-sdk`, `reqwest`, `ort` ni `whisper-rs`. Los demás crates lib MUST NOT declarar `[dependencies]` ni `[dev-dependencies]`.
 
 #### Scenario: Pins exactos
 
@@ -110,9 +110,26 @@ Ningún crate lib MUST declarar `[dependencies]` ni `[dev-dependencies]` en este
 
 #### Scenario: Un lib declara dependencias
 
-- **WHEN** el `Cargo.toml` de cualquiera de los once libs contiene `[dependencies]` o `[dev-dependencies]`
+- **WHEN** el `Cargo.toml` de un lib que no es `domain` contiene `[dependencies]` o `[dev-dependencies]`, o `domain` declara una crate distinta de `thiserror`
 - **THEN** la verificación del workspace termina con código distinto de 0
 - **AND** el mensaje nombra ese crate
+
+#### Scenario: domain declara thiserror
+
+- **WHEN** `vortex-core/crates/domain/Cargo.toml` declara `thiserror` en `[dependencies]` con `workspace = true` y ninguna otra dependencia
+- **THEN** la verificación del workspace termina con código 0
+
+#### Scenario: Un lib distinto de domain declara dependencias
+
+- **WHEN** el `Cargo.toml` de un lib que no es `domain` contiene `[dependencies]` o `[dev-dependencies]`
+- **THEN** la verificación del workspace termina con código distinto de 0
+- **AND** el mensaje nombra ese crate
+
+#### Scenario: domain declara una dependencia distinta de thiserror
+
+- **WHEN** `crates/domain/Cargo.toml` declara en `[dependencies]` una crate que no es `thiserror` (por ejemplo `ulid` o `surrealdb`)
+- **THEN** la verificación del workspace termina con código distinto de 0
+- **AND** el mensaje nombra `domain`
 
 ### Requirement: Crate binario vortex vacío
 
@@ -145,7 +162,7 @@ Ningún crate lib MUST declarar `[dependencies]` ni `[dev-dependencies]` en este
 
 ### Requirement: El workspace lib compila, testea y pasa Clippy
 
-Sobre `vortex-core`, `cargo build --workspace`, `cargo test --workspace` y `cargo clippy --workspace -- -D warnings` MUST terminar con código 0. No hace falta ningún test de comportamiento de producto: los libs y el binario están vacíos. El grafo de paquetes MUST incluir el package `vortex`.
+Sobre `vortex-core`, `cargo build --workspace`, `cargo clippy --workspace -- -D warnings` y `cargo test --workspace` MUST terminar con código 0. `cargo test --workspace` MUST ejecutar los tests unitarios de `domain` de la taxonomía de errores. El grafo de paquetes MUST incluir el package `vortex`. Los crates lib distintos de `domain` MAY seguir sin lógica de producto.
 
 #### Scenario: Build, tests y clippy en verde
 
@@ -159,6 +176,6 @@ Sobre `vortex-core`, `cargo build --workspace`, `cargo test --workspace` y `carg
 
 #### Scenario: Árbol de workspace inválido
 
-- **WHEN** falta un miembro (incluido `bin/vortex`), un pin no es exacto o un crate declara dependencias
+- **WHEN** falta un miembro (incluido `bin/vortex`), un pin no es exacto, un lib distinto de `domain` declara dependencias, o `domain` declara una crate que no es `thiserror`
 - **THEN** la verificación del workspace termina con código distinto de 0
-- **AND** no se considera cumplido el criterio de este cambio
+- **AND** no se considera cumplido el criterio de este change
