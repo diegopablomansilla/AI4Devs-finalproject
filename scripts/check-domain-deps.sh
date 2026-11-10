@@ -1,5 +1,5 @@
 #!/usr/bin/env sh
-# Verifica el árbol normal,build del crate domain (T-00-02-01).
+# Verifica el árbol normal,build del crate domain (T-00-02).
 set -eu
 
 if [ -n "${CHECK_ROOT:-}" ]; then

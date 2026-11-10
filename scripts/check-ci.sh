@@ -1,5 +1,5 @@
 #!/usr/bin/env sh
-# Verifica el contrato de GitHub Actions CI base (T-09-01).
+# Verifica el contrato de GitHub Actions CI (T-09-01, job domain-deps T-00-02).
 set -eu
 
 if [ -n "${CHECK_ROOT:-}" ]; then
@@ -72,10 +72,19 @@ if ! grep -q 'cargo test --workspace' "${WORKFLOW}"; then
 fi
 
 # --- non-goals (motores, OpenAPI, harness local en GitHub) ---
-for forbidden in Meilisearch meilisearch Ollama Whisper Redocly redocly 'docs/openapi.yaml' check-domain-deps check-ci.sh; do
+for forbidden in Meilisearch meilisearch Ollama Whisper Redocly redocly 'docs/openapi.yaml' check-ci.sh; do
   if grep -qF "${forbidden}" "${WORKFLOW}"; then
     fail "el workflow no debe mencionar ${forbidden} (fuera de alcance T-09-01)"
   fi
 done
+
+# --- job domain-deps (T-00-02) ---
+if ! grep -Eq '^[[:space:]]{2}domain-deps:' "${WORKFLOW}"; then
+  fail 'falta el job: domain-deps'
+fi
+
+if ! grep -q 'scripts/check-domain-deps.sh' "${WORKFLOW}"; then
+  fail 'el job domain-deps debe ejecutar scripts/check-domain-deps.sh'
+fi
 
 exit 0
