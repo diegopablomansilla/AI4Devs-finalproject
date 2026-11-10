@@ -76,20 +76,9 @@ fn vortex_help_mentions_config_flag() {
 }
 
 #[test]
-fn vortex_serve_unimplemented_ignores_missing_config() {
+fn vortex_reindex_unimplemented_ignores_missing_config() {
     let output = Command::new(vortex_bin())
-        .args(["--config", "/nonexistent/vortex-config.toml", "serve"])
-        .output()
-        .expect("spawn vortex");
-    assert_eq!(output.status.code(), Some(1));
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("no implementado"), "stderr: {stderr}");
-}
-
-#[test]
-fn vortex_serve_prints_unimplemented() {
-    let output = Command::new(vortex_bin())
-        .arg("serve")
+        .args(["--config", "/nonexistent/vortex-config.toml", "reindex"])
         .output()
         .expect("spawn vortex");
     assert_eq!(output.status.code(), Some(1));

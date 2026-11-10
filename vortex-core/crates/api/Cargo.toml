@@ -4,5 +4,11 @@ version = "0.1.0"
 edition.workspace = true
 publish = false
 
+[dependencies]
+axum = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "net", "io-util", "time"] }
+
 [lints]
 workspace = true

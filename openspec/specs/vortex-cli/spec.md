@@ -2,9 +2,9 @@
 
 ## Purpose
 
-Define el esqueleto de la CLI de Vortex Core: subcomandos operativos, flag global `--config` y respuesta uniforme «no implementado» (exit 1) para los que aún no tienen lógica, de modo que `vortex --help` liste el contrato completo antes de Axum, Storage o sidecars.
+Define el esqueleto de la CLI de Vortex Core: subcomandos operativos, flag global `--config` y respuesta uniforme «no implementado» (exit 1) para los que aún no tienen lógica (salvo `serve`, implementado en T-00-10), de modo que `vortex --help` liste el contrato completo.
 
-Ticket padre: T-00-07. HU: HU-00-06.
+Ticket padre: T-00-07. Changes: T-00-07, T-00-10. HU: HU-00-06.
 
 ## Requirements
 
@@ -43,7 +43,7 @@ MUST NOT exigirse archivo de configuración ni variable `VORTEX_CONFIG` para mos
 
 ### Requirement: --config es una opción global
 
-El binario MUST exponer `--config <path>` y `--config=<path>` como opción **global** (válida antes o después del subcomando). `vortex --help` MUST mencionar `--config`. En este change el flag MUST parsearse, pero los subcomandos stub MUST NOT abrir ni validar el archivo (T-00-10 carga `Config` al implementar `serve`).
+El binario MUST exponer `--config <path>` y `--config=<path>` como opción **global** (válida antes o después del subcomando). `vortex --help` MUST mencionar `--config`. Los subcomandos stub MUST NOT abrir ni validar el archivo. `vortex serve` MUST cargar `Config` al despacharse (capability `vortex-api` / `vortex-config`).
 
 #### Scenario: --config aparece en la ayuda raíz (happy)
 
@@ -52,7 +52,7 @@ El binario MUST exponer `--config <path>` y `--config=<path>` como opción **glo
 
 #### Scenario: stub ignora un --config inexistente (happy)
 
-- **WHEN** se ejecuta `vortex --config /nonexistent/vortex-config.toml serve`
+- **WHEN** se ejecuta `vortex --config /nonexistent/vortex-config.toml reindex`
 - **THEN** el proceso termina con código 1
 - **AND** stderr contiene `no implementado`
 - **AND** stderr no trata la ausencia del archivo como el error principal (no exige que el TOML exista)
@@ -61,7 +61,6 @@ El binario MUST exponer `--config <path>` y `--config=<path>` como opción **glo
 
 Cada una de estas invocaciones MUST escribir `no implementado` en stderr y MUST terminar con código **1** (ni 0 ni otro código de uso):
 
-- `vortex serve`
 - `vortex reindex`
 - `vortex backup`
 - `vortex cert`
@@ -71,13 +70,13 @@ Cada una de estas invocaciones MUST escribir `no implementado` en stderr y MUST 
 - `vortex service install`
 - `vortex service uninstall`
 
-MUST NOT arrancar el servidor HTTP, Storage, sidecars, `launchd` ni ninguna lógica de producto. MUST NOT exigir un archivo de configuración para producir esa respuesta.
+MUST NOT arrancar el servidor HTTP, Storage, sidecars, `launchd` ni ninguna lógica de producto. MUST NOT exigir un archivo de configuración para producir esa respuesta. `vortex serve` MUST NOT formar parte de esta lista (capability `vortex-api`).
 
 #### Scenario: vortex serve no implementado (happy / stub)
 
-- **WHEN** se ejecuta `vortex serve` sin `--config`
-- **THEN** el proceso termina con código 1
-- **AND** stderr contiene `no implementado`
+- **WHEN** se ejecuta `vortex serve` sin `--config` y sin `VORTEX_CONFIG`
+- **THEN** el proceso termina con código distinto de 0
+- **AND** stderr no contiene `no implementado`
 - **AND** el proceso no queda en ejecución
 
 #### Scenario: el resto de subcomandos de primer nivel son stub (happy / stub)

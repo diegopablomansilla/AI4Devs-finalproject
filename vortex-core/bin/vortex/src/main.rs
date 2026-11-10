@@ -3,7 +3,15 @@
 mod cli;
 mod config;
 mod logging;
+mod serve;
+
+use cli::{Cli, Commands};
 
 fn main() {
-    cli::Cli::parse_or_exit().run_stub();
+    let cli = Cli::parse_or_exit();
+    if matches!(cli.command, Commands::Serve) {
+        serve::run(cli.config.as_ref());
+    } else {
+        cli.run_stub();
+    }
 }
