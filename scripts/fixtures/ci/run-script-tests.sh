@@ -34,6 +34,7 @@ assert_fails_with "${SCENARIOS}/ubuntu-runner" ubuntu
 assert_fails_with "${SCENARIOS}/no-pr-trigger" pull_request
 assert_fails_with "${SCENARIOS}/bad-fmt-command" 'fmt --all'
 assert_fails_with "${SCENARIOS}/redocly-extra" redocly
+assert_fails_with "${SCENARIOS}/missing-domain-deps-job" domain-deps
 
 CHECK_ROOT="${REPO_ROOT}" "${SCRIPT}"
 
