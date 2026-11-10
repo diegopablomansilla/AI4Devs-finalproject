@@ -195,24 +195,12 @@ Escenario: El dominio no depende de motores
 
 **Referencias:** [2.8](2-arquitectura.md#28-estructura-de-repositorio), [3.2](3-componentes.md#32-mapa-de-crates-y-regla-de-dependencias).
 
-**Specs** (ticket [T-00-01](7-tickets.md); orden `01 → 02 → 03`):
+**Orden de tickets** (ver [7-tickets.md](7-tickets.md) y [desarrollo-git-openspec.md](desarrollo-git-openspec.md)): un ticket = un change OpenSpec y una rama `T-XX-YY`.
 
-| ZZ | Título | Esfuerzo | Cubre |
-|---|---|---|---|
-| T-00-01-01 | Toolchain, rustfmt y `.gitignore` | ~0,5 h | `rust-toolchain.toml`, `rustfmt.toml`, `.gitignore` (`models/`, `target/`, datos locales). Sin workspace ni `cargo`. |
-| T-00-01-02 | Workspace, lints, dependencias fijadas y crates lib vacíos | ~1 h | `vortex-core/Cargo.toml`, `[workspace.lints]`, `[workspace.dependencies]`, libs de [2.8](2-arquitectura.md#28-estructura-de-repositorio) (sin `bin/vortex`). `cargo build` / `test` / `clippy -D warnings` en esos libs. |
-| T-00-01-03 | Binario `bin/vortex` vacío y cierre del ticket | ~0,5 h | Miembro `bin/vortex` (`fn main() {}`). Cierra el **Listo cuando** del ticket sobre todo el workspace. |
+- [T-00-01](7-tickets.md) — workspace Cargo y crates vacíos (**cerrado** en `develop`; se integró antes del corte 1:1 usando changes históricos `T-00-01-01` … `T-00-01-03`).
+- **Siguientes:** T-09-01 (CI base), luego T-00-02 (script **y** job de CI que verifica dependencias de `domain`; depende de T-09-01), T-00-03, T-00-04, T-00-05.
 
-Orden: `T-00-01-01` → `T-00-01-02` → `T-00-01-03`. Después del ticket completo: T-09-01, T-00-02, T-00-03, T-00-04, T-00-05. Fuera de estas specs: código funcional y CI (T-09-01). La verificación automática de `domain` es T-00-02 (specs siguientes).
-
-**Specs** (ticket [T-00-02](7-tickets.md); orden `01 → 02`):
-
-| ZZ | Título | Esfuerzo | Cubre |
-|---|---|---|---|
-| T-00-02-01 | Script `check-domain-deps.sh` | ~1 h | `scripts/check-domain-deps.sh` con `cargo tree -p domain -e normal,build`. Falla ante SDKs prohibidos (`surrealdb`, `meilisearch-sdk`, `reqwest`, `ort`, `whisper-rs`) o crates del workspace. TDD con fixtures. Sin CI. |
-| T-00-02-02 | Job de CI que ejecuta el script | ~1 h | Job en el workflow de T-09-01. Cierra el **Listo cuando**: un PR que agrega `surrealdb` a `domain` falla la CI. |
-
-Orden: `T-00-02-01` (tras T-00-01; en paralelo a T-09-01) → `T-00-02-02` (tras T-00-02-01 y T-09-01). Fuera de estas specs: reglas para otros crates; SurrealDB (T-00-08 / T-00-09).
+Nota: parte del script de T-00-02 ya está en `develop` (change archivado `T-00-02-01`); el ticket se cierra en la rama **`T-00-02`** con el job de CI y el **Listo cuando** completo del ticket.
 
 ### HU-00-02 — SurrealDB embebido con migraciones versionadas
 

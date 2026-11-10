@@ -36,8 +36,8 @@
 | Tema | Convención |
 |---|---|
 | **ID** | `T-<épica>-<número>` (p. ej. `T-02-14`). La épica indica a qué historia sirve el ticket, no cuándo se ejecuta. Los IDs no se reutilizan. |
-| **Spec de implementación** | `T-<épica>-<número>-<ZZ>` (p. ej. `T-02-14-01`). Un ticket puede tener **varias** specs (`ZZ` = `01`, `02`, …). Cada spec = un change OpenSpec + una rama Git con el mismo nombre. Ver [desarrollo-git-openspec.md](desarrollo-git-openspec.md). |
-| **Commits** | Solo **después** de `openspec archive` en la rama de la spec; TDD sin commits intermedios. [Conventional Commits 1.0.0](https://www.conventionalcommits.org/en/v1.0.0/); scope = spec (`T-02-14-01`); footer `Refs: T-02-14, HU-02-04`. Ver [desarrollo-git-openspec.md](desarrollo-git-openspec.md) (regla de commit y § 7). |
+| **OpenSpec + rama Git** | Mismo ID que el ticket: `T-<épica>-<número>` (p. ej. `T-02-14`). **Un ticket = un change = una rama.** Ver [desarrollo-git-openspec.md](desarrollo-git-openspec.md). |
+| **Commits** | Solo **después** de `openspec archive` en la rama del ticket; TDD sin commits intermedios. [Conventional Commits 1.0.0](https://www.conventionalcommits.org/en/v1.0.0/); scope = ticket (`T-02-14`); footer `Refs: T-02-14, HU-02-04`. Ver [desarrollo-git-openspec.md](desarrollo-git-openspec.md) (regla de commit y § 7). |
 | **Orden** | Número global de tres dígitos (`001` … `224`). Es la secuencia de ejecución para **una sola persona**: un ticket solo empieza cuando todos sus "Depende de" están terminados. |
 | **Tamaño** | ~2 h de trabajo enfocado. Si al empezar un ticket se ve que excede ese tamaño, se divide antes de avanzar (nuevo ID, mismo orden relativo). |
 | **Formato** | Cada ticket tiene: historia(s) que habilita, dependencias, **Hace** (alcance exacto), **No hace** (límite explícito, suele ser otro ticket) y **Listo cuando** (verificación objetiva). |

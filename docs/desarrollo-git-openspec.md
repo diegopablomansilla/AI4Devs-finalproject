@@ -13,7 +13,7 @@ Este documento es la **fuente canónica** del flujo de trabajo humano. Las regla
 flowchart TB
   main[main]
   develop[develop]
-  specBranch["rama T-XX-YY-ZZ"]
+  specBranch["rama T-XX-YY"]
   main --> develop
   develop --> specBranch
   specBranch -->|"PR con revisión"| develop
@@ -24,16 +24,16 @@ flowchart TB
 |------|-----------|
 | **`main`** | Línea estable; refleja entregas consolidadas. |
 | **`develop`** | Integración continua; **todas** las ramas de trabajo salen de aquí. |
-| **`T-XX-YY-ZZ`** | Una **spec OpenSpec** en curso (ver § 2). No usar prefijos `feature/`. |
+| **`T-XX-YY`** | Un **ticket** en curso vía OpenSpec (ver § 2). No usar prefijos `feature/`. |
 
 **Reglas:**
 
-- Crear la rama desde `develop` actualizado: `git checkout develop && git pull && git checkout -b T-02-14-01`.
+- Crear la rama desde `develop` actualizado: `git checkout develop && git pull && git checkout -b T-02-14`.
 - Integrar en **`develop`** mediante Pull Request (no merge directo a `main` desde ramas de spec).
 - **`main`** se actualiza desde `develop` al cerrar una entrega del curso o un hito, y cada actualización lleva un tag de versión (ver § 10).
 - No hay ramas por historia (HU): el seguimiento de cada HU se hace con issues y milestones de GitHub (ver § 11).
 
-Ramas con convención antigua (p. ej. `feature/entrega-1-DPM`) no usan `T-XX-YY-ZZ`. Integrarlas en `develop` vía PR cuando corresponda; **desde entonces** abrir specs y ramas con el formato nuevo.
+Ramas con convención antigua (p. ej. `feature/entrega-1-DPM`, o specs con sufijo `-01`/`02` previas al corte de noviembre 2026) no usan el formato actual. Integrarlas en `develop` vía PR cuando corresponda; **desde entonces** abrir changes y ramas con el **mismo nombre que el ticket** `T-XX-YY`.
 
 ---
 
@@ -42,19 +42,15 @@ Ramas con convención antigua (p. ej. `feature/entrega-1-DPM`) no usan `T-XX-YY-
 | Concepto | ID | Dónde vive |
 |----------|-----|------------|
 | **Ticket** (backlog) | `T-XX-YY` | [7-tickets.md](7-tickets.md) |
-| **Spec de implementación** | `T-XX-YY-ZZ` | OpenSpec change + rama Git |
+| **Change OpenSpec + rama Git** | `T-XX-YY` (mismo ID que el ticket) | `openspec/changes/` y Git |
 
-- Un ticket puede requerir **varias specs** (`ZZ = 01`, `02`, …). Cada spec acota un slice implementable (~2 h, alineado al ticket).
-- **`ZZ`** es secuencial por ticket (dos dígitos: `01`, `02`, …).
-- **1 change OpenSpec activo = 1 rama Git = 1 spec** (`T-XX-YY-ZZ`).
-- El **nombre del change** en OpenSpec coincide con el nombre de la rama.
+- **Un ticket = un change OpenSpec = una rama Git.** El nombre del change y de la rama **es el ID del ticket** (`T-09-01`, no `T-09-01-01`).
+- Alcance orientado a ~2 h por ticket ([7-tickets.md](7-tickets.md) § 7.1). Si al planificar se ve que excede ese tamaño, **se divide el backlog** (nuevo ticket `T-XX-YY`, otro orden global), no se abren varios changes bajo el mismo ticket.
+- **1 change activo = 1 rama = 1 PR** hacia `develop`.
 
-Cada change debe declarar el **ticket padre** `T-XX-YY` (frontmatter o sección «Ticket padre») y enlazar **Hace** / **Listo cuando** del ticket.
+Cada change enlaza **Hace**, **No hace** y **Listo cuando** del ticket en [7-tickets.md](7-tickets.md) (sección «Ticket padre» o frontmatter opcional con el mismo `T-XX-YY`).
 
-**Ejemplo:** ticket `T-00-02` (verificación de dependencias de `domain`) podría dividirse en:
-
-- `T-00-02-01` — script `check-domain-deps.sh`
-- `T-00-02-02` — job de CI que ejecuta el script
+**Ejemplo:** ticket `T-00-02` (verificación de dependencias de `domain`) se trabaja entero en la rama `T-00-02`: script `check-domain-deps.sh` **y** job de CI que lo ejecuta en el mismo change, cerrando el **Listo cuando** del ticket.
 
 ---
 
@@ -66,7 +62,7 @@ Cada change debe declarar el **ticket padre** `T-XX-YY` (frontmatter o sección 
 
 | Fase | Qué ocurre |
 |------|------------|
-| **Spec** | Change OpenSpec `T-XX-YY-ZZ` con escenarios verificables (happy path y **camino no feliz**: errores de dominio, `problem+json`, validación, conflictos, etc.). |
+| **Spec** | Change OpenSpec `T-XX-YY` con escenarios verificables (happy path y **camino no feliz**: errores de dominio, `problem+json`, validación, conflictos, etc.). |
 | **Red** | Tests que fallan porque aún no existe la implementación. |
 | **Green** | Implementación mínima hasta que la suite acordada pase. |
 | **Refactor** | Mejora sin cambiar comportamiento; tests siguen en verde. |
@@ -78,9 +74,9 @@ La DoD común de historias ([6.1](6-historias.md)) aplica: conformidad con `open
 ## 4. Flujo paso a paso
 
 1. Elegir ticket `T-XX-YY` en [7-tickets.md](7-tickets.md) (dependencias satisfechas).
-2. Definir o crear la spec **`T-XX-YY-ZZ`** en OpenSpec (change bajo `openspec/changes/`).
+2. Definir o crear el change **`T-XX-YY`** en OpenSpec (carpeta `openspec/changes/T-XX-YY/`).
 3. Documentar en el change los **tests** previstos (unitarios, integración, API unhappy path según alcance).
-4. Crear rama **`T-XX-YY-ZZ`** desde `develop`.
+4. Crear rama **`T-XX-YY`** desde `develop`.
 5. TDD: red → green → refactor.
 6. Ejecutar la **suite completa** relevante (local; cuando exista CI, los mismos comandos que GitHub Actions — ver ticket T-09-01).
 7. `openspec validate` sobre el change (si aplica).
@@ -88,7 +84,7 @@ La DoD común de historias ([6.1](6-historias.md)) aplica: conformidad con `open
 9. **Solo después del paso 8:** el agente **debe proponerte** un commit (archivos, mensaje [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) § 7, pregunta de autorización). **No ejecuta** `git commit` hasta que respondas que sí.
 10. Con el commit en la rama (o listo para commitear), el agente **debe proponerte** un PR hacia **`develop`** (título, cuerpo, base/head, push si aplica). **No** crea el PR hasta tu OK. El título sigue la misma convención que el subject del commit.
 
-### Regla de commit en ramas `T-XX-YY-ZZ`
+### Regla de commit en ramas de ticket (`T-XX-YY`)
 
 En una rama de spec **no hay commits de Git hasta que el change OpenSpec esté archivado**.
 
@@ -130,7 +126,7 @@ openspec archive <change-name>
 | Ruta | Uso |
 |------|-----|
 | `openspec/config.yaml` | Contexto del proyecto y reglas al generar artefactos |
-| `openspec/changes/<T-XX-YY-ZZ>/` | Change activo |
+| `openspec/changes/<T-XX-YY>/` | Change activo |
 | `openspec/changes/archive/` | Changes archivados |
 | `openspec/specs/` | Specs consolidadas tras archivar |
 
@@ -153,7 +149,7 @@ Seguimos [Conventional Commits 1.0.0](https://www.conventionalcommits.org/en/v1.
 ```
 
 - **Subject:** imperativo, minúsculas en la descripción (salvo nombres propios), sin punto final, ~72 caracteres.
-- **Scope (recomendado):** ID de la spec en curso, p. ej. `(T-02-14-01)`. Alternativa: crate o área (`api`, `catalog`) si el commit es transversal dentro de la misma rama.
+- **Scope (recomendado):** ID del ticket en curso, p. ej. `(T-02-14)`. Alternativa: crate o área (`api`, `catalog`) si el commit es transversal dentro de la misma rama.
 - **Footer (recomendado):** `Refs: T-02-14, HU-02-04` con el ticket padre y la(s) historia(s) que habilita (columna «HU» de [7-tickets.md](7-tickets.md)). Permite `git log --grep HU-02-04`.
 
 ### Tipos habituales en Vectra
@@ -174,30 +170,30 @@ Seguimos [Conventional Commits 1.0.0](https://www.conventionalcommits.org/en/v1.
 ### Ejemplos
 
 ```
-feat(T-00-02-01): add check-domain-deps script
+feat(T-00-02): enforce domain dependency rules in CI
 
 Refs: T-00-02, HU-00-01
 ```
 
 ```
-test(T-03-13-01): cover search 400 invalid query
+test(T-03-13): cover search 400 invalid query
 
 Refs: T-03-13, HU-03-03, HU-03-04
 ```
 
 ```
-docs(T-09-01-01): document CI workflow in readme
+ci(T-09-01): add GitHub Actions workflow for fmt, clippy and test
 
 Refs: T-09-01, HU-00-01, HU-09-01
 ```
 
-**Un commit de cierre por spec archivada** en la rama `T-XX-YY-ZZ` (implementación + tests + artefactos OpenSpec archivados). Partir en varios commits **solo post-archive** si el maintainer lo pide explícitamente; mismo **scope** (`T-XX-YY-ZZ`).
+**Un commit de cierre por change archivado** en la rama `T-XX-YY` (implementación + tests + artefactos OpenSpec archivados). Partir en varios commits **solo post-archive** si el maintainer lo pide explícitamente; mismo **scope** (`T-XX-YY`).
 
 ---
 
 ## 8. Agente Cursor (resumen)
 
-- En ramas **`T-XX-YY-ZZ`**: **ningún** `git commit` hasta **`openspec archive`** completado (TDD sin commits intermedios).
+- En ramas **`T-XX-YY`**: **ningún** `git commit` hasta **`openspec archive`** completado (TDD sin commits intermedios).
 - **Proponer** commit y PR de forma **proactiva** cuando corresponda; **ejecutar** solo con tu autorización explícita a esa propuesta concreta.
 - Tras **archive** + tests green: **obligatorio** proponer commit; tras commit en rama lista: **obligatorio** proponer PR → `develop`.
 - Al cerrar una entrega o hito: proponer PR `develop → main`, tag y release (§ 10); ejecutar solo con autorización.
@@ -220,15 +216,14 @@ Refs: T-09-01, HU-00-01, HU-09-01
 
 ## 9. Plantilla mínima de Pull Request
 
-Usar al integrar `T-XX-YY-ZZ` → `develop`:
+Usar al integrar `T-XX-YY` → `develop`:
 
-- **Rama:** `T-XX-YY-ZZ`
-- **Ticket padre:** `T-XX-YY` (enlace o sección en 7-tickets)
-- **Historia(s):** `Part of #N` con el issue de cada HU; `Closes #N` si es el último spec de esa HU (§ 11)
+- **Rama / ticket:** `T-XX-YY` (enlace a la sección en [7-tickets.md](7-tickets.md))
+- **Historia(s):** `Part of #N` con el issue de cada HU; `Closes #N` si este PR completa la HU (§ 11)
 - **Milestone:** el del hito de la HU (`H1`, `H2`, …)
 - **Change OpenSpec:** archivado (`openspec archive` completado)
 - **Tests:** comandos ejecutados y resultado (green, incl. unhappy path)
-- **Título del PR:** Conventional Commits, p. ej. `feat(T-02-14-01): …` (alinear con el commit principal)
+- **Título del PR:** Conventional Commits, p. ej. `feat(T-02-14): …` (alinear con el commit principal)
 - **Notas:** cambios en `openapi.yaml` / modelo si aplica
 
 ---

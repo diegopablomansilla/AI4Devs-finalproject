@@ -7,7 +7,7 @@ alwaysApply: true
 
 Canonical detail: [docs/desarrollo-git-openspec.md](docs/desarrollo-git-openspec.md).
 
-## Commit timing on spec branches (`T-XX-YY-ZZ`)
+## Commit timing on ticket branches (`T-XX-YY`)
 
 - **Do not** run `git commit` (or amend) on a spec branch until **`openspec archive`** has completed for that change.
 - TDD work stays **uncommitted** until then; staging for review is OK.
@@ -34,7 +34,7 @@ When gates are met, **always propose** the next Git action; do **not** wait for 
 
 **When to propose a commit**
 
-- Spec branch `T-XX-YY-ZZ`: only **after** `openspec archive` (see commit timing above).
+- Ticket branch `T-XX-YY`: only **after** `openspec archive` (see commit timing above).
 - Legacy / entrega branches (e.g. `feature/entrega-1-DPM`): when a coherent slice of work is done and the tree has changes worth versioning.
 - Never propose a commit that violates post-archive rules on spec branches.
 
@@ -58,7 +58,7 @@ Do **not** run `git commit`, `git push`, or `gh pr create` until the user answer
 ## After authorization
 
 - Proposed and actual commit messages MUST follow [Conventional Commits 1.0.0](https://www.conventionalcommits.org/en/v1.0.0/) per [docs/desarrollo-git-openspec.md](docs/desarrollo-git-openspec.md) § 7.
-- Use scope `(T-XX-YY-ZZ)` matching the branch; footer `Refs: T-XX-YY, HU-XX-YY` with the parent ticket and the HU(s) it enables (column «HU» in [docs/7-tickets.md](docs/7-tickets.md)).
+- Use scope `(T-XX-YY)` matching the branch; footer `Refs: T-XX-YY, HU-XX-YY` with the ticket and the HU(s) it enables (column «HU» in [docs/7-tickets.md](docs/7-tickets.md)).
 - PR titles should use the same convention as the primary commit subject.
 - PR body references each HU issue (`Part of #N`, or `Closes #N` when the PR completes the HU) and sets the hito milestone (doc § 9, § 11).
 
