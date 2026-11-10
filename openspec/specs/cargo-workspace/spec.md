@@ -99,7 +99,7 @@ Cada path `crates/*` MUST ser un crate lib con `edition = "2024"` (propia o here
 | toml | 1.2.1 |
 | sha2 | 0.10.9 |
 
-El crate `domain` MAY declarar en `[dependencies]` únicamente `thiserror`, `ulid`, `rust_decimal` y `serde`, cada una con `workspace = true`. `domain` MAY declarar `serde_json` en `[dev-dependencies]` con `workspace = true` y MUST NOT declarar otra entrada ahí. `domain` MUST NOT declarar `serde_json` en `[dependencies]`. En particular, `domain` MUST NOT depender de `surrealdb`, `meilisearch-sdk`, `reqwest`, `ort` ni `whisper-rs`. El crate `storage` MAY declarar en `[dependencies]` únicamente `surrealdb`, `thiserror` y `sha2`, cada una con `workspace = true` (`surrealdb` MAY usar `default-features = false` y MUST activar las features `kv-rocksdb` y `kv-mem`). `storage` MAY declarar `tokio` en `[dev-dependencies]` con `workspace = true` (MAY activar features `macros`, `rt` y/o `rt-multi-thread`) y MUST NOT declarar otra entrada ahí. `storage` MUST NOT declarar `serde_json` ni otras crates en `[dependencies]`. El crate `api` MAY declarar en `[dependencies]` únicamente `axum` con `workspace = true`. `api` MAY declarar `tokio` en `[dev-dependencies]` con `workspace = true` (MAY activar features `macros`, `rt`, `rt-multi-thread` y/o `net`) y MUST NOT declarar otra entrada ahí. Los demás crates lib distintos de `domain`, `storage` y `api` MUST NOT declarar `[dependencies]` ni `[dev-dependencies]`. El crate binario `vortex` MAY declarar dependencias según el requirement «Crate binario vortex con Config».
+El crate `domain` MAY declarar en `[dependencies]` únicamente `thiserror`, `ulid`, `rust_decimal` y `serde`, cada una con `workspace = true`. `domain` MAY declarar `serde_json` en `[dev-dependencies]` con `workspace = true` y MUST NOT declarar otra entrada ahí. `domain` MUST NOT declarar `serde_json` en `[dependencies]`. En particular, `domain` MUST NOT depender de `surrealdb`, `meilisearch-sdk`, `reqwest`, `ort` ni `whisper-rs`. El crate `storage` MAY declarar en `[dependencies]` únicamente `surrealdb`, `thiserror` y `sha2`, cada una con `workspace = true` (`surrealdb` MAY usar `default-features = false` y MUST activar las features `kv-rocksdb` y `kv-mem`). `storage` MAY declarar `tokio` en `[dev-dependencies]` con `workspace = true` (MAY activar features `macros`, `rt` y/o `rt-multi-thread`) y MUST NOT declarar otra entrada ahí. `storage` MUST NOT declarar `serde_json` ni otras crates en `[dependencies]`. El crate `api` MAY declarar en `[dependencies]` `axum`, `serde`, `serde_json` y `thiserror` (cada una con `workspace = true`; `serde` MAY activar la feature `derive`) y la dependencia de path `domain` al crate `crates/domain` del workspace. `api` MAY declarar `tokio` en `[dev-dependencies]` con `workspace = true` (MAY activar features `macros`, `rt`, `rt-multi-thread` y/o `net`) y MUST NOT declarar otra entrada ahí. `api` MUST NOT declarar `tower-http`, `axum-server` ni otras crates. Los demás crates lib distintos de `domain`, `storage` y `api` MUST NOT declarar `[dependencies]` ni `[dev-dependencies]`. El crate binario `vortex` MAY declarar dependencias según el requirement «Crate binario vortex con Config».
 
 #### Scenario: Pins exactos
 
@@ -114,7 +114,7 @@ El crate `domain` MAY declarar en `[dependencies]` únicamente `thiserror`, `uli
 
 #### Scenario: Un lib declara dependencias
 
-- **WHEN** el `Cargo.toml` de un lib que no es `domain`, `storage` ni `api` contiene `[dependencies]` o `[dev-dependencies]`, o `domain` declara una crate fuera de su allowlist (`thiserror`, `ulid`, `rust_decimal`, `serde` en `[dependencies]`; `serde_json` en `[dev-dependencies]`), o `storage` declara una crate fuera de su allowlist (`surrealdb`, `thiserror`, `sha2` en `[dependencies]`; `tokio` en `[dev-dependencies]`), o `api` declara una crate fuera de su allowlist (`axum` en `[dependencies]`; `tokio` en `[dev-dependencies]`)
+- **WHEN** el `Cargo.toml` de un lib que no es `domain`, `storage` ni `api` contiene `[dependencies]` o `[dev-dependencies]`, o `domain` declara una crate fuera de su allowlist (`thiserror`, `ulid`, `rust_decimal`, `serde` en `[dependencies]`; `serde_json` en `[dev-dependencies]`), o `storage` declara una crate fuera de su allowlist (`surrealdb`, `thiserror`, `sha2` en `[dependencies]`; `tokio` en `[dev-dependencies]`), o `api` declara una crate fuera de su allowlist (`axum`, `domain`, `serde`, `serde_json`, `thiserror` en `[dependencies]`; `tokio` en `[dev-dependencies]`)
 - **THEN** la verificación del workspace termina con código distinto de 0
 - **AND** el mensaje nombra ese crate
 
@@ -135,7 +135,7 @@ El crate `domain` MAY declarar en `[dependencies]` únicamente `thiserror`, `uli
 
 #### Scenario: api declara la allowlist
 
-- **WHEN** `vortex-core/crates/api/Cargo.toml` declara `axum` en `[dependencies]` con `workspace = true` y, si declara `[dev-dependencies]`, únicamente `tokio` con `workspace = true`
+- **WHEN** `vortex-core/crates/api/Cargo.toml` declara `axum`, `domain` (path a `crates/domain`), `serde`, `serde_json` y `thiserror` en `[dependencies]` (`workspace = true` en las crates.io) y, si declara `[dev-dependencies]`, únicamente `tokio` con `workspace = true`
 - **THEN** la verificación del workspace termina con código 0
 
 #### Scenario: Un lib distinto de domain declara dependencias
@@ -152,7 +152,7 @@ El crate `domain` MAY declarar en `[dependencies]` únicamente `thiserror`, `uli
 
 #### Scenario: api declara una dependencia fuera de la allowlist
 
-- **WHEN** `crates/api/Cargo.toml` declara en `[dependencies]` o `[dev-dependencies]` una crate fuera de la allowlist (por ejemplo `serde` o `clap`)
+- **WHEN** `crates/api/Cargo.toml` declara en `[dependencies]` o `[dev-dependencies]` una crate fuera de la allowlist (por ejemplo `clap` o `tower-http`)
 - **THEN** la verificación del workspace termina con código distinto de 0
 - **AND** el mensaje nombra `api`
 
@@ -195,7 +195,7 @@ El crate `domain` MAY declarar en `[dependencies]` únicamente `thiserror`, `uli
 
 ### Requirement: El workspace lib compila, testea y pasa Clippy
 
-Sobre `vortex-core`, `cargo build --workspace`, `cargo clippy --workspace -- -D warnings` y `cargo test --workspace` MUST terminar con código 0. `cargo test --workspace` MUST ejecutar los tests unitarios de `domain` de la taxonomía de errores y de los tipos base (`Id`, `Decimal`, `Timestamp`), los tests de carga/validación de configuración, de logging y de CLI del package `vortex`, los tests de `vortex serve` y apagado ordenado del package `vortex`, los tests del router HTTP del package `api`, los tests de apertura de SurrealDB embebido del package `storage`, los tests del motor de migraciones con checksum del package `storage` y los tests del harness `storage::testing` del package `storage`. El grafo de paquetes MUST incluir el package `vortex`. Los crates lib distintos de `domain`, `storage` y `api` MAY seguir sin lógica de producto.
+Sobre `vortex-core`, `cargo build --workspace`, `cargo clippy --workspace -- -D warnings` y `cargo test --workspace` MUST terminar con código 0. `cargo test --workspace` MUST ejecutar los tests unitarios de `domain` de la taxonomía de errores y de los tipos base (`Id`, `Decimal`, `Timestamp`), los tests de carga/validación de configuración, de logging y de CLI del package `vortex`, los tests de `vortex serve` y apagado ordenado del package `vortex`, los tests del router HTTP y de `problem+json` del package `api`, los tests de apertura de SurrealDB embebido del package `storage`, los tests del motor de migraciones con checksum del package `storage` y los tests del harness `storage::testing` del package `storage`. El grafo de paquetes MUST incluir el package `vortex`. Los crates lib distintos de `domain`, `storage` y `api` MAY seguir sin lógica de producto.
 
 #### Scenario: Build, tests y clippy en verde
 
