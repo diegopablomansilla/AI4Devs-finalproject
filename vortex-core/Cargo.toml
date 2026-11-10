@@ -12,6 +12,7 @@ members = [
     "crates/sync",
     "crates/storage",
     "crates/supervisor",
+    "bin/vortex",
 ]
 
 [workspace.package]

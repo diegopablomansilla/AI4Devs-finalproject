@@ -1,5 +1,5 @@
 #!/usr/bin/env sh
-# Verifica el workspace Cargo vortex-core (T-00-01-02).
+# Verifica el workspace Cargo vortex-core (T-00-01-03; extiende T-00-01-02).
 set -eu
 
 if [ -n "${CHECK_ROOT:-}" ]; then
@@ -32,15 +32,6 @@ crates/sync
 crates/storage
 crates/supervisor
 "
-
-# --- bin/vortex no debe existir en este cambio ---
-if grep -q 'bin/vortex' "${MANIFEST}"; then
-  fail 'bin/vortex no pertenece a este cambio (no debe figurar en members)'
-fi
-
-if [ -f "${WS}/bin/vortex/Cargo.toml" ]; then
-  fail 'bin/vortex no pertenece a este cambio (existe bin/vortex/Cargo.toml)'
-fi
 
 for member in ${REQUIRED_MEMBERS}; do
   if ! grep -qF "${member}" "${MANIFEST}"; then
@@ -121,7 +112,7 @@ for member in ${REQUIRED_MEMBERS}; do
     fail "el crate ${crate_name} debe usar edition 2024 (propia o heredada)"
   fi
 
-  if ! grep -q 'workspace = true' "${crate_toml}"; then
+  if ! grep -Eq '^workspace[[:space:]]*=[[:space:]]*true' "${crate_toml}"; then
     fail "el crate ${crate_name} no hereda lints del workspace ([lints] workspace = true)"
   fi
 
@@ -133,5 +124,39 @@ for member in ${REQUIRED_MEMBERS}; do
     fail "el crate ${crate_name} no debe declarar [dev-dependencies] en este cambio"
   fi
 done
+
+# --- bin/vortex obligatorio ---
+BIN_MEMBER=bin/vortex
+BIN_TOML="${WS}/${BIN_MEMBER}/Cargo.toml"
+BIN_MAIN="${WS}/${BIN_MEMBER}/src/main.rs"
+
+if ! grep -qF "${BIN_MEMBER}" "${MANIFEST}"; then
+  fail 'falta el binario: bin/vortex (no figura en members)'
+fi
+
+[ -f "${BIN_TOML}" ] || fail 'falta el binario: bin/vortex (no existe bin/vortex/Cargo.toml)'
+
+[ -f "${BIN_MAIN}" ] || fail 'falta bin/vortex/src/main.rs (binario sin main.rs)'
+
+if ! grep -Eq '^name[[:space:]]*=[[:space:]]*"vortex"' "${BIN_TOML}"; then
+  fail 'el crate vortex debe declarar name = "vortex"'
+fi
+
+if ! grep -q 'edition.workspace = true' "${BIN_TOML}" \
+  && ! grep -Eq 'edition[[:space:]]*=[[:space:]]*"2024"' "${BIN_TOML}"; then
+  fail 'el crate vortex debe usar edition 2024 (propia o heredada)'
+fi
+
+if ! grep -Eq '^workspace[[:space:]]*=[[:space:]]*true' "${BIN_TOML}"; then
+  fail 'el crate vortex no hereda lints del workspace ([lints] workspace = true)'
+fi
+
+if grep -Eq '^\[dependencies\]' "${BIN_TOML}"; then
+  fail 'el crate vortex no debe declarar [dependencies] en este cambio'
+fi
+
+if grep -Eq '^\[dev-dependencies\]' "${BIN_TOML}"; then
+  fail 'el crate vortex no debe declarar [dev-dependencies] en este cambio'
+fi
 
 exit 0
