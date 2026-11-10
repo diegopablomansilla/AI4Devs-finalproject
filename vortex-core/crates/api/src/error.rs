@@ -43,6 +43,39 @@ pub struct ApiError {
 
 impl ApiError {
     #[must_use]
+    pub fn payload_too_large(instance: Option<String>) -> Self {
+        Self {
+            status: StatusCode::PAYLOAD_TOO_LARGE,
+            body: ProblemBody {
+                type_uri: type_uri_for_code("payload_too_large"),
+                title: title_for_code("payload_too_large").into(),
+                status: 413,
+                code: "payload_too_large".into(),
+                detail: Some("El cuerpo de la solicitud supera el límite permitido.".into()),
+                instance,
+                errors: None,
+            },
+            retry_after_secs: None,
+        }
+    }
+
+    #[must_use]
+    pub fn gateway_timeout(instance: Option<String>) -> Self {
+        Self {
+            status: StatusCode::GATEWAY_TIMEOUT,
+            body: ProblemBody {
+                type_uri: type_uri_for_code("timeout"),
+                title: title_for_code("timeout").into(),
+                status: 504,
+                code: "timeout".into(),
+                detail: Some("La operación superó el tiempo de espera.".into()),
+                instance,
+                errors: None,
+            },
+            retry_after_secs: None,
+        }
+    }
+
     pub fn route_not_found(instance: String) -> Self {
         Self {
             status: StatusCode::NOT_FOUND,
@@ -235,6 +268,7 @@ fn title_for_code(code: &str) -> &'static str {
         "ai_unavailable" => "El modo IA no está disponible",
         "speech_unavailable" => "El reconocimiento de voz no está disponible",
         "timeout" => "La operación superó el tiempo de espera",
+        "payload_too_large" => "El cuerpo es demasiado grande",
         "internal" => "Error interno",
         _ => "Error",
     }

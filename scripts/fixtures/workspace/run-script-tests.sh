@@ -139,6 +139,32 @@ workspace = true
 EOF
 assert_ok 'api con allowlist problem+json' "${tmp}"
 
+# happy: api declares T-00-12 middleware allowlist
+cat >"${tmp}/vortex-core/crates/api/Cargo.toml" <<'EOF'
+[package]
+name = "api"
+version = "0.1.0"
+edition.workspace = true
+publish = false
+
+[dependencies]
+axum = { workspace = true }
+domain = { path = "../domain" }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tower-http = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "net"] }
+tracing-subscriber = { workspace = true }
+
+[lints]
+workspace = true
+EOF
+assert_ok 'api con allowlist middlewares' "${tmp}"
+
 # unhappy: api declares clap outside allowlist
 cat >"${tmp}/vortex-core/crates/api/Cargo.toml" <<'EOF'
 [package]
