@@ -59,7 +59,7 @@ domain_deps_allowed() {
   return 0
 }
 
-# `vortex` allowlist: [dependencies] config + tracing stack; [dev-dependencies] serde_json only.
+# `vortex` allowlist: [dependencies] config + tracing stack + clap; [dev-dependencies] serde_json only.
 vortex_deps_allowed() {
   crate_toml=$1
 
@@ -90,13 +90,13 @@ vortex_deps_allowed() {
       /^\[dependencies\]/ { indeps = 1; next }
       /^\[/ { indeps = 0 }
       indeps && /^[^[:space:]#]/ { print }
-    ' "${crate_toml}" | grep -v -E '^(toml|serde|thiserror|tracing|tracing-subscriber|tracing-appender)[[:space:]]*=' || true
+    ' "${crate_toml}" | grep -v -E '^(toml|serde|thiserror|tracing|tracing-subscriber|tracing-appender|clap)[[:space:]]*=' || true
   )
   if [ -n "${other_deps}" ]; then
     return 1
   fi
 
-  for dep in toml serde thiserror tracing tracing-subscriber tracing-appender; do
+  for dep in toml serde thiserror tracing tracing-subscriber tracing-appender clap; do
     if grep -E "^${dep}[[:space:]]*=" "${crate_toml}" >/dev/null 2>&1; then
       grep -E "^${dep}[[:space:]]*=" "${crate_toml}" | grep -Eq 'workspace[[:space:]]*=[[:space:]]*true' \
         || return 1
