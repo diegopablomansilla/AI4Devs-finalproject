@@ -205,6 +205,55 @@ fn vortex_serve_starts_and_returns_404() {
     assert_eq!(status.code(), Some(0));
 }
 
+#[test]
+fn vortex_serve_get_health_returns_json() {
+    let bind = ephemeral_bind();
+    let dir = temp_dir();
+    let path = write_config(&dir, &bind);
+    let mut child = Command::new(vortex_bin())
+        .args(["--config", path.to_str().unwrap(), "serve"])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .expect("spawn serve");
+    let addr: SocketAddr = bind.parse().expect("bind addr");
+    let start = Instant::now();
+    let mut ok = false;
+    while start.elapsed() < Duration::from_secs(5) {
+        if let Some((status, ctype, json)) = http_get_problem(addr, "/health") {
+            if status == 200
+                && ctype == "application/json"
+                && json.get("status").and_then(|v| v.as_str()) == Some("ok")
+                && json.get("code").is_none()
+                && json.get("uptimeSeconds").is_some()
+                && json.get("version").is_some()
+                && json["components"]["storage"].is_object()
+                && json["components"]["meilisearch"].is_object()
+                && json["components"]["llm"].is_object()
+                && json["components"]["speech"].is_object()
+                && json["components"]["textEmbeddings"].is_object()
+                && json["components"]["sync"].is_object()
+            {
+                ok = true;
+                break;
+            }
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    #[cfg(unix)]
+    {
+        let _ = Command::new("kill")
+            .args(["-TERM", &child.id().to_string()])
+            .status();
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = child.kill();
+    }
+    let _ = child.wait();
+    assert!(ok, "GET /health must return 200 Health JSON");
+}
+
 #[cfg(unix)]
 fn spawn_serve(_bind: &str, config_path: &Path) -> Child {
     Command::new(vortex_bin())

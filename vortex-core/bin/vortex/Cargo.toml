@@ -6,6 +6,7 @@ publish = false
 
 [dependencies]
 api = { path = "../../crates/api" }
+supervisor = { path = "../../crates/supervisor" }
 toml = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 thiserror = { workspace = true }

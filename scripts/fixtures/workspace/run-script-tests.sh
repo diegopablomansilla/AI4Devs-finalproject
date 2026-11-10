@@ -239,10 +239,35 @@ workspace = true
 EOF
 assert_fails_with 'storage con axum' "${tmp}" 'storage'
 
+# happy: supervisor declares path domain
+cp "${REPO_ROOT}/vortex-core/crates/domain/Cargo.toml" "${tmp}/vortex-core/crates/domain/Cargo.toml"
+cp "${REPO_ROOT}/vortex-core/crates/storage/Cargo.toml" "${tmp}/vortex-core/crates/storage/Cargo.toml"
+cp "${REPO_ROOT}/vortex-core/crates/api/Cargo.toml" "${tmp}/vortex-core/crates/api/Cargo.toml"
+cp "${REPO_ROOT}/vortex-core/crates/supervisor/Cargo.toml" "${tmp}/vortex-core/crates/supervisor/Cargo.toml"
+assert_ok 'supervisor con path domain' "${tmp}"
+
+# unhappy: supervisor declares clap
+cat >"${tmp}/vortex-core/crates/supervisor/Cargo.toml" <<'EOF'
+[package]
+name = "supervisor"
+version = "0.1.0"
+edition.workspace = true
+publish = false
+
+[dependencies]
+domain = { path = "../domain" }
+clap = { workspace = true }
+
+[lints]
+workspace = true
+EOF
+assert_fails_with 'supervisor con clap' "${tmp}" 'supervisor'
+
 # happy: vortex declares config allowlist
 cp "${REPO_ROOT}/vortex-core/crates/api/Cargo.toml" "${tmp}/vortex-core/crates/api/Cargo.toml"
 cp "${REPO_ROOT}/vortex-core/crates/domain/Cargo.toml" "${tmp}/vortex-core/crates/domain/Cargo.toml"
 cp "${REPO_ROOT}/vortex-core/crates/storage/Cargo.toml" "${tmp}/vortex-core/crates/storage/Cargo.toml"
+cp "${REPO_ROOT}/vortex-core/crates/supervisor/Cargo.toml" "${tmp}/vortex-core/crates/supervisor/Cargo.toml"
 cp "${REPO_ROOT}/vortex-core/bin/vortex/Cargo.toml" "${tmp}/vortex-core/bin/vortex/Cargo.toml"
 assert_ok 'vortex con allowlist de configuración' "${tmp}"
 
