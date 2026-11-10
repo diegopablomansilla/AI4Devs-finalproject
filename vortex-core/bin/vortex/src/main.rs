@@ -1,6 +1,7 @@
 //! Vortex Core binary.
 
 mod config;
+mod logging;
 
 use config::ConfigError;
 use std::env;
