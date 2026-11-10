@@ -254,6 +254,87 @@ fn vortex_serve_get_health_returns_json() {
     assert!(ok, "GET /health must return 200 Health JSON");
 }
 
+fn http_get_text(addr: SocketAddr, path: &str) -> Option<(u16, String, String)> {
+    use std::io::{Read, Write};
+    let mut stream = std::net::TcpStream::connect(addr).ok()?;
+    stream.set_read_timeout(Some(Duration::from_secs(2))).ok()?;
+    let host = format!("{}:{}", addr.ip(), addr.port());
+    let request = format!("GET {path} HTTP/1.1\r\nHost: {host}\r\nConnection: close\r\n\r\n");
+    stream.write_all(request.as_bytes()).ok()?;
+    let mut buf = vec![0u8; 65536];
+    let n = stream.read(&mut buf).ok()?;
+    let response = String::from_utf8_lossy(&buf[..n]);
+    let status_line = response.lines().next()?;
+    let status: u16 = status_line.split_whitespace().nth(1)?.parse().ok()?;
+    let mut ctype = String::new();
+    let mut body_start = 0usize;
+    for (i, _) in response.match_indices("\r\n\r\n") {
+        body_start = i + 4;
+        break;
+    }
+    for line in response.lines() {
+        if line.is_empty() {
+            break;
+        }
+        if let Some((name, value)) = line.split_once(':') {
+            if name.trim().eq_ignore_ascii_case("content-type") {
+                ctype = value
+                    .trim()
+                    .split(';')
+                    .next()
+                    .unwrap_or(value.trim())
+                    .to_string();
+            }
+        }
+    }
+    let body = String::from_utf8_lossy(&buf[body_start..n]).into_owned();
+    Some((status, ctype, body))
+}
+
+#[test]
+fn vortex_serve_get_metrics_returns_prometheus() {
+    let bind = ephemeral_bind();
+    let dir = temp_dir();
+    let path = write_config(&dir, &bind);
+    let mut child = Command::new(vortex_bin())
+        .args(["--config", path.to_str().unwrap(), "serve"])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .expect("spawn serve");
+    let addr: SocketAddr = bind.parse().expect("bind addr");
+    let start = Instant::now();
+    let mut ok = false;
+    while start.elapsed() < Duration::from_secs(5) {
+        let _ = http_get_text(addr, "/health");
+        if let Some((status, ctype, body)) = http_get_text(addr, "/metrics") {
+            if status == 200
+                && ctype.starts_with("text/plain")
+                && body.contains("http_request_duration_seconds")
+            {
+                ok = true;
+                break;
+            }
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    #[cfg(unix)]
+    {
+        let _ = Command::new("kill")
+            .args(["-TERM", &child.id().to_string()])
+            .status();
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = child.kill();
+    }
+    let _ = child.wait();
+    assert!(
+        ok,
+        "GET /metrics must return 200 Prometheus text with HTTP histogram"
+    );
+}
+
 #[cfg(unix)]
 fn spawn_serve(_bind: &str, config_path: &Path) -> Child {
     Command::new(vortex_bin())

@@ -1,18 +1,28 @@
-//! API Gateway HTTP shell (T-00-10, T-00-11, T-00-12, T-00-13).
+//! API Gateway HTTP shell (T-00-10, T-00-11, T-00-12, T-00-13, T-00-14).
 
 mod app_json;
 mod error;
 mod gateway;
 mod health;
+mod metrics;
 
 use std::sync::Arc;
 
-use axum::{Router, http::Uri, response::IntoResponse, routing::get};
+use axum::{
+    Router,
+    http::{StatusCode, Uri},
+    middleware,
+    response::IntoResponse,
+    routing::get,
+};
 use domain::HealthReport;
 
 pub use app_json::AppJson;
 pub use error::ApiError;
 pub use gateway::{DEFAULT_BODY_LIMIT, DEFAULT_REQUEST_TIMEOUT, apply_gateway_layers};
+pub use metrics::{
+    BACKUP_FAILURES_TOTAL, OUTBOX_FAILED_TOTAL, OUTBOX_LAG, operation_duration_seconds,
+};
 
 /// Shared application state for HTTP handlers (`Arc<dyn …>` added in later tickets).
 #[derive(Clone)]
@@ -57,9 +67,16 @@ async fn fallback_not_found(uri: Uri) -> impl IntoResponse {
 
 /// Router shell (fallback 404) before gateway layers; used to attach test-only routes.
 pub fn router_shell(state: AppState) -> Router {
+    // Eager init so the first scrape and concurrent tests share one recorder.
+    let _ = metrics::prometheus_handle();
     Router::new()
         .route("/health", get(health::get_health))
+        .route(
+            "/metrics",
+            get(metrics::get_metrics).post(|| async { StatusCode::METHOD_NOT_ALLOWED }),
+        )
         .fallback(fallback_not_found)
+        .layer(middleware::from_fn(metrics::record_http_duration))
         .with_state(state)
 }
 

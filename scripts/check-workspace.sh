@@ -147,7 +147,7 @@ supervisor_deps_allowed() {
   return 0
 }
 
-# `api` allowlist (T-00-11 + T-00-12): [dependencies] axum, domain, serde, serde_json, thiserror, tower-http, tracing; [dev-dependencies] tokio, tracing-subscriber.
+# `api` allowlist (T-00-11 + T-00-12 + T-00-14): [dependencies] axum, domain, serde, serde_json, thiserror, tower-http, tracing, metrics, metrics-exporter-prometheus; [dev-dependencies] tokio, tracing-subscriber.
 api_deps_allowed() {
   crate_toml=$1
 
@@ -178,7 +178,7 @@ api_deps_allowed() {
       /^\[dependencies\]/ { indeps = 1; next }
       /^\[/ { indeps = 0 }
       indeps && /^[^[:space:]#]/ { print }
-    ' "${crate_toml}" | grep -v -E '^(axum|domain|serde|serde_json|thiserror|tower-http|tracing)[[:space:]]*=' || true
+    ' "${crate_toml}" | grep -v -E '^(axum|domain|serde|serde_json|thiserror|tower-http|tracing|metrics|metrics-exporter-prometheus)[[:space:]]*=' || true
   )
   if [ -n "${other_deps}" ]; then
     return 1
