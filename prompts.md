@@ -452,3 +452,31 @@ Incluí happy + unhappy path. Sin git commit hasta archive.
 **Objetivo:**  Tests en verde. Autorizo openspec archive de T-00-01-01.
 Después proponé el commit Conventional Commits con scope (T-00-01-01) y footer Refs: T-00-01, HU-00-01; no lo ejecutes sin mi OK.
 Con el commit listo, proponé también el PR a develop.
+
+#### T-00-09
+
+**Prompt 1:**
+
+**Rol:** Arquitecto/Desarrollador de Software especializado en aplicaciones web Rust/Axum, Meilisearch, SurrealDB y vanilla web.
+**Objetivo:** Ticket T-09-01 de docs/7-tickets.md (ruta MVP §7.5.1).
+Planificá el change OpenSpec para el ticket que te mencione según docs/desarrollo-git-openspec.md y AGENTS.md:
+- Derivá alcance de Hace / No hace / Listo cuando del ticket
+- Incluí TDD: happy path y unhappy path
+- Referencias: docs/7-tickets.md, docs/desarrollo-git-openspec.md §5 (comandos de verificación), openspec/config.yaml
+
+Alcance: solo MVP del curso.
+Crea ramas, openspec propose, no implementes.
+Mostrame el plan y esperá mi OK.
+
+**Prompt 2:**
+
+**Rol:** Arquitecto/Desarrollador de Software especializado en aplicaciones web Rust/Axum, Mailosearch, SurrealDB y vanilla web. 
+**Objetivo:**  OK con la propuesta. openspec apply con TDD (red → green → refactor).
+Incluí happy + unhappy path. Sin git commit hasta archive.
+
+**Prompt 3:**
+
+**Rol:** Arquitecto/Desarrollador de Software especializado en aplicaciones web Rust/Axum, Mailosearch, SurrealDB y vanilla web. 
+**Objetivo:**  Tests en verde. Autorizo openspec archive del ticket.
+Después proponé el commit Conventional Commits con scope (del ticket); no lo ejecutes sin mi OK.
+Con el commit listo, proponé también el PR a develop.
