@@ -421,17 +421,13 @@ No tocar los otros documentos, solo crear 7-tickets.md
 ---
 
 
-
 ### 7. Desarrollo
-
-
 
 #### T-00-01
 
 **Prompt 1:**
 
 **Rol:** Arquitecto/Desarrollador de Software especializado en aplicaciones web Rust/Axum, Mailosearch, SurrealDB y vanilla web. 
-
 **Objetivo:**  Ticket T-00-01 de docs/7-tickets.md (paso 01 de la ruta MVP §7.5.1).Explosioná (inclui en cada spec TDD) el ticket en specs OpenSpec T-00-01-ZZ según docs/desarrollo-git-openspec.md y AGENTS.md:- cada spec ≈ 2 h; 1 change OpenSpec = 1 rama Git = 1 spec- listá ZZ, título y qué parte del Hace / No hace / Listo cuando cubre cada una- orden de ejecución y dependencias entre specs- happy path y unhappy path por spec- ticket padre: T-00-01; HU: HU-00-01- referencia de estructura: docs/2-arquitectura.md §2.8
 Actualiza el doc 6-historias.md con el resultado de la explosion, coloca esta informacion en la seccion de esta HU
 Alcance: solo MVP del curso. No crees ramas, no hagas openspec propose, no implementes.Mostrame el plan y esperá mi OK.
@@ -439,29 +435,20 @@ Alcance: solo MVP del curso. No crees ramas, no hagas openspec propose, no imple
 **Prompt 2:**
 
 **Rol:** Arquitecto/Desarrollador de Software especializado en aplicaciones web Rust/Axum, Mailosearch, SurrealDB y vanilla web. 
-
 **Objetivo:**  OK con la explosión. Arrancamos la primera spec: T-00-01-01.
-
 1. git checkout develop && git pull && git checkout -b T-00-01-01
-
 2. openspec propose para T-00-01-01 (ticket padre T-00-01; Hace / Listo cuando del ticket)
-
 3. Parámachine: no implementes; mostrame la propuesta y esperá mi OK.
 
 **Prompt 3:**
 
 **Rol:** Arquitecto/Desarrollador de Software especializado en aplicaciones web Rust/Axum, Mailosearch, SurrealDB y vanilla web. 
-
 **Objetivo:**  OK con la propuesta. openspec apply T-00-01-01 con TDD (red → green → refactor).
-
 Incluí happy + unhappy path. Sin git commit hasta archive.
 
 **Prompt 4:**
 
 **Rol:** Arquitecto/Desarrollador de Software especializado en aplicaciones web Rust/Axum, Mailosearch, SurrealDB y vanilla web. 
-
 **Objetivo:**  Tests en verde. Autorizo openspec archive de T-00-01-01.
-
 Después proponé el commit Conventional Commits con scope (T-00-01-01) y footer Refs: T-00-01, HU-00-01; no lo ejecutes sin mi OK.
-
 Con el commit listo, proponé también el PR a develop.
