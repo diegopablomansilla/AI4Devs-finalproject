@@ -1,4 +1,8 @@
-//! Crate `storage`: SurrealDB embebido (apertura RocksDB, T-00-08).
+//! Crate `storage`: SurrealDB embebido (apertura RocksDB, T-00-08; migraciones T-00-09).
+
+mod migrate;
+
+pub use migrate::{MIGRATION_0000_SQL, MigrateError, Migration, MigrationRecord, checksum_hex};
 
 use std::path::{Path, PathBuf};
 
