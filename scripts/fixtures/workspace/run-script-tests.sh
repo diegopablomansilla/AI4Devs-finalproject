@@ -126,6 +126,7 @@ publish = false
 [dependencies]
 surrealdb = { workspace = true, default-features = false, features = ["kv-rocksdb"] }
 thiserror = { workspace = true }
+sha2 = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

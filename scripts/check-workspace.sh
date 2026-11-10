@@ -59,7 +59,7 @@ domain_deps_allowed() {
   return 0
 }
 
-# `storage` allowlist: [dependencies] surrealdb + thiserror; [dev-dependencies] tokio only.
+# `storage` allowlist: [dependencies] surrealdb + thiserror + sha2; [dev-dependencies] tokio only.
 storage_deps_allowed() {
   crate_toml=$1
 
@@ -90,7 +90,7 @@ storage_deps_allowed() {
       /^\[dependencies\]/ { indeps = 1; next }
       /^\[/ { indeps = 0 }
       indeps && /^[^[:space:]#]/ { print }
-    ' "${crate_toml}" | grep -v -E '^(surrealdb|thiserror)[[:space:]]*=' || true
+    ' "${crate_toml}" | grep -v -E '^(surrealdb|thiserror|sha2)[[:space:]]*=' || true
   )
   if [ -n "${other_deps}" ]; then
     return 1
@@ -105,6 +105,11 @@ storage_deps_allowed() {
 
   if grep -E '^thiserror[[:space:]]*=' "${crate_toml}" >/dev/null 2>&1; then
     grep -E '^thiserror[[:space:]]*=' "${crate_toml}" | grep -Eq 'workspace[[:space:]]*=[[:space:]]*true' \
+      || return 1
+  fi
+
+  if grep -E '^sha2[[:space:]]*=' "${crate_toml}" >/dev/null 2>&1; then
+    grep -E '^sha2[[:space:]]*=' "${crate_toml}" | grep -Eq 'workspace[[:space:]]*=[[:space:]]*true' \
       || return 1
   fi
   return 0
@@ -245,6 +250,7 @@ check_pin metrics-exporter-prometheus 0.18.3
 check_pin rcgen 0.14.10
 check_pin clap 4.6.7
 check_pin toml 1.2.1
+check_pin sha2 0.10.9
 
 # --- cada lib: lints heredados, sin dependencias ---
 for member in ${REQUIRED_MEMBERS}; do
