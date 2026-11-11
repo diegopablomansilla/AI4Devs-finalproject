@@ -3,7 +3,7 @@
 use domain::Categoria;
 use domain::{
     CategoryRepo, ConflictCode, DomainCode, DomainError, Id, InvalidInputCode, MAX_DEPTH,
-    NewCategoria,
+    NewCategoria, UpdateCategoria,
 };
 
 use storage::testing::test_db;
@@ -336,4 +336,225 @@ async fn category_repo_rejects_depth_five() {
         db.record_count("categoria").await.expect("count"),
         MAX_DEPTH as usize
     );
+}
+
+// --- T-02-04 CategoryRepo::update ---
+
+async fn create_fijaciones_pernos_hex(db: &storage::Db) -> (Categoria, Categoria, Categoria) {
+    let fijaciones = create_fijaciones(db).await;
+    let pernos = repo(db)
+        .create(NewCategoria {
+            nombre: "Pernos".into(),
+            slug: None,
+            padre: Some(fijaciones.id.clone()),
+        })
+        .await
+        .expect("Pernos");
+    let hex = repo(db)
+        .create(NewCategoria {
+            nombre: "Hex".into(),
+            slug: None,
+            padre: Some(pernos.id.clone()),
+        })
+        .await
+        .expect("Hex");
+    (fijaciones, pernos, hex)
+}
+
+#[tokio::test]
+async fn category_repo_renames_three_level_branch_ruta() {
+    let db = test_db().await;
+    let (fijaciones, _pernos, _hex) = create_fijaciones_pernos_hex(&db).await;
+    let updated = repo(&db)
+        .update(UpdateCategoria {
+            id: fijaciones.id.clone(),
+            nombre: "Tornillería".into(),
+            padre: None,
+        })
+        .await
+        .expect("rename branch");
+    assert_eq!(updated.ruta, vec!["Tornillería"]);
+    let pernos = repo(&db)
+        .get(
+            repo(&db)
+                .list_all()
+                .await
+                .expect("list")
+                .into_iter()
+                .find(|c| c.nombre == "Pernos")
+                .expect("pernos")
+                .id,
+        )
+        .await
+        .expect("pernos");
+    assert_eq!(pernos.ruta, vec!["Tornillería", "Pernos"]);
+    let hex = repo(&db)
+        .get(
+            repo(&db)
+                .list_all()
+                .await
+                .expect("list")
+                .into_iter()
+                .find(|c| c.nombre == "Hex")
+                .expect("hex")
+                .id,
+        )
+        .await
+        .expect("hex");
+    assert_eq!(hex.ruta, vec!["Tornillería", "Pernos", "Hex"]);
+}
+
+#[tokio::test]
+async fn category_repo_update_emits_outbox_per_affected() {
+    let db = test_db().await;
+    let (fijaciones, _, _) = create_fijaciones_pernos_hex(&db).await;
+    let before = db.record_count("outbox").await.expect("outbox");
+    repo(&db)
+        .update(UpdateCategoria {
+            id: fijaciones.id,
+            nombre: "Tornillería".into(),
+            padre: None,
+        })
+        .await
+        .expect("rename");
+    assert_eq!(db.record_count("outbox").await.expect("outbox"), before + 3);
+}
+
+#[tokio::test]
+async fn category_repo_move_under_descendant_is_category_cycle() {
+    let db = test_db().await;
+    let (fijaciones, pernos, _) = create_fijaciones_pernos_hex(&db).await;
+    let before = db.record_count("outbox").await.expect("outbox");
+    let cat_before = db.record_count("categoria").await.expect("count");
+    let err = repo(&db)
+        .update(UpdateCategoria {
+            id: fijaciones.id,
+            nombre: "Fijaciones".into(),
+            padre: Some(pernos.id),
+        })
+        .await
+        .expect_err("cycle");
+    assert_eq!(err.code(), DomainCode::CategoryCycle);
+    assert_eq!(
+        db.record_count("categoria").await.expect("count"),
+        cat_before
+    );
+    assert_eq!(db.record_count("outbox").await.expect("outbox"), before);
+}
+
+#[tokio::test]
+async fn category_repo_move_under_self_is_category_cycle() {
+    let db = test_db().await;
+    let (fijaciones, _, _) = create_fijaciones_pernos_hex(&db).await;
+    let err = repo(&db)
+        .update(UpdateCategoria {
+            id: fijaciones.id.clone(),
+            nombre: "Fijaciones".into(),
+            padre: Some(fijaciones.id),
+        })
+        .await
+        .expect_err("self cycle");
+    assert_eq!(err.code(), DomainCode::CategoryCycle);
+}
+
+#[tokio::test]
+async fn category_repo_update_unknown_id_is_not_found() {
+    let db = test_db().await;
+    let missing = Id::<Categoria>::generate();
+    let err = repo(&db)
+        .update(UpdateCategoria {
+            id: missing,
+            nombre: "X".into(),
+            padre: None,
+        })
+        .await
+        .expect_err("not found");
+    assert_eq!(err.code(), DomainCode::NotFound);
+}
+
+#[tokio::test]
+async fn category_repo_update_missing_padre_is_not_found() {
+    let db = test_db().await;
+    let (fijaciones, _, _) = create_fijaciones_pernos_hex(&db).await;
+    let ghost = Id::<Categoria>::generate();
+    let out_before = db.record_count("outbox").await.expect("outbox");
+    let err = repo(&db)
+        .update(UpdateCategoria {
+            id: fijaciones.id,
+            nombre: "Fijaciones".into(),
+            padre: Some(ghost),
+        })
+        .await
+        .expect_err("missing padre");
+    assert_eq!(err.code(), DomainCode::NotFound);
+    assert_eq!(db.record_count("outbox").await.expect("outbox"), out_before);
+}
+
+#[tokio::test]
+async fn category_repo_move_rejects_depth_five() {
+    let db = test_db().await;
+    let solo = repo(&db)
+        .create(NewCategoria {
+            nombre: "Suelta".into(),
+            slug: None,
+            padre: None,
+        })
+        .await
+        .expect("suelta");
+    let mut padre: Option<Id<Categoria>> = None;
+    for name in ["B1", "B2", "B3", "B4"] {
+        let cat = repo(&db)
+            .create(NewCategoria {
+                nombre: name.into(),
+                slug: None,
+                padre,
+            })
+            .await
+            .expect(name);
+        padre = Some(cat.id);
+    }
+    let depth4 = padre.expect("b4");
+    let err = repo(&db)
+        .update(UpdateCategoria {
+            id: solo.id,
+            nombre: "Suelta".into(),
+            padre: Some(depth4),
+        })
+        .await
+        .expect_err("depth");
+    assert!(matches!(
+        err,
+        DomainError::InvalidInput {
+            code: InvalidInputCode::InvalidInput,
+            ..
+        }
+    ));
+}
+
+#[tokio::test]
+async fn category_repo_rename_rejects_duplicate_slug() {
+    let db = test_db().await;
+    repo(&db)
+        .create(NewCategoria {
+            nombre: "Tornillería".into(),
+            slug: None,
+            padre: None,
+        })
+        .await
+        .expect("tornilleria");
+    let fijaciones = create_fijaciones(&db).await;
+    let err = repo(&db)
+        .update(UpdateCategoria {
+            id: fijaciones.id,
+            nombre: "Tornillería".into(),
+            padre: None,
+        })
+        .await
+        .expect_err("duplicate");
+    assert!(matches!(
+        err,
+        DomainError::Conflict {
+            code: ConflictCode::DuplicateSlug
+        }
+    ));
 }

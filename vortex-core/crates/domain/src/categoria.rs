@@ -195,6 +195,14 @@ pub struct NewCategoria {
     pub padre: Option<Id<Categoria>>,
 }
 
+/// Input for `CategoryRepo::update` (T-02-04): full nombre + padre; adapter recalculates branch.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UpdateCategoria {
+    pub id: Id<Categoria>,
+    pub nombre: String,
+    pub padre: Option<Id<Categoria>>,
+}
+
 pub trait CategoryRepo {
     fn create(
         &self,
@@ -205,6 +213,11 @@ pub trait CategoryRepo {
     -> impl Future<Output = Result<Categoria, DomainError>> + Send;
 
     fn list_all(&self) -> impl Future<Output = Result<Vec<Categoria>, DomainError>> + Send;
+
+    fn update(
+        &self,
+        input: UpdateCategoria,
+    ) -> impl Future<Output = Result<Categoria, DomainError>> + Send;
 }
 
 fn map_spanish_char(ch: char) -> Option<char> {
@@ -484,11 +497,30 @@ mod tests {
         fn list_all(&self) -> impl Future<Output = Result<Vec<Categoria>, DomainError>> + Send {
             async { Ok(Vec::new()) }
         }
+
+        fn update(
+            &self,
+            _input: UpdateCategoria,
+        ) -> impl Future<Output = Result<Categoria, DomainError>> + Send {
+            async { Err(DomainError::unavailable(UnavailableCode::Unavailable)) }
+        }
     }
 
     #[test]
     fn category_repo_trait_exposes_create_get_list_all() {
         fn assert_repo<R: CategoryRepo>(_r: &R) {}
         assert_repo(&DummyCategoryRepo);
+    }
+
+    #[test]
+    fn category_repo_trait_exposes_update() {
+        fn assert_update<R: CategoryRepo>(r: &R) {
+            let _fut = r.update(UpdateCategoria {
+                id: Id::generate(),
+                nombre: "x".into(),
+                padre: None,
+            });
+        }
+        assert_update(&DummyCategoryRepo);
     }
 }

@@ -9,8 +9,8 @@ pub mod outbox;
 pub mod timestamp;
 
 pub use categoria::{
-    Categoria, CategoriaDraft, CategoryRepo, MAX_DEPTH, NewCategoria, Slug, category_depth,
-    reject_cycle, would_form_cycle,
+    Categoria, CategoriaDraft, CategoryRepo, MAX_DEPTH, NewCategoria, Slug, UpdateCategoria,
+    category_depth, reject_cycle, would_form_cycle,
 };
 pub use decimal::{Decimal, InvalidDecimal};
 pub use error::{
