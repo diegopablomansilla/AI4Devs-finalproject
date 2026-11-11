@@ -60,6 +60,28 @@ describe("dom stub focus", () => {
   });
 });
 
+describe("dom stub product card selectors", () => {
+  test("querySelector data-field en shadow", () => {
+    const host = document.createElement("div");
+    const root = host.attachShadow({ mode: "open" });
+    const sku = document.createElement("span");
+    sku.setAttribute("data-field", "sku");
+    sku.textContent = "SKU-1";
+    root.appendChild(sku);
+    assert.ok(root.querySelector('[data-field="sku"]'));
+    assert.equal(root.querySelector('[data-field="sku"]').textContent, "SKU-1");
+  });
+
+  test("host querySelector slot name", () => {
+    const host = document.createElement("div");
+    const slotted = document.createElement("span");
+    slotted.setAttribute("slot", "name");
+    slotted.textContent = "Título";
+    host.appendChild(slotted);
+    assert.equal(host.querySelector('[slot="name"]'), slotted);
+  });
+});
+
 describe("vx components", () => {
   before(async () => {
     const sharedUrl = new URL(
@@ -231,5 +253,146 @@ describe("vx components", () => {
     await toast.connectedCallback();
     const live = toast.shadowRoot.querySelector("[aria-live]");
     assert.equal(live.getAttribute("aria-live"), "polite");
+  });
+
+  test("components_html_catalog_loads_product_card_variants", () => {
+    const html = read(COMPONENTS_HTML);
+    assert.match(html, /<vx-product-card[^>]*variant="full"/);
+    assert.match(html, /<vx-product-card[^>]*variant="compact"/);
+  });
+
+  async function mountProductCard(attrs = {}, slotNameChild = null) {
+    const el = customElements._create("vx-product-card");
+    for (const [k, v] of Object.entries(attrs)) {
+      el.setAttribute(k, v);
+    }
+    if (slotNameChild) {
+      const span = document.createElement("span");
+      span.setAttribute("slot", "name");
+      span.textContent = slotNameChild;
+      el.appendChild(span);
+    }
+    await el.connectedCallback();
+    return el;
+  }
+
+  test("vx_product_card_full_renders_search_hit_fields", async () => {
+    const el = await mountProductCard({
+      variant: "full",
+      sku: "PER-M8X40-ZN",
+      name: "Perno hexagonal M8",
+      brand: "Fixser",
+      price: "120.00",
+      stock: "40",
+      location: "P3 · E-B · 12",
+      "image-url": "https://example.test/perno.jpg",
+    });
+    const root = el.shadowRoot;
+    assert.ok(root.querySelector('[data-field="sku"]')?.textContent.includes("PER-M8X40-ZN"));
+    assert.ok(root.querySelector('[data-field="name"]')?.textContent.includes("Perno"));
+    assert.ok(root.querySelector('[data-field="brand"]'));
+    assert.ok(root.querySelector('[data-field="price"]'));
+    assert.ok(root.querySelector('[data-field="stock"]'));
+    assert.ok(root.querySelector('[data-field="location"]'));
+    const img = root.querySelector("img");
+    assert.ok(img);
+    assert.equal(img.getAttribute("src"), "https://example.test/perno.jpg");
+    assert.equal(adoptHasSheets(el), true);
+  });
+
+  test("vx_product_card_compact_hides_location_and_image", async () => {
+    const el = await mountProductCard({
+      variant: "compact",
+      sku: "AR-001",
+      name: "Arandela",
+      price: "15.00",
+      stock: "3",
+      location: "P1 · A · 01",
+      "image-url": "https://example.test/ar.jpg",
+    });
+    const root = el.shadowRoot;
+    assert.ok(root.querySelector('[data-field="sku"]'));
+    assert.ok(root.querySelector('[data-field="price"]'));
+    assert.equal(root.querySelector('[data-field="location"]'), null);
+    assert.equal(root.querySelector("img"), null);
+    assert.equal(root.querySelector('[data-field="image-placeholder"]'), null);
+  });
+
+  test("vx_product_card_zero_stock_sets_out_of_stock", async () => {
+    const el = await mountProductCard({
+      sku: "SIN-1",
+      name: "Agotado",
+      price: "10",
+      stock: "0",
+    });
+    assert.equal(el.hasAttribute("data-out-of-stock"), true);
+    const root = el.shadowRoot;
+    const label = root.querySelector('[data-field="out-of-stock-label"]');
+    assert.ok(label);
+    assert.match(label.textContent, /Sin stock/i);
+  });
+
+  test("vx_product_card_name_slot_projects_highlight", async () => {
+    const el = await mountProductCard(
+      { sku: "X", price: "1", stock: "1", name: "No usar" },
+      "<mark>Perno</mark> M8",
+    );
+    const nameEl = el.shadowRoot.querySelector('[data-field="name"]');
+    assert.ok(nameEl.textContent.includes("<mark>Perno</mark>"));
+    assert.ok(!nameEl.textContent.includes("No usar"));
+  });
+
+  test("vx_product_card_html_in_name_attr_is_text", async () => {
+    const el = await mountProductCard({
+      name: '<img src=x onerror=alert(1)>',
+      sku: "X",
+      price: "1",
+      stock: "1",
+    });
+    const nameEl = el.shadowRoot.querySelector('[data-field="name"]');
+    assert.match(nameEl.textContent, /<img/);
+    assert.equal(el.shadowRoot.querySelector("img"), null);
+  });
+
+  test("vx_product_card_unknown_variant_falls_back_to_full", async () => {
+    const el = await mountProductCard({
+      variant: "hero",
+      sku: "X",
+      name: "Test",
+      price: "1",
+      stock: "1",
+      location: "Pasillo 1",
+    });
+    assert.ok(el.shadowRoot.querySelector('[data-field="location"]'));
+  });
+
+  test("vx_product_card_missing_image_shows_placeholder", async () => {
+    const el = await mountProductCard({
+      variant: "full",
+      sku: "X",
+      name: "Sin foto",
+      price: "1",
+      stock: "1",
+    });
+    assert.equal(el.shadowRoot.querySelector("img"), null);
+    assert.ok(el.shadowRoot.querySelector('[data-field="image-placeholder"]'));
+  });
+
+  test("vx_product_card_zero_stock_without_marker_fails", async () => {
+    const el = await mountProductCard({
+      sku: "Z",
+      name: "Cero",
+      price: "1",
+      stock: "0.00",
+    });
+    assert.equal(
+      el.hasAttribute("data-out-of-stock"),
+      true,
+      "stock 0 exige data-out-of-stock en el host",
+    );
+    assert.ok(
+      el.shadowRoot.querySelector('[data-field="out-of-stock-label"]'),
+      "stock 0 exige texto Sin stock",
+    );
   });
 });
