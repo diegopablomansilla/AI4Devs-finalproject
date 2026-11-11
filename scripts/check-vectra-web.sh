@@ -1,5 +1,5 @@
 #!/usr/bin/env sh
-# Verifica vectra-web: árbol, tokens (T-01-02), router (T-01-01), componentes (T-01-03), overlays (T-01-04), product-card (T-01-05).
+# Verifica vectra-web: árbol, tokens (T-01-02), router (T-01-01), componentes (T-01-03), overlays (T-01-04), product-card (T-01-05), api (T-01-06).
 set -eu
 
 if [ -n "${CHECK_ROOT:-}" ]; then
@@ -23,6 +23,7 @@ INDEX="${WEB}/index.html"
 [ -d "${WEB}/js/components" ] || fail 'vectra_web_tree_includes_css_app_router_components: falta vectra-web/js/components/'
 [ -f "${WEB}/js/app.js" ] || fail 'vectra_web_tree_includes_css_app_router_components: falta vectra-web/js/app.js'
 [ -f "${WEB}/js/router.js" ] || fail 'vectra_web_tree_includes_css_app_router_components: falta vectra-web/js/router.js'
+[ -f "${WEB}/js/api.js" ] || fail 'api_tree_includes_api_js: falta vectra-web/js/api.js'
 
 COMPONENTS_DIR="${WEB}/js/components"
 for rel in shared.js index.js vx-button.js vx-field.js vx-chip.js; do
@@ -93,12 +94,14 @@ fi
 ROUTER_TEST="${ROOT}/scripts/fixtures/vectra-web/router.test.mjs"
 TOKENS_TEST="${ROOT}/scripts/fixtures/vectra-web/tokens.test.mjs"
 COMPONENTS_TEST="${ROOT}/scripts/fixtures/vectra-web/components.test.mjs"
+API_TEST="${ROOT}/scripts/fixtures/vectra-web/api.test.mjs"
 [ -f "${ROUTER_TEST}" ] || fail 'falta scripts/fixtures/vectra-web/router.test.mjs'
 [ -f "${TOKENS_TEST}" ] || fail 'falta scripts/fixtures/vectra-web/tokens.test.mjs'
 [ -f "${COMPONENTS_TEST}" ] || fail 'falta scripts/fixtures/vectra-web/components.test.mjs'
+[ -f "${API_TEST}" ] || fail 'falta scripts/fixtures/vectra-web/api.test.mjs'
 
 if ! command -v node >/dev/null 2>&1; then
   fail 'node no está en PATH (se requiere para tests del router)'
 fi
 
-node --test "${ROUTER_TEST}" "${TOKENS_TEST}" "${COMPONENTS_TEST}"
+node --test "${ROUTER_TEST}" "${TOKENS_TEST}" "${COMPONENTS_TEST}" "${API_TEST}"
