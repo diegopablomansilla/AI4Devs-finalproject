@@ -247,6 +247,36 @@ describe("router_admin_header_has_data_health", () => {
   });
 });
 
+const OFFLINE_COPY = "Sin conexión con el Nodo Maestro";
+
+describe("router_operator_header_has_offline_banner", () => {
+  test("encabezado operador con data-offline-banner y aria-live assertive", () => {
+    const { outlet, window, document } = createTestDom("#/");
+    startRouter({ window, document, outlet });
+    const html = outlet.innerHTML;
+    assert.match(html, /data-offline-banner\b/);
+    assert.match(html, /aria-live="assertive"/);
+    assert.match(html, new RegExp(OFFLINE_COPY));
+    const headerStart = html.indexOf("vx-operator-header");
+    const headerSlice = html.slice(headerStart, headerStart + 800);
+    assert.match(headerSlice, /data-offline-banner\b/);
+  });
+});
+
+describe("router_admin_header_has_offline_banner", () => {
+  test("encabezado admin con data-offline-banner y aria-live assertive", () => {
+    const { outlet, window, document } = createTestDom("#/admin/productos");
+    startRouter({ window, document, outlet });
+    const html = outlet.innerHTML;
+    assert.match(html, /data-offline-banner\b/);
+    assert.match(html, /aria-live="assertive"/);
+    assert.match(html, new RegExp(OFFLINE_COPY));
+    const headerStart = html.indexOf("vx-admin-header");
+    const headerSlice = html.slice(headerStart, headerStart + 800);
+    assert.match(headerSlice, /data-offline-banner\b/);
+  });
+});
+
 describe("router_admin_view_has_no_omnibox", () => {
   test("#/admin/productos sin vx-omnibox", () => {
     const { outlet, window, document } = createTestDom("#/admin/productos");

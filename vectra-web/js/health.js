@@ -65,6 +65,20 @@ export function statusLabel(status) {
  * @param {Document} doc
  * @param {{ status: string, capabilities: { ai: boolean, voice: boolean, vision: boolean } }} snapshot
  */
+/**
+ * @param {Document} doc
+ * @param {boolean} show
+ */
+export function applyOfflineBanner(doc, show) {
+  for (const el of doc.querySelectorAll("[data-offline-banner]")) {
+    if (show) {
+      el.removeAttribute("hidden");
+    } else {
+      el.setAttribute("hidden", "");
+    }
+  }
+}
+
 export function applyHealthUi(doc, snapshot) {
   const label = statusLabel(snapshot.status);
   for (const el of doc.querySelectorAll("[data-health]")) {
@@ -95,25 +109,31 @@ export function applyHealthUi(doc, snapshot) {
 /**
  * @param {(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>} fetchFn
  */
+/**
+ * @returns {Promise<{ snapshot: ReturnType<typeof capabilitiesFromHealth>, offline: boolean }>}
+ */
 async function fetchHealthSnapshot(fetchFn) {
   try {
     const response = await fetchFn("/health");
     const text = await response.text();
     if (text === "") {
-      return capabilitiesFromHealth(null);
+      return { snapshot: capabilitiesFromHealth(null), offline: false };
     }
     let json;
     try {
       json = JSON.parse(text);
     } catch {
-      return capabilitiesFromHealth(null);
+      return { snapshot: capabilitiesFromHealth(null), offline: false };
     }
     if (response.status !== 200 && response.status !== 503) {
-      return capabilitiesFromHealth(null);
+      return { snapshot: capabilitiesFromHealth(null), offline: false };
     }
-    return capabilitiesFromHealth(json);
+    return { snapshot: capabilitiesFromHealth(json), offline: false };
   } catch {
-    return capabilitiesFromHealth(null);
+    return {
+      snapshot: capabilitiesFromHealth(null),
+      offline: true,
+    };
   }
 }
 
@@ -137,9 +157,11 @@ export function startHealth({
 }) {
   /** @type {{ status: string, capabilities: { textSearch: boolean, ai: boolean, voice: boolean, vision: boolean } }} */
   let lastSnapshot = capabilitiesFromHealth(null);
+  let lastOffline = false;
 
-  const publish = (snapshot) => {
+  const publish = (snapshot, offline) => {
     lastSnapshot = snapshot;
+    lastOffline = offline;
     doc.dispatchEvent(
       new CustomEvent("vx-health", {
         bubbles: true,
@@ -148,12 +170,13 @@ export function startHealth({
       }),
     );
     applyHealthUi(doc, snapshot);
+    applyOfflineBanner(doc, offline);
   };
 
   const refresh = () => {
     void (async () => {
-      const snapshot = await fetchHealthSnapshot(fetchFn);
-      publish(snapshot);
+      const { snapshot, offline } = await fetchHealthSnapshot(fetchFn);
+      publish(snapshot, offline);
     })();
   };
 
@@ -173,6 +196,7 @@ export function startHealth({
 
   const onHashChange = () => {
     applyHealthUi(doc, lastSnapshot);
+    applyOfflineBanner(doc, lastOffline);
   };
 
   window.addEventListener("focus", onFocus);

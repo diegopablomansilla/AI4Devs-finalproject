@@ -1,5 +1,5 @@
 #!/usr/bin/env sh
-# Verifica vectra-web: árbol, tokens (T-01-02), router (T-01-01), componentes (T-01-03), overlays (T-01-04), product-card (T-01-05), api (T-01-06), errors (T-01-07), omnibox foco (T-01-08), modos y vx-query (T-01-09), keyboard-list (T-01-10), admin shell y terminal (T-01-11), health y capacidades (T-01-12), manifest PWA (T-01-13).
+# Verifica vectra-web: árbol, tokens (T-01-02), router (T-01-01), componentes (T-01-03), overlays (T-01-04), product-card (T-01-05), api (T-01-06), errors (T-01-07), omnibox foco (T-01-08), modos y vx-query (T-01-09), keyboard-list (T-01-10), admin shell y terminal (T-01-11), health y capacidades (T-01-12), manifest PWA (T-01-13), Service Worker y aviso offline (T-01-14).
 set -eu
 
 if [ -n "${CHECK_ROOT:-}" ]; then
@@ -28,6 +28,7 @@ INDEX="${WEB}/index.html"
 [ -f "${WEB}/js/keyboard-list.js" ] || fail 'keyboard_list_tree_includes_module: falta vectra-web/js/keyboard-list.js'
 [ -f "${WEB}/js/health.js" ] || fail 'health_tree_includes_health_js: falta vectra-web/js/health.js'
 [ -f "${WEB}/manifest.webmanifest" ] || fail 'manifest_tree_includes_webmanifest: falta vectra-web/manifest.webmanifest'
+[ -f "${WEB}/sw.js" ] || fail 'sw_tree_includes_sw_js: falta vectra-web/sw.js'
 
 for icon in icon-192.png icon-512.png icon-192-maskable.png icon-512-maskable.png; do
   [ -f "${WEB}/icons/${icon}" ] || fail "manifest_tree_includes_png_icons: falta vectra-web/icons/${icon}"
@@ -122,6 +123,7 @@ KEYBOARD_LIST_TEST="${ROOT}/scripts/fixtures/vectra-web/keyboard-list.test.mjs"
 ADMIN_TEST="${ROOT}/scripts/fixtures/vectra-web/admin.test.mjs"
 HEALTH_TEST="${ROOT}/scripts/fixtures/vectra-web/health.test.mjs"
 MANIFEST_TEST="${ROOT}/scripts/fixtures/vectra-web/manifest.test.mjs"
+SW_TEST="${ROOT}/scripts/fixtures/vectra-web/sw.test.mjs"
 [ -f "${ROUTER_TEST}" ] || fail 'falta scripts/fixtures/vectra-web/router.test.mjs'
 [ -f "${TOKENS_TEST}" ] || fail 'falta scripts/fixtures/vectra-web/tokens.test.mjs'
 [ -f "${COMPONENTS_TEST}" ] || fail 'falta scripts/fixtures/vectra-web/components.test.mjs'
@@ -132,9 +134,10 @@ MANIFEST_TEST="${ROOT}/scripts/fixtures/vectra-web/manifest.test.mjs"
 [ -f "${ADMIN_TEST}" ] || fail 'falta scripts/fixtures/vectra-web/admin.test.mjs'
 [ -f "${HEALTH_TEST}" ] || fail 'falta scripts/fixtures/vectra-web/health.test.mjs'
 [ -f "${MANIFEST_TEST}" ] || fail 'falta scripts/fixtures/vectra-web/manifest.test.mjs'
+[ -f "${SW_TEST}" ] || fail 'falta scripts/fixtures/vectra-web/sw.test.mjs'
 
 if ! command -v node >/dev/null 2>&1; then
   fail 'node no está en PATH (se requiere para tests del router)'
 fi
 
-node --test "${ROUTER_TEST}" "${TOKENS_TEST}" "${COMPONENTS_TEST}" "${API_TEST}" "${ERRORS_TEST}" "${OMNIBOX_TEST}" "${KEYBOARD_LIST_TEST}" "${ADMIN_TEST}" "${HEALTH_TEST}" "${MANIFEST_TEST}"
+node --test "${ROUTER_TEST}" "${TOKENS_TEST}" "${COMPONENTS_TEST}" "${API_TEST}" "${ERRORS_TEST}" "${OMNIBOX_TEST}" "${KEYBOARD_LIST_TEST}" "${ADMIN_TEST}" "${HEALTH_TEST}" "${MANIFEST_TEST}" "${SW_TEST}"

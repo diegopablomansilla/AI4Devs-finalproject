@@ -118,7 +118,21 @@ pub async fn get_sw_js(State(state): State<AppState>) -> Response {
     if !path.is_file() {
         return not_found("/sw.js");
     }
-    file_response(&path, CACHE_NO_STORE)
+    let text = match std::fs::read_to_string(&path) {
+        Ok(s) => s,
+        Err(_) => return not_found("/sw.js"),
+    };
+    let body = text.replace(PLACEHOLDER_VERSION, &state.version());
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static("text/javascript; charset=utf-8"),
+    );
+    headers.insert(
+        header::CACHE_CONTROL,
+        HeaderValue::from_static(CACHE_NO_STORE),
+    );
+    (StatusCode::OK, headers, body).into_response()
 }
 
 pub async fn get_manifest(State(state): State<AppState>) -> Response {
