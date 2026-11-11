@@ -67,6 +67,31 @@
       </div>
     </section>
 
+    <section aria-labelledby="sec-keyboard-list">
+      <h2 id="sec-keyboard-list">Lista por teclado</h2>
+      <p>Flechas, Enter (abrir panel) y Escape (volver al Omnibox).</p>
+      <div id="demo-keyboard-list" class="vx-surface" role="listbox" tabindex="0">
+        <vx-product-card
+          variant="full"
+          sku="TOR-M6X20"
+          name="Tornillo autoperforante M6 x 20"
+          brand="Fixser"
+          price="89.00"
+          stock="25"
+          location="P1 · A-02"
+        ></vx-product-card>
+        <vx-product-card
+          variant="full"
+          sku="PER-M8X40-ZN"
+          name="Perno hexagonal M8 x 40 zincado"
+          brand="Tornip"
+          price="120.00"
+          stock="8"
+          location="P3 · E-B · 12"
+        ></vx-product-card>
+      </div>
+    </section>
+
     <section aria-labelledby="sec-product-card">
       <h2 id="sec-product-card">Tarjetas de producto</h2>
       <vx-product-card
@@ -110,6 +135,8 @@
 
     <script type="module" src="../js/components/index.js"></script>
     <script type="module">
+      import { bindKeyboardList } from "../js/keyboard-list.js";
+
       const modal = document.getElementById("demo-modal");
       const panel = document.getElementById("demo-panel");
       document.getElementById("btn-open-modal")?.addEventListener("click", (e) => {
@@ -118,6 +145,28 @@
       document.getElementById("btn-open-panel")?.addEventListener("click", (e) => {
         panel?.show(e.currentTarget);
       });
+
+      const list = document.getElementById("demo-keyboard-list");
+      const omnibox = document.querySelector("section#sec-omnibox > vx-omnibox");
+      const omniboxInput = omnibox?.shadowRoot?.querySelector("input") ?? null;
+      if (list && panel) {
+        const controllers = [list];
+        if (omniboxInput) {
+          controllers.push(omniboxInput);
+        }
+        bindKeyboardList({
+          list,
+          getItems: () => [...list.querySelectorAll("vx-product-card")],
+          controllers,
+          restoreFocus: omnibox ?? null,
+          onOpen: (item) => {
+            const name = item.getAttribute("name") ?? "Producto";
+            const sku = item.getAttribute("sku") ?? "";
+            panel.textContent = sku ? `${name} (${sku})` : name;
+            panel.show(item);
+          },
+        });
+      }
     </script>
   </body>
 </html>
