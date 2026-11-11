@@ -219,6 +219,34 @@ describe("router_operator_layout_has_omnibox_results_panel", () => {
   });
 });
 
+describe("router_operator_header_has_data_health", () => {
+  test("encabezado operador con data-health y aria-live", () => {
+    const { outlet, window, document } = createTestDom("#/");
+    startRouter({ window, document, outlet });
+    const html = outlet.innerHTML;
+    assert.match(html, /data-health\b/);
+    assert.match(html, /aria-live="polite"/);
+    const headerStart = html.indexOf("vx-operator-header");
+    assert.ok(headerStart >= 0);
+    const headerSlice = html.slice(headerStart, headerStart + 600);
+    assert.match(headerSlice, /data-health\b/);
+  });
+});
+
+describe("router_admin_header_has_data_health", () => {
+  test("encabezado admin con data-health y aria-live", () => {
+    const { outlet, window, document } = createTestDom("#/admin/productos");
+    startRouter({ window, document, outlet });
+    const html = outlet.innerHTML;
+    assert.match(html, /data-health\b/);
+    assert.match(html, /aria-live="polite"/);
+    const headerStart = html.indexOf("vx-admin-header");
+    assert.ok(headerStart >= 0);
+    const headerSlice = html.slice(headerStart, headerStart + 600);
+    assert.match(headerSlice, /data-health\b/);
+  });
+});
+
 describe("router_admin_view_has_no_omnibox", () => {
   test("#/admin/productos sin vx-omnibox", () => {
     const { outlet, window, document } = createTestDom("#/admin/productos");

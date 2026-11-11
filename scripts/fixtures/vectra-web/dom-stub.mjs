@@ -186,7 +186,20 @@ class FakeNode extends EventTargetStub {
     }
   }
 
+  _notifyAttributeChanged(name, oldValue, newValue) {
+    if (typeof this.attributeChangedCallback !== "function") {
+      return;
+    }
+    const ctor = /** @type {{ observedAttributes?: string[] }} */ (this.constructor);
+    const observed = ctor.observedAttributes;
+    if (!observed || !observed.includes(name)) {
+      return;
+    }
+    this.attributeChangedCallback(name, oldValue, newValue);
+  }
+
   setAttribute(name, value) {
+    const oldValue = this.hasAttribute(name) ? this.getAttribute(name) : null;
     if (name === "disabled" && (value === "" || value === "disabled")) {
       this.disabled = true;
     }
@@ -194,6 +207,10 @@ class FakeNode extends EventTargetStub {
       this._attrs.open = "";
     } else {
       this._attrs[name] = String(value);
+    }
+    const newValue = this.getAttribute(name);
+    if (oldValue !== newValue) {
+      this._notifyAttributeChanged(name, oldValue, newValue);
     }
   }
 
@@ -218,6 +235,7 @@ class FakeNode extends EventTargetStub {
   }
 
   removeAttribute(name) {
+    const oldValue = this.hasAttribute(name) ? this.getAttribute(name) : null;
     if (name === "disabled") {
       this.disabled = false;
     }
@@ -225,6 +243,10 @@ class FakeNode extends EventTargetStub {
       delete this._attrs.open;
     }
     delete this._attrs[name];
+    const newValue = this.getAttribute(name);
+    if (oldValue !== newValue) {
+      this._notifyAttributeChanged(name, oldValue, newValue);
+    }
   }
 
   appendChild(node) {
@@ -316,10 +338,14 @@ class DocumentStub extends EventTargetStub {
     this.activeElement = null;
     this.body = new FakeNode("BODY");
     this.body.parentNode = this;
+    this.visibilityState = "visible";
   }
 
   createElement(tag) {
-    return new FakeNode(String(tag).toUpperCase());
+    const name = String(tag);
+    const node = new FakeNode(name.toUpperCase());
+    node.localName = name.toLowerCase();
+    return node;
   }
 
   _setActiveElement(el) {
@@ -328,6 +354,39 @@ class DocumentStub extends EventTargetStub {
 
   appendChild(node) {
     return this.body.appendChild(node);
+  }
+
+  _descendants() {
+    /** @type {FakeNode[]} */
+    const out = [];
+    const walk = (node) => {
+      const kids = node._children ?? [];
+      for (const child of kids) {
+        out.push(child);
+        walk(child);
+      }
+    };
+    walk(this.body);
+    return out;
+  }
+
+  _matchSelector(node, selector) {
+    const sel = String(selector);
+    if (sel === "[data-health]") {
+      return node.hasAttribute("data-health");
+    }
+    if (sel === "vx-omnibox") {
+      return node.localName === "vx-omnibox";
+    }
+    return false;
+  }
+
+  querySelector(selector) {
+    return this._descendants().find((n) => this._matchSelector(n, selector)) ?? null;
+  }
+
+  querySelectorAll(selector) {
+    return this._descendants().filter((n) => this._matchSelector(n, selector));
   }
 }
 
@@ -345,7 +404,10 @@ export const customElements = {
     if (!Ctor) {
       throw new Error(`unknown element ${name}`);
     }
-    return new Ctor();
+    const el = new Ctor();
+    el.localName = name;
+    el.tagName = String(name).toUpperCase();
+    return el;
   },
 };
 

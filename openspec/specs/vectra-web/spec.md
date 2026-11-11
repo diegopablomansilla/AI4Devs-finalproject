@@ -17,10 +17,11 @@ El repositorio MUST contener el directorio `vectra-web/` en la raíz, con al men
 - `vectra-web/js/api.js`
 - `vectra-web/js/errors.js`
 - `vectra-web/js/keyboard-list.js`
+- `vectra-web/js/health.js`
 - `vectra-web/js/components/index.js`, `shared.js`, `vx-button.js`, `vx-field.js`, `vx-chip.js`, `vx-modal.js`, `vx-side-panel.js`, `vx-toast.js`, `vx-product-card.js`, `vx-omnibox.js`
 - `vectra-web/dev/components.html`
 
-`index.html` MUST declarar `lang="es"` en el elemento `html`. MUST incluir un *outlet* identificable (p. ej. `id="app"`) donde el *router* pinta la vista. MUST cargar `js/app.js` como ES Module (`type="module"`) con `src` igual a `/static/{{VERSION}}/js/app.js` (el placeholder literal `{{VERSION}}`; el Gateway de T-00-19 lo sustituye al servir). MUST enlazar `css/tokens.css` y `css/base.css` (en ese orden) con `href` `/static/{{VERSION}}/css/tokens.css` y `/static/{{VERSION}}/css/base.css`. MUST NOT exigir un *bundler*, `package.json` ni dependencias npm para cargar la app. `js/app.js` MUST importar el *router* con `import` de ES Module y MUST importar `js/components/index.js` para registrar `vx-button`, `vx-field`, `vx-chip`, `vx-modal`, `vx-side-panel`, `vx-toast`, `vx-product-card` y `vx-omnibox`. Este change MUST NOT exigir que `app.js` importe `errors.js` ni `keyboard-list.js` (el cableado de resultados llega en T-03-15).
+`index.html` MUST declarar `lang="es"` en el elemento `html`. MUST incluir un *outlet* identificable (p. ej. `id="app"`) donde el *router* pinta la vista. MUST cargar `js/app.js` como ES Module (`type="module"`) con `src` igual a `/static/{{VERSION}}/js/app.js` (el placeholder literal `{{VERSION}}`; el Gateway de T-00-19 lo sustituye al servir). MUST enlazar `css/tokens.css` y `css/base.css` (en ese orden) con `href` `/static/{{VERSION}}/css/tokens.css` y `/static/{{VERSION}}/css/base.css`. MUST NOT exigir un *bundler*, `package.json` ni dependencias npm para cargar la app. `js/app.js` MUST importar el *router* con `import` de ES Module, MUST importar `js/components/index.js` para registrar `vx-button`, `vx-field`, `vx-chip`, `vx-modal`, `vx-side-panel`, `vx-toast`, `vx-product-card` y `vx-omnibox`, y MUST arrancar el *poller* de `js/health.js`. Este change MUST NOT exigir que `app.js` importe `errors.js` ni `keyboard-list.js` (el cableado de resultados llega en T-03-15).
 
 #### Scenario: el documento está en español y carga el módulo versionado (happy)
 
@@ -34,7 +35,7 @@ El repositorio MUST contener el directorio `vectra-web/` en la raíz, con al men
 
 - **WHEN** se inspecciona `vectra-web/`
 - **THEN** existen `css/` y `js/components/` como directorios
-- **AND** existen los archivos `js/app.js`, `js/router.js`, `js/api.js`, `js/errors.js` y `js/keyboard-list.js`
+- **AND** existen los archivos `js/app.js`, `js/router.js`, `js/api.js`, `js/errors.js`, `js/keyboard-list.js` y `js/health.js`
 - **AND** existen `css/tokens.css` y `css/base.css`
 - **AND** existen `js/components/vx-button.js`, `vx-field.js`, `vx-chip.js`, `vx-modal.js`, `vx-side-panel.js`, `vx-toast.js`, `vx-product-card.js`, `vx-omnibox.js`, `shared.js`, `index.js` y `dev/components.html`
 
@@ -111,6 +112,13 @@ El repositorio MUST contener el directorio `vectra-web/` en la raíz, con al men
 - **AND** se ejecuta `./scripts/check-vectra-web.sh`
 - **THEN** el comando termina con código distinto de 0
 - **AND** el mensaje nombra `keyboard-list.js`
+
+#### Scenario: falta health.js (unhappy)
+
+- **WHEN** falta `vectra-web/js/health.js`
+- **AND** se ejecuta `./scripts/check-vectra-web.sh`
+- **THEN** el comando termina con código distinto de 0
+- **AND** el mensaje nombra `health.js`
 
 ### Requirement: Router hash Operador y Administración sin recargar
 
@@ -298,6 +306,7 @@ Antes de archive, la suite MUST incluir estos tests (nombres estables; ubicació
 | `keyboard_list_tree_includes_module` | `scripts/check-vectra-web.sh` | harness de árbol |
 | `api_tree_includes_api_js` | `scripts/check-vectra-web.sh` | harness de árbol |
 | `errors_tree_includes_errors_js` | `scripts/check-vectra-web.sh` | harness de árbol |
+| `health_tree_includes_health_js` | `scripts/check-vectra-web.sh` | harness de árbol |
 | `components_html_catalog_loads_three_tags` | `scripts/fixtures/vectra-web/components.test.mjs` | catálogo |
 | `components_html_catalog_loads_overlay_tags` | `scripts/fixtures/vectra-web/components.test.mjs` | catálogo |
 | `components_html_catalog_loads_product_card_variants` | `scripts/fixtures/vectra-web/components.test.mjs` | catálogo (Listo cuando T-01-05) |
@@ -310,13 +319,15 @@ Antes de archive, la suite MUST incluir estos tests (nombres estables; ubicació
 | `router_admin_without_section_is_not_found` | `scripts/fixtures/vectra-web/` (`node --test`) | *router* |
 | `router_invalid_admin_slug_is_not_found` | `scripts/fixtures/vectra-web/` (`node --test`) | *router* |
 | `router_operator_layout_has_omnibox_results_panel` | `scripts/fixtures/vectra-web/router.test.mjs` | layout operador |
+| `router_operator_header_has_data_health` | `router.test.mjs` | layout operador |
 | `router_admin_view_has_no_omnibox` | `scripts/fixtures/vectra-web/router.test.mjs` | unhappy / frontera |
 | `router_admin_layout_has_menu_and_back_link` | `scripts/fixtures/vectra-web/router.test.mjs` | layout admin (Listo cuando T-01-11) |
 | `router_admin_menu_lists_eight_sections` | `router.test.mjs` | layout admin |
 | `router_admin_nav_to_categorias_does_not_reload` | `router.test.mjs` | layout admin |
 | `router_admin_back_to_operator_in_one_step` | `router.test.mjs` | layout admin (Listo cuando T-01-11) |
 | `router_admin_current_section_has_aria_current` | `router.test.mjs` | layout admin |
-| `router_admin_content_region_has_no_business_ui` | `router.test.mjs` | unhappy (No hace) |
+| `router_admin_header_has_data_health` | `router.test.mjs` | layout admin |
+| `router_admin_content_region_has_no_business_ui` | `router.test.mjs` | unhappy (No hace T-01-11) |
 | `router_admin_unknown_slug_has_menu_without_current` | `router.test.mjs` | unhappy |
 | `router_admin_does_not_call_api` | `router.test.mjs` | unhappy |
 | `admin_terminal_name_persists_to_storage` | `scripts/fixtures/vectra-web/admin.test.mjs` o `router.test.mjs` | happy |
@@ -341,6 +352,20 @@ Antes de archive, la suite MUST incluir estos tests (nombres estables; ubicació
 | `omnibox_mode_does_not_call_search` | `omnibox.test.mjs` | unhappy |
 | `omnibox_escape_on_ai_prefix_resets_to_text` | `omnibox.test.mjs` | unhappy |
 | `omnibox_unknown_mode_falls_back_to_text` | `omnibox.test.mjs` | unhappy |
+| `omnibox_ai_unavailable_disables_ai_and_ignores_prefix` | `omnibox.test.mjs` | unhappy (Listo cuando T-01-12) |
+| `omnibox_voice_unavailable_disables_voice` | `omnibox.test.mjs` | unhappy |
+| `omnibox_ai_unavailable_click_stays_text` | `omnibox.test.mjs` | unhappy |
+| `health_maps_llm_down_to_ai_false` | `scripts/fixtures/vectra-web/health.test.mjs` | happy (Listo cuando T-01-12) |
+| `health_llm_down_disables_ai_mode_text_stays` | `health.test.mjs` | happy (Listo cuando T-01-12) |
+| `health_polls_every_10s` | `health.test.mjs` | happy |
+| `health_refetches_on_focus` | `health.test.mjs` | happy |
+| `health_indicator_shows_degraded` | `health.test.mjs` | happy |
+| `health_speech_not_up_disables_voice` | `health.test.mjs` | happy |
+| `health_vision_absent_hides_image` | `health.test.mjs` | happy |
+| `health_network_failure_disables_optional_keeps_text` | `health.test.mjs` | unhappy |
+| `health_503_starting_parses_snapshot` | `health.test.mjs` | unhappy |
+| `health_invalid_body_does_not_throw` | `health.test.mjs` | unhappy |
+| `health_does_not_show_reduced_search_banner` | `health.test.mjs` | unhappy (No hace) |
 | `keyboard_list_arrow_down_selects_first_and_updates_activedescendant` | `scripts/fixtures/vectra-web/keyboard-list.test.mjs` | happy |
 | `keyboard_list_enter_opens_active_item` | `keyboard-list.test.mjs` | happy (Listo cuando T-01-10) |
 | `keyboard_list_escape_restores_omnibox_without_clearing` | `keyboard-list.test.mjs` | happy (Listo cuando T-01-10) |
@@ -395,7 +420,7 @@ Antes de archive, la suite MUST incluir estos tests (nombres estables; ubicació
 | `errors_unmatched_field_does_not_throw` | `errors.test.mjs` | unhappy |
 | `errors_toast_text_is_not_technical_code` | `errors.test.mjs` | unhappy |
 
-`./scripts/check-vectra-web.sh` MUST ejecutar el harness de árbol y los tests `node --test` (router, admin, *tokens*, componentes, `api`, `errors`, `omnibox` y `keyboard-list`) y MUST terminar con código 0 sobre el árbol que cumple esta spec. MUST NOT agregar `package.json` ni dependencias npm. `cargo test --workspace` (manifiesto `vortex-core/Cargo.toml`) MUST seguir en verde (regresión; este change no agrega tests Rust). Los tests del *router* MUST asertar el `data-view` (y `data-section` cuando aplica), que no hubo recarga, que la vista operador declara las tres regiones con `vx-omnibox` / `vx-side-panel` mientras admin no monta `vx-omnibox`, y que la vista admin declara el menú de ocho secciones, el enlace `#/`, `aria-current` en la sección activa, `data-region="admin-content"` sin UI de negocio y el `vx-field` de terminal. Los del árbol MUST asertar `lang="es"`, el `src` `/static/{{VERSION}}/js/app.js`, los `href` versionados de `tokens.css` y `base.css`, la presencia de los módulos de componentes (incluidos modal, panel, toast, product-card y omnibox), `js/api.js`, `js/errors.js`, `js/keyboard-list.js` y `dev/components.html`. Los de componentes MUST asertar Shadow DOM, `adoptedStyleSheets`, ARIA, unhappy path de loading, error de campo y chip deshabilitado, los de overlay/toast de la tabla, y los de `vx-product-card` de la tabla. Los de `api` MUST asertar JSON 2xx, cabecera de terminal, `signal`, `ApiError` `not_found` / `invalid_input` / `network` / `internal`, abort distinto de `network`, y omisión de cabecera sin nombre. Los de `errors` MUST asertar cobertura del enum `ErrorCode` + `network`, mensajes en español, `showError` → toast `error`, asignación a `vx-field` por `name`, fallback de `code` desconocido, abort sin toast, campo sin match sin throw, y que el toast no muestra el `code` técnico. Los de `omnibox` MUST asertar foco al conectar, foco tras `vx-closed` / cierre de panel, Escape que limpia, modos (`?hola` → `ai` + `vx-query`, selector Texto/Voz/IA, imagen con/sin `vision`) y los unhappy de consulta vacía, host desconectado, Escape con panel abierto, `?` no inicial, `mode` desconocido y ausencia de fetch. Los de `keyboard-list` MUST asertar recorrido con flechas y `aria-activedescendant`, Enter que abre, Escape que restaura el Omnibox sin borrar la consulta, reuso con opciones que no son tarjetas, y los unhappy de lista vacía, Enter sin selección, sin Omnibox y ausencia de fetch. Los de administración / terminal MUST asertar persistencia de `vectra.terminal` (≤ 64), carga inicial, rechazo de > 64 con `error` en el campo, borrado de clave vacía, y que un storage que lanza no rompe la vista.
+`./scripts/check-vectra-web.sh` MUST ejecutar el harness de árbol y los tests `node --test` (router, admin, *tokens*, componentes, `api`, `errors`, `omnibox`, `keyboard-list` y `health`) y MUST terminar con código 0 sobre el árbol que cumple esta spec. MUST NOT agregar `package.json` ni dependencias npm. `cargo test --workspace` (manifiesto `vortex-core/Cargo.toml`) MUST seguir en verde (regresión; este change no agrega tests Rust). Los tests del *router* MUST asertar el `data-view` (y `data-section` cuando aplica), que no hubo recarga, que la vista operador declara las tres regiones con `vx-omnibox` / `vx-side-panel` mientras admin no monta `vx-omnibox`, que operador y admin declaran `[data-health]` en el encabezado, y que la vista admin declara el menú de ocho secciones, el enlace `#/`, `aria-current` en la sección activa, `data-region="admin-content"` sin UI de negocio y el `vx-field` de terminal. Los del árbol MUST asertar `lang="es"`, el `src` `/static/{{VERSION}}/js/app.js`, los `href` versionados de `tokens.css` y `base.css`, la presencia de los módulos de componentes (incluidos modal, panel, toast, product-card y omnibox), `js/api.js`, `js/errors.js`, `js/keyboard-list.js`, `js/health.js` y `dev/components.html`. Los de componentes MUST asertar Shadow DOM, `adoptedStyleSheets`, ARIA, unhappy path de loading, error de campo y chip deshabilitado, los de overlay/toast de la tabla, y los de `vx-product-card` de la tabla. Los de `api` MUST asertar JSON 2xx, cabecera de terminal, `signal`, `ApiError` `not_found` / `invalid_input` / `network` / `internal`, abort distinto de `network`, y omisión de cabecera sin nombre. Los de `errors` MUST asertar cobertura del enum `ErrorCode` + `network`, mensajes en español, `showError` → toast `error`, asignación a `vx-field` por `name`, fallback de `code` desconocido, abort sin toast, campo sin match sin throw, y que el toast no muestra el `code` técnico. Los de `omnibox` MUST asertar foco al conectar, foco tras `vx-closed` / cierre de panel, Escape que limpia, modos (`?hola` → `ai` + `vx-query`, selector Texto/Voz/IA, imagen con/sin `vision`), `ai-unavailable` / `voice-unavailable`, y los unhappy de consulta vacía, host desconectado, Escape con panel abierto, `?` no inicial, `mode` desconocido y ausencia de fetch. Los de `keyboard-list` MUST asertar recorrido con flechas y `aria-activedescendant`, Enter que abre, Escape que restaura el Omnibox sin borrar la consulta, reuso con opciones que no son tarjetas, y los unhappy de lista vacía, Enter sin selección, sin Omnibox y ausencia de fetch. Los de administración / terminal MUST asertar persistencia de `vectra.terminal` (≤ 64), carga inicial, rechazo de > 64 con `error` en el campo, borrado de clave vacía, y que un storage que lanza no rompe la vista. Los de `health` MUST asertar mapeo `llm: down` → IA off y texto on (Listo cuando), intervalo 10 s, refetch al foco, indicador degradado, `speech` no `up`, `vision` ausente, y los unhappy de red, 503 `starting`, cuerpo inválido y ausencia del aviso de búsqueda reducida.
 
 #### Scenario: la suite acordada cubre happy y unhappy (happy)
 
@@ -408,10 +433,11 @@ Antes de archive, la suite MUST incluir estos tests (nombres estables; ubicació
 - **AND** los de componentes (botón, campo, chip, modal, panel, toast, product-card) pasan
 - **AND** los de `api.js` (JSON 2xx, `not_found`, `network`, abort) pasan
 - **AND** los de `errors.js` (cobertura OpenAPI, toast, `vx-field`, abort, `code` desconocido) pasan
-- **AND** los de `vx-omnibox` (layout, foco, Escape, modos, `vx-query`, unhappy) pasan
+- **AND** los de `vx-omnibox` (layout, foco, Escape, modos, `vx-query`, `ai-unavailable`, unhappy) pasan
 - **AND** los de `keyboard-list` (flechas, Enter, Escape al Omnibox, unhappy) pasan
 - **AND** los de layout admin (menú de ocho secciones, vuelta al operador, `aria-current`, contenido vacío) pasan
 - **AND** los de nombre de terminal (persistencia, > 64, vacío, storage que falla) pasan
+- **AND** los de `health.js` (`llm: down`, poll 10 s, foco, red, 503, sin banner de búsqueda reducida) pasan
 
 #### Scenario: falta el router o el documento (unhappy)
 
@@ -1248,3 +1274,149 @@ La función MUST devolver una función de limpieza que quita los listeners. MUST
 - **AND** se ejecuta `./scripts/check-vectra-web.sh`
 - **THEN** el comando termina con código distinto de 0
 - **AND** el mensaje nombra `keyboard-list.js`
+
+### Requirement: Poller de /health y capacidades
+
+MUST existir `vectra-web/js/health.js` como ES Module. MUST consultar `GET /health` (mismo origen, path absoluto `/health`) al arrancar, **cada 10 segundos** y al recuperar el foco de la ventana (`focus` en `window` y/o `visibilitychange` a `visible`). MUST NOT exigir `package.json` ni un *bundler*.
+
+`app.js` MUST arrancar el *poller* una vez (junto al *router*). El *router* MUST NOT iniciar el *poller* al pintar una vista: pintar `#/admin/…` sin haber arrancado `health.js` MUST NOT enviar HTTP (sigue valiendo `router_admin_does_not_call_api`).
+
+Cada snapshot MUST publicarse como evento `vx-health` (`bubbles`, `composed`) en `document` con `detail` `{ status, capabilities }` donde `capabilities` es `{ textSearch, ai, voice, vision }` (booleanos) y `status` es el agregado del cuerpo (`ok` | `degraded` | `starting` | `down`) o `"unknown"` si no hay snapshot usable.
+
+Mapeo desde el esquema `Health` de `docs/openapi.yaml` (el cliente MUST ignorar campos desconocidos):
+
+| Capacidad | Condición |
+|---|---|
+| `ai` | `components.llm.status === "up"` |
+| `voice` | `components.speech.status === "up"` |
+| `vision` | `components.vision.status === "up"` si el campo existe; si falta, `false` |
+| `textSearch` | `true` en este change (MUST NOT deshabilitar el modo texto; T-03-31 cubre Meilisearch degradado) |
+
+HTTP **200** (`ok` / `degraded`) y **503** (`starting` / `down`) MUST parsearse como JSON `Health` (no son `problem+json`). Un fallo de red, abort, cuerpo no JSON o JSON sin `components` MUST producir `status: "unknown"`, `ai`/`voice`/`vision` en `false`, `textSearch` en `true`, MUST NOT lanzar y MUST NOT mostrar el aviso "Búsqueda en modo reducido".
+
+Tras cada snapshot (y tras un cambio de *hash*, porque el *outlet* se reemplaza), MUST aplicar el snapshot al indicador `[data-health]` y al `vx-omnibox` visible si existe.
+
+MUST NOT llamar a `/search`, `/api/v1/*`, ni mutar OpenAPI. MUST NOT pintar toasts de `problem+json` (T-01-07).
+
+#### Scenario: llm down deshabilita IA y deja el texto (happy, Listo cuando)
+
+- **WHEN** `GET /health` responde 200 con `status: "degraded"` y `components.llm.status` `"down"` (resto `up` o `disabled`)
+- **THEN** `capabilities.ai` es `false` y `capabilities.textSearch` es `true`
+- **AND** el control **IA** del Omnibox está deshabilitado
+- **AND** el control **Texto** sigue operable (no `disabled`)
+- **AND** el indicador `[data-health]` muestra estado degradado en español
+
+#### Scenario: consulta cada 10 s (happy)
+
+- **WHEN** el *poller* arranca
+- **THEN** hay una petición `GET /health` inmediata
+- **AND** el intervalo de repetición es 10 000 ms
+
+#### Scenario: al recuperar el foco vuelve a consultar (happy)
+
+- **WHEN** el *poller* está arrancado
+- **AND** la ventana recibe `focus` o el documento pasa a `visibilityState === "visible"`
+- **THEN** se envía `GET /health` (además del intervalo)
+
+#### Scenario: speech no up deshabilita voz (happy)
+
+- **WHEN** el snapshot tiene `components.speech.status` distinto de `"up"` (`down`, `disabled`, `starting` o `degraded`)
+- **THEN** `capabilities.voice` es `false`
+- **AND** el control **Voz** del Omnibox está deshabilitado
+
+#### Scenario: vision ausente no muestra Imagen (happy)
+
+- **WHEN** el JSON de `/health` no incluye `components.vision` (contrato actual T-00-13)
+- **THEN** `capabilities.vision` es `false`
+- **AND** el `vx-omnibox` no tiene atributo `vision` (modo Imagen oculto, T-01-09)
+
+#### Scenario: fallo de red no tira y deja el texto (unhappy)
+
+- **WHEN** `GET /health` falla por red (`TypeError` / `code: "network"`)
+- **THEN** no se lanza excepción
+- **AND** `status` queda `"unknown"`
+- **AND** `ai` y `voice` son `false` y `textSearch` es `true`
+- **AND** el modo **Texto** sigue operable
+
+#### Scenario: 503 starting se parsea como Health (unhappy)
+
+- **WHEN** `GET /health` responde 503 con JSON `Health` (`status: "starting"`, `components.llm.status` `"starting"`)
+- **THEN** no se trata como `problem+json`
+- **AND** `capabilities.ai` es `false`
+- **AND** el indicador muestra arranque en español
+- **AND** no se lanza excepción
+
+#### Scenario: cuerpo inválido no tira (unhappy)
+
+- **WHEN** `GET /health` responde 200 con HTML o JSON sin `components`
+- **THEN** no se lanza excepción
+- **AND** `status` queda `"unknown"`
+- **AND** el modo **Texto** sigue operable
+
+#### Scenario: no muestra aviso de búsqueda reducida (unhappy, No hace)
+
+- **WHEN** el snapshot tiene `components.meilisearch.status` `"down"` (agregado `degraded`)
+- **THEN** no hay texto visible "Búsqueda en modo reducido"
+- **AND** el modo **Texto** sigue operable
+
+### Requirement: Indicador de estado en el encabezado
+
+Cuando el *router* pinta `data-view="operator"` o `data-view="admin"`, el encabezado MUST incluir un elemento con atributo `data-health`. Ese elemento MUST tener `aria-live="polite"` (o un descendiente live region). El texto visible MUST estar en español y MUST reflejar el último `status` publicado (`ok`, `degraded`, `starting`, `down`, `unknown`). MUST NOT indicar el estado solo con color. MUST NOT usar *tokens* nuevos (clases con `--vx-*` existentes).
+
+La vista `not-found` MAY omitir el indicador.
+
+#### Scenario: operador y admin tienen data-health (happy)
+
+- **WHEN** se pinta `#/` o `#/admin/productos`
+- **THEN** existe `[data-health]` dentro del encabezado de esa vista
+- **AND** tiene (él o un descendiente) `aria-live="polite"`
+
+#### Scenario: el indicador no es solo color (unhappy)
+
+- **WHEN** el último `status` es `"degraded"`
+- **AND** `[data-health]` no contiene texto en español que distinga el estado
+- **THEN** el test del indicador termina con código distinto de 0
+
+### Requirement: Modos IA y voz deshabilitados por capacidades
+
+`vx-omnibox` MUST observar atributos booleanos `ai-unavailable` y `voice-unavailable` (además de `vision` de T-01-09). Si el atributo está **ausente**, el comportamiento de «Modos del Omnibox» no cambia (los tests T-01-09 siguen verdes).
+
+Con `ai-unavailable` presente:
+
+- El control **IA** MUST estar `disabled` y MUST exponer `aria-disabled="true"` (o el `disabled` nativo).
+- Un clic en **IA** MUST NOT cambiar el modo ni emitir `vx-query` con `mode: "ai"`.
+- Si el `value` empieza por `?`, el modo efectivo MUST ser `"text"` (el prefijo ya no gana).
+- Si el modo efectivo era `"ai"`, MUST pasar a `"text"`.
+
+Con `voice-unavailable` presente:
+
+- El control **Voz** MUST estar `disabled`.
+- Un clic en **Voz** MUST NOT dejar `mode` en `"voice"`.
+- Si el modo era `"voice"`, MUST pasar a `"text"`.
+
+El control **Texto** MUST permanecer habilitado. MUST NOT llamar a `/search` ni importar `api.js`.
+
+El *poller* MUST setear o quitar esos atributos (y `vision`) en el `vx-omnibox` del *outlet* según `capabilities`.
+
+#### Scenario: ai-unavailable ignora el prefijo y deshabilita IA (unhappy / Listo cuando)
+
+- **WHEN** un `vx-omnibox` tiene `ai-unavailable`
+- **AND** el operador deja el input en `?hola`
+- **THEN** el control **IA** está deshabilitado
+- **AND** `mode` del host es `"text"`
+- **AND** si se dispara `vx-query`, `detail.mode` no es `"ai"`
+
+#### Scenario: voice-unavailable no se puede elegir (unhappy)
+
+- **WHEN** un `vx-omnibox` tiene `voice-unavailable`
+- **AND** el operador activa el control **Voz**
+- **THEN** `mode` no queda `"voice"`
+- **AND** el control **Voz** está deshabilitado
+- **AND** no se lanza excepción
+
+#### Scenario: clic en IA deshabilitada no cambia el modo (unhappy)
+
+- **WHEN** un `vx-omnibox` tiene `ai-unavailable` y modo `"text"`
+- **AND** se hace clic en **IA**
+- **THEN** `mode` sigue `"text"`
+- **AND** no se envía ninguna petición HTTP
