@@ -52,6 +52,82 @@ fn write_config(dir: &Path, bind: &str) -> PathBuf {
     path
 }
 
+fn write_config_with_paths(dir: &Path, bind: &str, datos: &Path, web: &Path) -> PathBuf {
+    let path = dir.join("vortex.toml");
+    let body = format!(
+        r#"
+[paths]
+datos = "{datos}"
+modelos = "/tmp/modelos"
+backups = "/tmp/backups"
+web = "{web}"
+
+[server]
+bind = "{bind}"
+hostname = "localhost"
+
+[negocio]
+moneda = "ARS"
+
+[meilisearch]
+url = "http://127.0.0.1:7700"
+
+[ollama]
+url = "http://127.0.0.1:11434"
+
+[backup]
+hora = "03:00"
+retencion = 14
+
+[logs]
+nivel = "info"
+retencion = 14
+"#,
+        datos = datos.display(),
+        web = web.display(),
+        bind = bind,
+    );
+    fs::write(&path, body.trim()).expect("write config");
+    path
+}
+
+fn http_get_headers(addr: SocketAddr, path: &str) -> Option<(u16, String, String, String)> {
+    use std::io::{Read, Write};
+    let mut stream = std::net::TcpStream::connect(addr).ok()?;
+    stream.set_read_timeout(Some(Duration::from_secs(2))).ok()?;
+    let host = format!("{}:{}", addr.ip(), addr.port());
+    let request = format!("GET {path} HTTP/1.1\r\nHost: {host}\r\nConnection: close\r\n\r\n");
+    stream.write_all(request.as_bytes()).ok()?;
+    let mut buf = vec![0u8; 65536];
+    let n = stream.read(&mut buf).ok()?;
+    let response = String::from_utf8_lossy(&buf[..n]);
+    let status_line = response.lines().next()?;
+    let status: u16 = status_line.split_whitespace().nth(1)?.parse().ok()?;
+    let mut ctype = String::new();
+    let mut cache = String::new();
+    let mut body_start = 0usize;
+    for (i, _) in response.match_indices("\r\n\r\n") {
+        body_start = i + 4;
+        break;
+    }
+    for line in response.lines() {
+        if line.is_empty() {
+            break;
+        }
+        if let Some((name, value)) = line.split_once(':') {
+            let name = name.trim();
+            let value = value.trim();
+            if name.eq_ignore_ascii_case("content-type") {
+                ctype = value.split(';').next().unwrap_or(value).trim().to_string();
+            } else if name.eq_ignore_ascii_case("cache-control") {
+                cache = value.to_string();
+            }
+        }
+    }
+    let body = String::from_utf8_lossy(&buf[body_start..n]).into_owned();
+    Some((status, ctype, cache, body))
+}
+
 fn ephemeral_bind() -> String {
     let listener = TcpListener::bind("127.0.0.1:0").expect("bind ephemeral");
     let addr = listener.local_addr().expect("local_addr");
@@ -203,6 +279,56 @@ fn vortex_serve_starts_and_returns_404() {
     }
     let status = child.wait().expect("wait");
     assert_eq!(status.code(), Some(0));
+}
+
+#[test]
+fn vortex_serve_serves_index_from_paths_web() {
+    let bind = ephemeral_bind();
+    let dir = temp_dir();
+    let web = dir.join("web");
+    fs::create_dir_all(&web).expect("web dir");
+    fs::write(web.join("index.html"), "{{VERSION}}").expect("index.html");
+    let datos = dir.join("datos");
+    fs::create_dir_all(&datos).expect("datos dir");
+    let path = write_config_with_paths(&dir, &bind, &datos, &web);
+    let mut child = Command::new(vortex_bin())
+        .args(["--config", path.to_str().unwrap(), "serve"])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .expect("spawn serve");
+    let addr: SocketAddr = bind.parse().expect("bind addr");
+    let start = Instant::now();
+    let mut ok = false;
+    while start.elapsed() < Duration::from_secs(5) {
+        if let Some((status, ctype, cache, body)) = http_get_headers(addr, "/") {
+            if status == 200
+                && ctype.starts_with("text/html")
+                && cache == "no-cache"
+                && !body.contains("{{VERSION}}")
+                && !body.is_empty()
+            {
+                ok = true;
+                break;
+            }
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    #[cfg(unix)]
+    {
+        let _ = Command::new("kill")
+            .args(["-TERM", &child.id().to_string()])
+            .status();
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = child.kill();
+    }
+    let _ = child.wait();
+    assert!(
+        ok,
+        "GET / must serve index.html from paths.web with no-cache"
+    );
 }
 
 #[test]
