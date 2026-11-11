@@ -150,6 +150,7 @@ function viewHtml(route, terminalValue) {
   if (route.view === "operator") {
     return `<main class="vx-operator" data-view="operator">
   <header class="vx-operator-header">
+    <p class="vx-health-status" data-health aria-live="polite"></p>
     <div data-region="omnibox"><vx-omnibox></vx-omnibox></div>
     <p><a href="#/admin/productos">Ir a administración</a></p>
   </header>
@@ -171,6 +172,7 @@ function viewHtml(route, terminalValue) {
     }).join("\n");
     return `<main class="vx-admin" data-view="admin" data-section="${safeSection}">
   <header class="vx-admin-header">
+    <p class="vx-health-status" data-health aria-live="polite"></p>
     <p><a href="#/">Volver al operador</a></p>
     <vx-field name="terminal" label="Nombre de esta terminal"${valueAttr}></vx-field>
   </header>

@@ -32,6 +32,10 @@ const LOCAL_CSS = `
   background: var(--vx-color-accent);
   border-color: transparent;
 }
+.toolbar button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
 input {
   box-sizing: border-box;
   width: 100%;
@@ -61,7 +65,7 @@ const MODE_LABELS = {
 
 export class VxOmnibox extends HTMLElement {
   static get observedAttributes() {
-    return ["value", "mode", "vision"];
+    return ["value", "mode", "vision", "ai-unavailable", "voice-unavailable"];
   }
 
   constructor() {
@@ -119,6 +123,7 @@ export class VxOmnibox extends HTMLElement {
       this._built = true;
       this._syncPinnedFromModeAttribute();
       this._updateVisionUi();
+      this._updateUnavailableUi();
       this._syncValueToInput();
       this._applyMode();
     }
@@ -154,6 +159,12 @@ export class VxOmnibox extends HTMLElement {
     } else if (name === "vision" && this._built) {
       this._updateVisionUi();
       this._applyMode();
+    } else if (
+      (name === "ai-unavailable" || name === "voice-unavailable") &&
+      this._built
+    ) {
+      this._updateUnavailableUi();
+      this._applyMode();
     }
   }
 
@@ -181,13 +192,51 @@ export class VxOmnibox extends HTMLElement {
 
   _effectiveMode() {
     const text = this._input?.value ?? "";
-    if (text.startsWith("?")) {
+    if (
+      text.startsWith("?") &&
+      !this.hasAttribute("ai-unavailable")
+    ) {
       return "ai";
+    }
+    if (this.hasAttribute("ai-unavailable") && this._pinned === "ai") {
+      return "text";
+    }
+    if (this.hasAttribute("voice-unavailable") && this._pinned === "voice") {
+      return "text";
     }
     if (!VALID_MODES.has(this._pinned)) {
       return "text";
     }
     return this._pinned;
+  }
+
+  _updateUnavailableUi() {
+    const aiBtn = this._modeButtons.get("ai");
+    const voiceBtn = this._modeButtons.get("voice");
+    if (aiBtn) {
+      const off = this.hasAttribute("ai-unavailable");
+      aiBtn.disabled = off;
+      if (off) {
+        aiBtn.setAttribute("aria-disabled", "true");
+      } else {
+        aiBtn.removeAttribute("aria-disabled");
+      }
+      if (off && this._pinned === "ai") {
+        this._pinned = "text";
+      }
+    }
+    if (voiceBtn) {
+      const off = this.hasAttribute("voice-unavailable");
+      voiceBtn.disabled = off;
+      if (off) {
+        voiceBtn.setAttribute("aria-disabled", "true");
+      } else {
+        voiceBtn.removeAttribute("aria-disabled");
+      }
+      if (off && this._pinned === "voice") {
+        this._pinned = "text";
+      }
+    }
   }
 
   _syncPinnedFromModeAttribute() {
@@ -250,6 +299,12 @@ export class VxOmnibox extends HTMLElement {
     if (mode === "image" && !this.hasAttribute("vision")) {
       return;
     }
+    if (mode === "ai" && this.hasAttribute("ai-unavailable")) {
+      return;
+    }
+    if (mode === "voice" && this.hasAttribute("voice-unavailable")) {
+      return;
+    }
     this._pinned = mode;
     this._applyMode();
     this._emitQuery();
@@ -261,6 +316,7 @@ export class VxOmnibox extends HTMLElement {
     }
     this._input.value = "";
     this.setAttribute("value", "");
+    this._pinned = "text";
     this._applyMode();
     this._emitQuery();
   }

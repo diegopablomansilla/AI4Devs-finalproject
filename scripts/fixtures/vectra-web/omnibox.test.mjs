@@ -333,4 +333,58 @@ describe("omnibox", () => {
     });
     assert.equal(box.getAttribute("mode"), "text");
   });
+
+  test("omnibox_ai_unavailable_disables_ai_and_ignores_prefix", async () => {
+    const box = customElements._create("vx-omnibox");
+    box.setAttribute("ai-unavailable", "");
+    document.body.appendChild(box);
+    await box.connectedCallback();
+    const aiBtn = omniboxModeButton(box, "ai");
+    assert.equal(aiBtn?.disabled, true);
+    assert.equal(aiBtn?.getAttribute("aria-disabled"), "true");
+    /** @type {{ mode?: string; text?: string }} */
+    let lastDetail = {};
+    box.addEventListener("vx-query", (e) => {
+      lastDetail = e.detail ?? {};
+    });
+    fireOmniboxInput(box, "?hola");
+    assert.equal(box.getAttribute("mode"), "text");
+    assert.notEqual(lastDetail.mode, "ai");
+    const textBtn = omniboxModeButton(box, "text");
+    assert.equal(textBtn?.disabled, false);
+  });
+
+  test("omnibox_voice_unavailable_disables_voice", async () => {
+    const box = customElements._create("vx-omnibox");
+    box.setAttribute("voice-unavailable", "");
+    document.body.appendChild(box);
+    await box.connectedCallback();
+    const voiceBtn = omniboxModeButton(box, "voice");
+    assert.equal(voiceBtn?.disabled, true);
+    voiceBtn?.click();
+    assert.notEqual(box.getAttribute("mode"), "voice");
+    assert.equal(box.getAttribute("mode"), "text");
+  });
+
+  test("omnibox_ai_unavailable_click_stays_text", async () => {
+    const box = customElements._create("vx-omnibox");
+    box.setAttribute("ai-unavailable", "");
+    document.body.appendChild(box);
+    await box.connectedCallback();
+    omniboxModeButton(box, "ai")?.click();
+    assert.equal(box.getAttribute("mode"), "text");
+    let fetchCalls = 0;
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = () => {
+      fetchCalls += 1;
+      return Promise.resolve({ ok: true });
+    };
+    try {
+      omniboxModeButton(box, "ai")?.click();
+      assert.equal(box.getAttribute("mode"), "text");
+      assert.equal(fetchCalls, 0);
+    } finally {
+      globalThis.fetch = prevFetch;
+    }
+  });
 });
