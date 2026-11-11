@@ -229,3 +229,141 @@ describe("router_admin_view_has_no_omnibox", () => {
     assert.doesNotMatch(html, /data-region="omnibox"/);
   });
 });
+
+const ADMIN_HREFS = [
+  "#/admin/productos",
+  "#/admin/categorias",
+  "#/admin/marcas",
+  "#/admin/atributos",
+  "#/admin/stock",
+  "#/admin/relaciones",
+  "#/admin/sinonimos",
+  "#/admin/notas-tecnicas",
+];
+
+describe("router_admin_layout_has_menu_and_back_link", () => {
+  test("#/admin/productos", () => {
+    const { outlet, window, document } = createTestDom("#/admin/productos");
+    startRouter({ window, document, outlet });
+    const html = outlet.innerHTML;
+    assert.match(html, /class="vx-admin"/);
+    assert.match(html, /data-view="admin"/);
+    assert.match(html, /href="#\/"/);
+    assert.match(html, /Volver al operador/);
+    assert.match(html, /aria-label="Administración"/);
+    assert.match(html, /data-region="admin-content"/);
+    assert.match(html, /<vx-field[^>]+name="terminal"/);
+  });
+});
+
+describe("router_admin_menu_lists_eight_sections", () => {
+  test("enlaces del menú", () => {
+    const { outlet, window, document } = createTestDom("#/admin/productos");
+    startRouter({ window, document, outlet });
+    const html = outlet.innerHTML;
+    for (const href of ADMIN_HREFS) {
+      assert.match(html, new RegExp(`href="${href.replace("#", "#")}"`));
+    }
+  });
+});
+
+describe("router_admin_nav_to_categorias_does_not_reload", () => {
+  test("#/admin/productos a #/admin/categorias", () => {
+    const { outlet, window, document, reloadCount } = createTestDom(
+      "#/admin/productos",
+    );
+    startRouter({ window, document, outlet });
+    window.location.hash = "#/admin/categorias";
+    assert.ok(outlet.querySelector('[data-view="admin"]'));
+    assert.ok(outlet.querySelector('[data-section="categorias"]'));
+    assert.equal(reloadCount.value, 0);
+  });
+});
+
+describe("router_admin_back_to_operator_in_one_step", () => {
+  test("desde admin a #/", () => {
+    const { outlet, window, document, reloadCount } = createTestDom(
+      "#/admin/marcas",
+    );
+    startRouter({ window, document, outlet });
+    window.location.hash = "#/";
+    assert.ok(outlet.querySelector('[data-view="operator"]'));
+    assert.equal(outlet.querySelector('[data-view="admin"]'), null);
+    assert.equal(reloadCount.value, 0);
+  });
+});
+
+describe("router_admin_current_section_has_aria_current", () => {
+  test("productos activo", () => {
+    const { outlet, window, document } = createTestDom("#/admin/productos");
+    startRouter({ window, document, outlet });
+    const html = outlet.innerHTML;
+    assert.match(
+      html,
+      /href="#\/admin\/productos"[^>]*aria-current="page"/,
+    );
+    assert.doesNotMatch(
+      html,
+      /href="#\/admin\/categorias"[^>]*aria-current="page"/,
+    );
+  });
+
+  test("categorias activo", () => {
+    const { outlet, window, document } = createTestDom("#/admin/categorias");
+    startRouter({ window, document, outlet });
+    const html = outlet.innerHTML;
+    assert.match(
+      html,
+      /href="#\/admin\/categorias"[^>]*aria-current="page"/,
+    );
+    assert.doesNotMatch(
+      html,
+      /href="#\/admin\/productos"[^>]*aria-current="page"/,
+    );
+  });
+});
+
+describe("router_admin_content_region_has_no_business_ui", () => {
+  test("sin ABM", () => {
+    const { outlet, window, document } = createTestDom("#/admin/productos");
+    startRouter({ window, document, outlet });
+    const html = outlet.innerHTML;
+    const contentStart = html.indexOf('data-region="admin-content"');
+    assert.ok(contentStart >= 0);
+    const contentSlice = html.slice(contentStart);
+    assert.doesNotMatch(contentSlice, /<vx-product-card\b/);
+    assert.doesNotMatch(contentSlice, /<form\b/i);
+  });
+});
+
+describe("router_admin_unknown_slug_has_menu_without_current", () => {
+  test("#/admin/foo", () => {
+    const { outlet, window, document } = createTestDom("#/admin/foo");
+    startRouter({ window, document, outlet });
+    const html = outlet.innerHTML;
+    assert.match(html, /data-section="foo"/);
+    for (const href of ADMIN_HREFS) {
+      assert.match(html, new RegExp(`href="${href.replace("#", "#")}"`));
+    }
+    assert.doesNotMatch(html, /aria-current="page"/);
+  });
+});
+
+describe("router_admin_does_not_call_api", () => {
+  test("sin fetch al pintar admin", () => {
+    const calls = [];
+    const original = globalThis.fetch;
+    globalThis.fetch = (...args) => {
+      calls.push(args);
+      return original?.(...args) ?? Promise.resolve({ ok: true });
+    };
+    try {
+      const { outlet, window, document } = createTestDom("#/admin/productos");
+      startRouter({ window, document, outlet });
+      window.location.hash = "#/admin/stock";
+      assert.equal(calls.length, 0);
+    } finally {
+      globalThis.fetch = original;
+    }
+  });
+});

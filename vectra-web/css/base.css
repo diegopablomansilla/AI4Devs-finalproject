@@ -74,3 +74,36 @@ textarea:focus-visible {
   min-height: 8rem;
   padding: var(--vx-space-3);
 }
+
+.vx-admin {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  gap: var(--vx-space-3);
+  padding: var(--vx-space-3);
+  box-sizing: border-box;
+}
+
+.vx-admin-header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vx-space-2);
+}
+
+.vx-admin-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--vx-space-2);
+  align-items: center;
+}
+
+.vx-admin-nav a[aria-current="page"] {
+  color: var(--vx-color-accent);
+  font-weight: 600;
+}
+
+.vx-admin-content {
+  flex: 1;
+  min-height: 8rem;
+  padding: var(--vx-space-3);
+}
