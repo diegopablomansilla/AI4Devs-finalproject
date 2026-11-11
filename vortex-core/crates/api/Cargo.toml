@@ -18,6 +18,8 @@ metrics-exporter-prometheus = { workspace = true }
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "net", "io-util", "time", "test-util"] }
 tracing-subscriber = { workspace = true, features = ["fmt", "env-filter"] }
+jsonschema = { workspace = true, default-features = false }
+serde_yaml = { workspace = true }
 
 [lints]
 workspace = true

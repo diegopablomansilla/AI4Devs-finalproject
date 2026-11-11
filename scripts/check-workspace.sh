@@ -147,7 +147,7 @@ supervisor_deps_allowed() {
   return 0
 }
 
-# `api` allowlist (T-00-11 + T-00-12 + T-00-14): [dependencies] axum, domain, serde, serde_json, thiserror, tower-http, tracing, metrics, metrics-exporter-prometheus; [dev-dependencies] tokio, tracing-subscriber.
+# `api` allowlist (T-00-11 + T-00-12 + T-00-14 + T-09-04): [dependencies] axum, domain, serde, serde_json, thiserror, tower-http, tracing, metrics, metrics-exporter-prometheus; [dev-dependencies] tokio, tracing-subscriber, jsonschema, serde_yaml.
 api_deps_allowed() {
   crate_toml=$1
 
@@ -157,7 +157,7 @@ api_deps_allowed() {
         /^\[dev-dependencies\]/ { indev = 1; next }
         /^\[/ { indev = 0 }
         indev && /^[^[:space:]#]/ { print }
-      ' "${crate_toml}" | grep -v -E '^(tokio|tracing-subscriber)[[:space:]]*=' || true
+      ' "${crate_toml}" | grep -v -E '^(tokio|tracing-subscriber|jsonschema|serde_yaml)[[:space:]]*=' || true
     )
     if [ -n "${dev_other}" ]; then
       return 1
@@ -217,6 +217,52 @@ api_deps_allowed() {
     grep -E '^tracing-subscriber[[:space:]]*=' "${crate_toml}" | grep -Eq 'workspace[[:space:]]*=[[:space:]]*true' \
       || return 1
   fi
+
+  api_dep_jsonschema=$(
+    awk '
+      /^\[dependencies\]/ { indeps = 1; next }
+      /^\[/ { indeps = 0 }
+      indeps && /^jsonschema[[:space:]]*=/ { print; exit }
+    ' "${crate_toml}"
+  )
+  if [ -n "${api_dep_jsonschema}" ]; then
+    return 1
+  fi
+
+  api_dep_serde_yaml=$(
+    awk '
+      /^\[dependencies\]/ { indeps = 1; next }
+      /^\[/ { indeps = 0 }
+      indeps && /^serde_yaml[[:space:]]*=/ { print; exit }
+    ' "${crate_toml}"
+  )
+  if [ -n "${api_dep_serde_yaml}" ]; then
+    return 1
+  fi
+
+  api_dev_jsonschema=$(
+    awk '
+      /^\[dev-dependencies\]/ { indev = 1; next }
+      /^\[/ { indev = 0 }
+      indev && /^jsonschema[[:space:]]*=/ { print; exit }
+    ' "${crate_toml}"
+  )
+  if [ -n "${api_dev_jsonschema}" ]; then
+    echo "${api_dev_jsonschema}" | grep -Eq 'workspace[[:space:]]*=[[:space:]]*true' || return 1
+    echo "${api_dev_jsonschema}" | grep -Eq 'default-features[[:space:]]*=[[:space:]]*false' || return 1
+  fi
+
+  api_dev_serde_yaml=$(
+    awk '
+      /^\[dev-dependencies\]/ { indev = 1; next }
+      /^\[/ { indev = 0 }
+      indev && /^serde_yaml[[:space:]]*=/ { print; exit }
+    ' "${crate_toml}"
+  )
+  if [ -n "${api_dev_serde_yaml}" ]; then
+    echo "${api_dev_serde_yaml}" | grep -Eq 'workspace[[:space:]]*=[[:space:]]*true' || return 1
+  fi
+
   return 0
 }
 
@@ -364,6 +410,8 @@ check_pin rcgen 0.14.10
 check_pin clap 4.6.7
 check_pin toml 1.2.1
 check_pin sha2 0.10.9
+check_pin jsonschema 0.61.1
+check_pin serde_yaml 0.9.34
 
 # --- cada lib: lints heredados, sin dependencias ---
 for member in ${REQUIRED_MEMBERS}; do

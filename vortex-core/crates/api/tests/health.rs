@@ -1,3 +1,5 @@
+mod support;
+
 use std::net::SocketAddr;
 use std::sync::Arc;
 
@@ -116,6 +118,7 @@ async fn get_health_ok_returns_200() {
     ] {
         assert!(json["components"][key].is_object());
     }
+    support::openapi::assert_conforms("GET", "/health", status, &ctype, &json);
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -138,6 +141,7 @@ async fn get_health_starting_returns_503() {
     assert_eq!(ctype, "application/json");
     assert_eq!(json["status"], "starting");
     assert!(json.get("code").is_none());
+    support::openapi::assert_conforms("GET", "/health", status, &ctype, &json);
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
