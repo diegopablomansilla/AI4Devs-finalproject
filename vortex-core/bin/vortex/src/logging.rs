@@ -1,10 +1,14 @@
-//! Structured logging for Vortex Core (T-00-06).
-#![allow(dead_code)] // `init_logging` se engancha en T-00-20; el módulo se ejerce desde tests.
+//! Structured logging for Vortex Core (T-00-06); installed by `vortex serve` (T-00-20).
 
 use crate::config::Config;
 use std::fs;
-use std::io::{self, IsTerminal, Write};
-use std::path::{Path, PathBuf};
+use std::io::IsTerminal;
+#[cfg(test)]
+use std::io::{self, Write};
+use std::path::Path;
+#[cfg(test)]
+use std::path::PathBuf;
+#[cfg(test)]
 use std::sync::{Arc, Mutex};
 use thiserror::Error;
 use tracing_appender::non_blocking::WorkerGuard;
@@ -37,16 +41,20 @@ pub struct LoggingGuard {
 enum ConsoleSink {
     None,
     Stderr,
+    #[cfg(test)]
     Capture(CapturingWriter),
 }
 
+#[cfg(test)]
 #[derive(Clone)]
 struct CapturingWriter(Arc<Mutex<Vec<u8>>>);
 
+#[cfg(test)]
 struct CapturingWriterGuard {
     inner: Arc<Mutex<Vec<u8>>>,
 }
 
+#[cfg(test)]
 impl Write for CapturingWriterGuard {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         self.inner.lock().unwrap().write(buf)
@@ -57,6 +65,7 @@ impl Write for CapturingWriterGuard {
     }
 }
 
+#[cfg(test)]
 impl<'a> tracing_subscriber::fmt::MakeWriter<'a> for CapturingWriter {
     type Writer = CapturingWriterGuard;
 
@@ -67,7 +76,7 @@ impl<'a> tracing_subscriber::fmt::MakeWriter<'a> for CapturingWriter {
     }
 }
 
-/// Install the global subscriber (T-00-20). Not called from `main` in this ticket.
+/// Install the global subscriber for `vortex serve` (T-00-20).
 pub fn init_logging(config: &Config) -> Result<LoggingGuard, LoggingError> {
     let vortex_env = std::env::var("VORTEX_ENV").ok();
     let sink = if console_pretty_enabled(vortex_env.as_deref()) {
@@ -88,6 +97,7 @@ pub fn init_logging(config: &Config) -> Result<LoggingGuard, LoggingError> {
                     .with_filter(filter),
             )
             .try_init(),
+        #[cfg(test)]
         ConsoleSink::Capture(writer) => Registry::default()
             .with(json_layer(file_writer, filter.clone()))
             .with(
@@ -105,6 +115,7 @@ pub fn init_logging(config: &Config) -> Result<LoggingGuard, LoggingError> {
 }
 
 /// Run `f` with a scoped subscriber (tests).
+#[cfg(test)]
 pub fn with_logging<F>(config: &Config, vortex_env: Option<&str>, f: F) -> Result<(), LoggingError>
 where
     F: FnOnce(),
@@ -112,6 +123,7 @@ where
     with_logging_sink(config, vortex_env, ConsoleSink::None, f)
 }
 
+#[cfg(test)]
 pub(crate) fn with_logging_capture<F>(
     config: &Config,
     vortex_env: Option<&str>,
@@ -129,6 +141,7 @@ where
     )
 }
 
+#[cfg(test)]
 fn with_logging_sink<F>(
     config: &Config,
     vortex_env: Option<&str>,
@@ -192,6 +205,7 @@ fn json_layer(
         .with_filter(filter)
 }
 
+#[cfg(test)]
 fn run_with_subscriber<F>(
     console: ConsoleSink,
     file_writer: tracing_appender::non_blocking::NonBlocking,
@@ -269,6 +283,7 @@ pub(crate) fn retain_log_files(logs_dir: &Path, keep: u32) -> Result<(), Logging
     Ok(())
 }
 
+#[cfg(test)]
 fn log_files_matching(logs_dir: &Path) -> Result<Vec<PathBuf>, LoggingError> {
     let mut paths = Vec::new();
     for entry in fs::read_dir(logs_dir).map_err(|e| LoggingError::new("logs", e.to_string()))? {

@@ -5345,6 +5345,7 @@ dependencies = [
  "clap",
  "serde",
  "serde_json",
+ "storage",
  "supervisor",
  "thiserror 2.0.21",
  "tokio",
