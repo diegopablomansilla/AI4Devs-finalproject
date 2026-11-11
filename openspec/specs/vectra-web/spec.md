@@ -16,10 +16,11 @@ El repositorio MUST contener el directorio `vectra-web/` en la raíz, con al men
 - `vectra-web/js/router.js`
 - `vectra-web/js/api.js`
 - `vectra-web/js/errors.js`
+- `vectra-web/js/keyboard-list.js`
 - `vectra-web/js/components/index.js`, `shared.js`, `vx-button.js`, `vx-field.js`, `vx-chip.js`, `vx-modal.js`, `vx-side-panel.js`, `vx-toast.js`, `vx-product-card.js`, `vx-omnibox.js`
 - `vectra-web/dev/components.html`
 
-`index.html` MUST declarar `lang="es"` en el elemento `html`. MUST incluir un *outlet* identificable (p. ej. `id="app"`) donde el *router* pinta la vista. MUST cargar `js/app.js` como ES Module (`type="module"`) con `src` igual a `/static/{{VERSION}}/js/app.js` (el placeholder literal `{{VERSION}}`; el Gateway de T-00-19 lo sustituye al servir). MUST enlazar `css/tokens.css` y `css/base.css` (en ese orden) con `href` `/static/{{VERSION}}/css/tokens.css` y `/static/{{VERSION}}/css/base.css`. MUST NOT exigir un *bundler*, `package.json` ni dependencias npm para cargar la app. `js/app.js` MUST importar el *router* con `import` de ES Module y MUST importar `js/components/index.js` para registrar `vx-button`, `vx-field`, `vx-chip`, `vx-modal`, `vx-side-panel`, `vx-toast`, `vx-product-card` y `vx-omnibox`. Este change MUST NOT exigir que `app.js` importe `errors.js` (los callers de negocio llegan en tickets posteriores).
+`index.html` MUST declarar `lang="es"` en el elemento `html`. MUST incluir un *outlet* identificable (p. ej. `id="app"`) donde el *router* pinta la vista. MUST cargar `js/app.js` como ES Module (`type="module"`) con `src` igual a `/static/{{VERSION}}/js/app.js` (el placeholder literal `{{VERSION}}`; el Gateway de T-00-19 lo sustituye al servir). MUST enlazar `css/tokens.css` y `css/base.css` (en ese orden) con `href` `/static/{{VERSION}}/css/tokens.css` y `/static/{{VERSION}}/css/base.css`. MUST NOT exigir un *bundler*, `package.json` ni dependencias npm para cargar la app. `js/app.js` MUST importar el *router* con `import` de ES Module y MUST importar `js/components/index.js` para registrar `vx-button`, `vx-field`, `vx-chip`, `vx-modal`, `vx-side-panel`, `vx-toast`, `vx-product-card` y `vx-omnibox`. Este change MUST NOT exigir que `app.js` importe `errors.js` ni `keyboard-list.js` (el cableado de resultados llega en T-03-15).
 
 #### Scenario: el documento está en español y carga el módulo versionado (happy)
 
@@ -33,7 +34,7 @@ El repositorio MUST contener el directorio `vectra-web/` en la raíz, con al men
 
 - **WHEN** se inspecciona `vectra-web/`
 - **THEN** existen `css/` y `js/components/` como directorios
-- **AND** existen los archivos `js/app.js`, `js/router.js`, `js/api.js` y `js/errors.js`
+- **AND** existen los archivos `js/app.js`, `js/router.js`, `js/api.js`, `js/errors.js` y `js/keyboard-list.js`
 - **AND** existen `css/tokens.css` y `css/base.css`
 - **AND** existen `js/components/vx-button.js`, `vx-field.js`, `vx-chip.js`, `vx-modal.js`, `vx-side-panel.js`, `vx-toast.js`, `vx-product-card.js`, `vx-omnibox.js`, `shared.js`, `index.js` y `dev/components.html`
 
@@ -103,6 +104,13 @@ El repositorio MUST contener el directorio `vectra-web/` en la raíz, con al men
 - **AND** se ejecuta `./scripts/check-vectra-web.sh`
 - **THEN** el comando termina con código distinto de 0
 - **AND** el mensaje nombra `vx-omnibox.js`
+
+#### Scenario: falta keyboard-list.js (unhappy)
+
+- **WHEN** falta `vectra-web/js/keyboard-list.js`
+- **AND** se ejecuta `./scripts/check-vectra-web.sh`
+- **THEN** el comando termina con código distinto de 0
+- **AND** el mensaje nombra `keyboard-list.js`
 
 ### Requirement: Router hash Operador y Administración sin recargar
 
@@ -287,12 +295,14 @@ Antes de archive, la suite MUST incluir estos tests (nombres estables; ubicació
 | `components_tree_includes_modal_panel_toast` | `scripts/check-vectra-web.sh` | harness de árbol |
 | `components_tree_includes_product_card` | `scripts/check-vectra-web.sh` | harness de árbol |
 | `components_tree_includes_omnibox` | `scripts/check-vectra-web.sh` | harness de árbol |
+| `keyboard_list_tree_includes_module` | `scripts/check-vectra-web.sh` | harness de árbol |
 | `api_tree_includes_api_js` | `scripts/check-vectra-web.sh` | harness de árbol |
 | `errors_tree_includes_errors_js` | `scripts/check-vectra-web.sh` | harness de árbol |
 | `components_html_catalog_loads_three_tags` | `scripts/fixtures/vectra-web/components.test.mjs` | catálogo |
 | `components_html_catalog_loads_overlay_tags` | `scripts/fixtures/vectra-web/components.test.mjs` | catálogo |
 | `components_html_catalog_loads_product_card_variants` | `scripts/fixtures/vectra-web/components.test.mjs` | catálogo (Listo cuando T-01-05) |
 | `components_html_catalog_loads_omnibox` | `scripts/fixtures/vectra-web/omnibox.test.mjs` o `components.test.mjs` | catálogo |
+| `components_html_catalog_loads_keyboard_list` | `scripts/fixtures/vectra-web/keyboard-list.test.mjs` | catálogo (Listo cuando T-01-10) |
 | `router_operator_to_admin_productos_does_not_reload` | `scripts/fixtures/vectra-web/` (`node --test`) | *router* (DOM de prueba) |
 | `router_admin_productos_to_operator_does_not_reload` | `scripts/fixtures/vectra-web/` (`node --test`) | *router* (DOM de prueba) |
 | `router_empty_hash_is_operator` | `scripts/fixtures/vectra-web/` (`node --test`) | *router* |
@@ -318,6 +328,15 @@ Antes de archive, la suite MUST incluir estos tests (nombres estables; ubicació
 | `omnibox_mode_does_not_call_search` | `omnibox.test.mjs` | unhappy |
 | `omnibox_escape_on_ai_prefix_resets_to_text` | `omnibox.test.mjs` | unhappy |
 | `omnibox_unknown_mode_falls_back_to_text` | `omnibox.test.mjs` | unhappy |
+| `keyboard_list_arrow_down_selects_first_and_updates_activedescendant` | `scripts/fixtures/vectra-web/keyboard-list.test.mjs` | happy |
+| `keyboard_list_enter_opens_active_item` | `keyboard-list.test.mjs` | happy (Listo cuando T-01-10) |
+| `keyboard_list_escape_restores_omnibox_without_clearing` | `keyboard-list.test.mjs` | happy (Listo cuando T-01-10) |
+| `keyboard_list_arrow_from_omnibox_selects_first` | `keyboard-list.test.mjs` | happy |
+| `keyboard_list_plain_options_are_reusable` | `keyboard-list.test.mjs` | happy |
+| `keyboard_list_empty_does_not_throw` | `keyboard-list.test.mjs` | unhappy |
+| `keyboard_list_enter_without_selection_does_not_open` | `keyboard-list.test.mjs` | unhappy |
+| `keyboard_list_escape_without_omnibox_does_not_throw` | `keyboard-list.test.mjs` | unhappy |
+| `keyboard_list_does_not_call_search` | `keyboard-list.test.mjs` | unhappy |
 | `tokens_root_declares_vx_contract` | `scripts/fixtures/vectra-web/` (`node --test`) | *tokens* |
 | `tokens_text_surface_pairs_meet_wcag_aa` | `scripts/fixtures/vectra-web/` (`node --test`) | contraste WCAG |
 | `tokens_low_contrast_pair_fails` | `scripts/fixtures/vectra-web/` (`node --test`) | contraste (unhappy, fixture) |
@@ -363,7 +382,7 @@ Antes de archive, la suite MUST incluir estos tests (nombres estables; ubicació
 | `errors_unmatched_field_does_not_throw` | `errors.test.mjs` | unhappy |
 | `errors_toast_text_is_not_technical_code` | `errors.test.mjs` | unhappy |
 
-`./scripts/check-vectra-web.sh` MUST ejecutar el harness de árbol y los tests `node --test` (router, *tokens*, componentes, `api`, `errors` y `omnibox`) y MUST terminar con código 0 sobre el árbol que cumple esta spec. MUST NOT agregar `package.json` ni dependencias npm. `cargo test --workspace` (manifiesto `vortex-core/Cargo.toml`) MUST seguir en verde (regresión; este change no agrega tests Rust). Los tests del *router* MUST asertar el `data-view` (y `data-section` cuando aplica), que no hubo recarga, y que la vista operador declara las tres regiones con `vx-omnibox` / `vx-side-panel` mientras admin no monta `vx-omnibox`. Los del árbol MUST asertar `lang="es"`, el `src` `/static/{{VERSION}}/js/app.js`, los `href` versionados de `tokens.css` y `base.css`, la presencia de los módulos de componentes (incluidos modal, panel, toast, product-card y omnibox), `js/api.js`, `js/errors.js` y `dev/components.html`. Los de componentes MUST asertar Shadow DOM, `adoptedStyleSheets`, ARIA, unhappy path de loading, error de campo y chip deshabilitado, los de overlay/toast de la tabla, y los de `vx-product-card` de la tabla. Los de `api` MUST asertar JSON 2xx, cabecera de terminal, `signal`, `ApiError` `not_found` / `invalid_input` / `network` / `internal`, abort distinto de `network`, y omisión de cabecera sin nombre. Los de `errors` MUST asertar cobertura del enum `ErrorCode` + `network`, mensajes en español, `showError` → toast `error`, asignación a `vx-field` por `name`, fallback de `code` desconocido, abort sin toast, campo sin match sin throw, y que el toast no muestra el `code` técnico. Los de `omnibox` MUST asertar foco al conectar, foco tras `vx-closed` / cierre de panel, Escape que limpia, modos (`?hola` → `ai` + `vx-query`, selector Texto/Voz/IA, imagen con/sin `vision`) y los unhappy de consulta vacía, host desconectado, Escape con panel abierto, `?` no inicial, `mode` desconocido y ausencia de fetch.
+`./scripts/check-vectra-web.sh` MUST ejecutar el harness de árbol y los tests `node --test` (router, *tokens*, componentes, `api`, `errors`, `omnibox` y `keyboard-list`) y MUST terminar con código 0 sobre el árbol que cumple esta spec. MUST NOT agregar `package.json` ni dependencias npm. `cargo test --workspace` (manifiesto `vortex-core/Cargo.toml`) MUST seguir en verde (regresión; este change no agrega tests Rust). Los tests del *router* MUST asertar el `data-view` (y `data-section` cuando aplica), que no hubo recarga, y que la vista operador declara las tres regiones con `vx-omnibox` / `vx-side-panel` mientras admin no monta `vx-omnibox`. Los del árbol MUST asertar `lang="es"`, el `src` `/static/{{VERSION}}/js/app.js`, los `href` versionados de `tokens.css` y `base.css`, la presencia de los módulos de componentes (incluidos modal, panel, toast, product-card y omnibox), `js/api.js`, `js/errors.js`, `js/keyboard-list.js` y `dev/components.html`. Los de componentes MUST asertar Shadow DOM, `adoptedStyleSheets`, ARIA, unhappy path de loading, error de campo y chip deshabilitado, los de overlay/toast de la tabla, y los de `vx-product-card` de la tabla. Los de `api` MUST asertar JSON 2xx, cabecera de terminal, `signal`, `ApiError` `not_found` / `invalid_input` / `network` / `internal`, abort distinto de `network`, y omisión de cabecera sin nombre. Los de `errors` MUST asertar cobertura del enum `ErrorCode` + `network`, mensajes en español, `showError` → toast `error`, asignación a `vx-field` por `name`, fallback de `code` desconocido, abort sin toast, campo sin match sin throw, y que el toast no muestra el `code` técnico. Los de `omnibox` MUST asertar foco al conectar, foco tras `vx-closed` / cierre de panel, Escape que limpia, modos (`?hola` → `ai` + `vx-query`, selector Texto/Voz/IA, imagen con/sin `vision`) y los unhappy de consulta vacía, host desconectado, Escape con panel abierto, `?` no inicial, `mode` desconocido y ausencia de fetch. Los de `keyboard-list` MUST asertar recorrido con flechas y `aria-activedescendant`, Enter que abre, Escape que restaura el Omnibox sin borrar la consulta, reuso con opciones que no son tarjetas, y los unhappy de lista vacía, Enter sin selección, sin Omnibox y ausencia de fetch.
 
 #### Scenario: la suite acordada cubre happy y unhappy (happy)
 
@@ -377,6 +396,7 @@ Antes de archive, la suite MUST incluir estos tests (nombres estables; ubicació
 - **AND** los de `api.js` (JSON 2xx, `not_found`, `network`, abort) pasan
 - **AND** los de `errors.js` (cobertura OpenAPI, toast, `vx-field`, abort, `code` desconocido) pasan
 - **AND** los de `vx-omnibox` (layout, foco, Escape, modos, `vx-query`, unhappy) pasan
+- **AND** los de `keyboard-list` (flechas, Enter, Escape al Omnibox, unhappy) pasan
 
 #### Scenario: falta el router o el documento (unhappy)
 
@@ -452,7 +472,7 @@ Antes de archive, la suite MUST incluir estos tests (nombres estables; ubicació
 
 ### Requirement: Página de muestra components.html
 
-`vectra-web/dev/components.html` MUST existir, `lang="es"`, MUST enlazar `../css/tokens.css` y `../css/base.css`, MUST cargar `../js/components/index.js` como módulo y MUST incluir al menos un `vx-button`, un `vx-field`, un `vx-chip`, un `vx-modal`, un `vx-side-panel`, un `vx-toast`, un `vx-product-card` con `variant="full"` y un `vx-product-card` con `variant="compact"`, ambos con datos de ejemplo (SKU, nombre, precio, stock), y un `vx-omnibox`. MUST incluir un control que abra el panel de muestra de modo que, al cerrarlo, el foco vuelva a ese control **salvo** que haya un `vx-omnibox` conectado, en cuyo caso el foco MUST quedar en el Omnibox (Listo cuando T-01-08). Al menos una tarjeta de muestra MUST tener `stock="0"`. Al menos la variante `full` MUST incluir marca, ubicación e imagen o *placeholder*.
+`vectra-web/dev/components.html` MUST existir, `lang="es"`, MUST enlazar `../css/tokens.css` y `../css/base.css`, MUST cargar `../js/components/index.js` como módulo y MUST incluir al menos un `vx-button`, un `vx-field`, un `vx-chip`, un `vx-modal`, un `vx-side-panel`, un `vx-toast`, un `vx-product-card` con `variant="full"` y un `vx-product-card` con `variant="compact"`, ambos con datos de ejemplo (SKU, nombre, precio, stock), y un `vx-omnibox`. MUST incluir un control que abra el panel de muestra de modo que, al cerrarlo, el foco vuelva a ese control **salvo** que haya un `vx-omnibox` conectado, en cuyo caso el foco MUST quedar en el Omnibox (Listo cuando T-01-08). Al menos una tarjeta de muestra MUST tener `stock="0"`. Al menos la variante `full` MUST incluir marca, ubicación e imagen o *placeholder*. MUST incluir una lista de ejemplo navegable por teclado (al menos dos ítems, p. ej. `vx-product-card`) asociada a `js/keyboard-list.js` (Listo cuando T-01-10: recorrer, abrir y cerrar sin mouse).
 
 #### Scenario: catálogo declara los tres tags (happy)
 
@@ -476,6 +496,12 @@ Antes de archive, la suite MUST incluir estos tests (nombres estables; ubicació
 
 - **WHEN** se lee `vectra-web/dev/components.html`
 - **THEN** contiene la etiqueta `vx-omnibox`
+
+#### Scenario: catálogo declara lista navegable por teclado (happy)
+
+- **WHEN** se lee `vectra-web/dev/components.html`
+- **THEN** carga `../js/keyboard-list.js` (o un módulo que lo importe)
+- **AND** hay un contenedor de lista de ejemplo con al menos dos ítems
 
 #### Scenario: falta un tag en la muestra (unhappy)
 
@@ -995,3 +1021,94 @@ El componente MUST escuchar el evento `vx-closed` (`bubbles`, `composed`, emitid
 - **AND** se dispara `vx-closed` en el documento
 - **THEN** no se lanza excepción
 - **AND** no se mueve el foco hacia un nodo desconectado
+
+### Requirement: Navegación por teclado de listas
+
+MUST existir `vectra-web/js/keyboard-list.js` como ES Module. MUST exportar una función que asocia navegación por teclado a un contenedor de lista y un conjunto de ítems (no asume `vx-product-card`; T-03-15 y T-03-21 reutilizan el mismo contrato).
+
+El contenedor MUST tener `role="listbox"` y MUST ser enfocable (`tabindex="0"` o equivalente). Cada ítem activo MUST tener `role="option"` y un `id` estable (el módulo MAY asignarlo si falta). El contenedor MUST exponer `aria-activedescendant` con el `id` de la opción activa, o MUST quitar el atributo cuando no hay selección. La opción activa MUST tener `aria-selected="true"`; las demás `"false"` o sin el atributo.
+
+Con al menos un ítem:
+
+- **ArrowDown** selecciona el siguiente (desde ninguna selección, el primero). Tras el último, MUST volver al primero.
+- **ArrowUp** selecciona el anterior (desde ninguna selección, el último). Tras el primero, MUST volver al último.
+- **Enter** MUST invocar el callback de abrir con el ítem activo y MUST NOT lanzar.
+- **Escape** con el foco en la lista MUST devolver el foco al control de consulta del Omnibox (input en el shadow de `vx-omnibox`, o el elemento que el caller pase como restauración) y MUST NOT vaciar la consulta del Omnibox (T-01-08 limpia solo con el input enfocado). MUST NOT lanzar.
+
+El módulo MUST escuchar `keydown` en la lista. MUST aceptar controladores extra (p. ej. el input del Omnibox) para **ArrowDown**, **ArrowUp** y **Enter** con el mismo efecto, de modo que se recorra la lista sin mouse mientras el Omnibox tiene el foco. MUST NOT manejar **Escape** en esos controladores extra (sigue valiendo T-01-08). MUST llamar `preventDefault` en las flechas y Enter que consume.
+
+MUST NOT llamar a `/search` ni a otros endpoints. MUST NOT importar `api.js`. MUST NOT pintar la región `data-region="results"` del *router* (sigue vacía para T-03-15).
+
+La función MUST devolver una función de limpieza que quita los listeners. MUST aceptar un `getItems` (o lista de nodos) evaluado en cada tecla, para que T-03-15 pueda reemplazar el DOM.
+
+`dev/components.html` MUST incluir una lista de ejemplo (al menos dos ítems, p. ej. `vx-product-card`) cableada a este módulo y un `vx-omnibox`. Enter en un ítem de esa lista MUST abrir el `vx-side-panel` de muestra (o equivalente visible) con datos del ítem. Cerrar el panel (Escape con el panel abierto, T-01-04) MUST seguir devolviendo el foco al Omnibox (T-01-08). Ese recorrido + abrir + cerrar sin mouse es el **Listo cuando**.
+
+#### Scenario: flechas recorren y aria-activedescendant sigue al activo (happy)
+
+- **WHEN** una lista de ejemplo con al menos dos ítems está asociada al módulo
+- **AND** se pulsa ArrowDown
+- **THEN** el primer ítem queda activo (`aria-selected="true"`)
+- **AND** `aria-activedescendant` del listbox es el `id` de ese ítem
+- **AND** un segundo ArrowDown activa el siguiente ítem y actualiza `aria-activedescendant`
+
+#### Scenario: Enter abre el ítem activo (happy, Listo cuando)
+
+- **WHEN** hay un ítem activo
+- **AND** se pulsa Enter (en la lista o en el input del Omnibox usado como controlador)
+- **THEN** se invoca el callback de abrir con ese ítem
+- **AND** en el catálogo, el panel de muestra queda abierto
+
+#### Scenario: Escape en la lista vuelve al Omnibox sin borrar la consulta (happy, Listo cuando)
+
+- **WHEN** la lista tiene el foco y el Omnibox tiene consulta no vacía
+- **AND** se pulsa Escape
+- **THEN** el foco queda en el input de consulta del Omnibox
+- **AND** la consulta no queda vacía
+
+#### Scenario: ArrowDown desde el Omnibox recorre la lista (happy)
+
+- **WHEN** el input del Omnibox tiene el foco y la lista tiene ítems
+- **AND** se pulsa ArrowDown
+- **THEN** el primer ítem queda activo
+- **AND** no se envía ninguna petición HTTP
+
+#### Scenario: ítems que no son product-card también se recorren (happy)
+
+- **WHEN** `getItems` devuelve elementos que no son `vx-product-card` (p. ej. opciones de texto, como las sugerencias de T-03-21)
+- **AND** se pulsa ArrowDown y Enter
+- **THEN** se activa el primero y se invoca el callback de abrir con ese nodo
+- **AND** no se lanza excepción
+
+#### Scenario: lista vacía no lanza (unhappy)
+
+- **WHEN** `getItems` devuelve cero ítems
+- **AND** se pulsa ArrowDown, ArrowUp, Enter o Escape
+- **THEN** no se lanza excepción
+- **AND** no se invoca el callback de abrir
+- **AND** `aria-activedescendant` no apunta a un `id` inexistente
+
+#### Scenario: Enter sin selección no abre (unhappy)
+
+- **WHEN** la lista tiene ítems pero ninguno está activo
+- **AND** se pulsa Enter
+- **THEN** no se invoca el callback de abrir
+- **AND** no se lanza excepción
+
+#### Scenario: sin Omnibox Escape no lanza (unhappy)
+
+- **WHEN** no hay función ni elemento de restauración de foco
+- **AND** la lista tiene el foco y se pulsa Escape
+- **THEN** no se lanza excepción
+
+#### Scenario: no llama a search (unhappy)
+
+- **WHEN** se recorre, se abre o se pulsa Escape en la lista de ejemplo
+- **THEN** no se envía ninguna petición HTTP
+- **AND** no se importa `api.js`
+
+#### Scenario: falta keyboard-list.js (unhappy)
+
+- **WHEN** falta `vectra-web/js/keyboard-list.js`
+- **AND** se ejecuta `./scripts/check-vectra-web.sh`
+- **THEN** el comando termina con código distinto de 0
+- **AND** el mensaje nombra `keyboard-list.js`
