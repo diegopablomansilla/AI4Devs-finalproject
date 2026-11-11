@@ -6,6 +6,7 @@ use std::str::FromStr as _;
 use domain::{
     Categoria, CategoriaDraft, CategoryRepo, ConflictCode, DomainError, Id, InvalidInputCode,
     MAX_DEPTH, NewCategoria, OutboxEntity, OutboxEvent, OutboxOp, Slug, Timestamp, UnavailableCode,
+    UpdateCategoria, reject_cycle,
 };
 use serde::Deserialize;
 use surrealdb::{RecordId, RecordIdKey};
@@ -64,6 +65,14 @@ impl<'a> CategoryRepo for CategoriaRepo<'a> {
     fn list_all(&self) -> impl Future<Output = Result<Vec<Categoria>, DomainError>> + Send {
         let db = self.db;
         async move { fetch_all(db).await }
+    }
+
+    fn update(
+        &self,
+        input: UpdateCategoria,
+    ) -> impl Future<Output = Result<Categoria, DomainError>> + Send {
+        let db = self.db;
+        async move { update_impl(db, input).await }
     }
 }
 
@@ -251,4 +260,177 @@ fn sql_record_array(ids: &[Id<Categoria>]) -> String {
         .map(|id| format!("type::thing('categoria', '{}')", id))
         .collect();
     format!("[{}]", inner.join(", "))
+}
+
+async fn update_impl(db: &Db, input: UpdateCategoria) -> Result<Categoria, DomainError> {
+    let node_id = input.id.clone();
+    let _current = fetch_one(db, node_id.clone()).await?;
+
+    let slug = Slug::from_nombre(&input.nombre)?;
+    let nombre = input.nombre.trim().to_string();
+
+    let new_parent_ancestors: Vec<Id<Categoria>> = match input.padre {
+        None => Vec::new(),
+        Some(ref pid) => {
+            let parent = fetch_one(db, pid.clone()).await?;
+            let mut a = parent.ancestros.clone();
+            a.push(parent.id);
+            a
+        }
+    };
+
+    reject_cycle(&node_id, input.padre.as_ref(), &new_parent_ancestors)?;
+
+    let mut subtree = fetch_subtree(db, &node_id).await?;
+    subtree.sort_by_key(|c| c.ancestros.len());
+
+    let parent_snapshot: Option<Categoria> = match input.padre {
+        None => None,
+        Some(ref pid) => Some(fetch_one(db, pid.clone()).await?),
+    };
+
+      if let Some(ref parent) = parent_snapshot
+        && parent.depth() >= MAX_DEPTH
+    {
+        return Err(DomainError::invalid_input(
+            InvalidInputCode::InvalidInput,
+            vec![],
+        ));
+    }
+
+    let mut updated: Vec<Categoria> = Vec::with_capacity(subtree.len());
+    for cat in subtree {
+        let new_state = if cat.id == node_id {
+            tree_fields_for_node(
+                &nombre,
+                &slug,
+                input.padre.clone(),
+                parent_snapshot.as_ref(),
+            )?
+        } else {
+            let parent_id = cat.padre.as_ref().expect("subtree child has padre");
+            let parent = updated
+                .iter()
+                .find(|p| p.id == *parent_id)
+                .ok_or(DomainError::unavailable(UnavailableCode::Unavailable))?;
+            tree_fields_for_node(
+                &cat.nombre,
+                &cat.slug,
+                Some(parent.id.clone()),
+                Some(parent),
+            )?
+        };
+        let draft = CategoriaDraft {
+            id: cat.id.clone(),
+            nombre: if cat.id == node_id {
+                nombre.clone()
+            } else {
+                cat.nombre.clone()
+            },
+            slug: if cat.id == node_id {
+                slug.clone()
+            } else {
+                cat.slug.clone()
+            },
+            padre: new_state.0,
+            ancestros: new_state.1,
+            ruta: new_state.2,
+            activo: cat.activo,
+            creado_en: cat.creado_en,
+            actualizado_en: cat.actualizado_en,
+        };
+        let built = Categoria::try_new(draft)?;
+        updated.push(built);
+    }
+
+    if input.padre.is_none()
+        && slug.as_str() != _current.slug.as_str()
+        && root_slug_taken_excluding(db, slug.as_str(), &node_id).await?
+    {
+        return Err(DomainError::conflict(ConflictCode::DuplicateSlug));
+    }
+
+    let mut tx = db.tx();
+    for cat in &updated {
+        persist_update(&mut tx, cat)?;
+        let id_str = cat.id.to_string();
+        let event = OutboxEvent::try_new(OutboxEntity::Categoria, OutboxOp::Upsert, &id_str, None)
+            .map_err(|_| DomainError::unavailable(UnavailableCode::Unavailable))?;
+        tx.emit(event);
+    }
+    tx.commit().await?;
+
+    fetch_one(db, node_id).await
+}
+
+type TreeFields = (Option<Id<Categoria>>, Vec<Id<Categoria>>, Vec<String>);
+
+fn tree_fields_for_node(
+    nombre: &str,
+    slug: &Slug,
+    padre: Option<Id<Categoria>>,
+    parent: Option<&Categoria>,
+) -> Result<TreeFields, DomainError> {
+    let _ = slug;
+    match (padre, parent) {
+        (None, None) => Ok((None, Vec::new(), vec![nombre.to_string()])),
+        (Some(pid), Some(p)) => {
+            let mut ancestros = p.ancestros.clone();
+            ancestros.push(p.id.clone());
+            let mut ruta = p.ruta.clone();
+            ruta.push(nombre.to_string());
+            Ok((Some(pid), ancestros, ruta))
+        }
+        _ => Err(DomainError::unavailable(UnavailableCode::Unavailable)),
+    }
+}
+
+async fn fetch_subtree(db: &Db, root: &Id<Categoria>) -> Result<Vec<Categoria>, DomainError> {
+    let id_str = root.to_string();
+    let stmt = format!(
+        "SELECT * FROM categoria WHERE record::id(id) = '{id_str}' \
+         OR type::thing('categoria', '{id_str}') IN ancestros;"
+    );
+    let rows = query_records(db, &stmt).await?;
+    let mut out = Vec::new();
+    for row in rows {
+        out.push(record_to_categoria(None, row)?);
+    }
+    if !out.iter().any(|c| c.id == *root) {
+        return Err(DomainError::not_found());
+    }
+    Ok(out)
+}
+
+async fn root_slug_taken_excluding(
+    db: &Db,
+    slug: &str,
+    except: &Id<Categoria>,
+) -> Result<bool, DomainError> {
+    let except_str = except.to_string();
+    let stmt = format!(
+        "RETURN array::len((SELECT id FROM categoria WHERE padre IS NONE AND slug = {} \
+         AND record::id(id) != '{except_str}' LIMIT 1));",
+        sql_string(slug)
+    );
+    let len = scalar_i64(db, &stmt).await?.unwrap_or(0);
+    Ok(len > 0)
+}
+
+fn persist_update(tx: &mut crate::tx::Tx, cat: &Categoria) -> Result<(), DomainError> {
+    let id_str = cat.id.to_string();
+    let padre_sql = match cat.padre {
+        None => "NONE".to_string(),
+        Some(ref p) => format!("type::thing('categoria', '{}')", p),
+    };
+    let stmt = format!(
+        "UPDATE type::thing('categoria', '{id_str}') SET \
+         nombre = {}, slug = {}, padre = {padre_sql}, ancestros = {}, ruta = {};",
+        sql_string(&cat.nombre),
+        sql_string(cat.slug.as_str()),
+        sql_record_array(&cat.ancestros),
+        sql_string_array(&cat.ruta),
+    );
+    tx.run(stmt);
+    Ok(())
 }
