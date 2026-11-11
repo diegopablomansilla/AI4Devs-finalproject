@@ -4394,6 +4394,7 @@ name = "storage"
 version = "0.1.0"
 dependencies = [
  "domain",
+ "serde",
  "sha2",
  "surrealdb",
  "thiserror 2.0.21",

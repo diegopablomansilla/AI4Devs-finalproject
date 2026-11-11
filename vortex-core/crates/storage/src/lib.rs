@@ -1,9 +1,11 @@
 //! Crate `storage`: SurrealDB embebido (apertura RocksDB, T-00-08; migraciones T-00-09; harness T-09-02).
 
+mod categoria;
 mod migrate;
 pub mod testing;
 mod tx;
 
+pub use categoria::CategoriaRepo;
 pub use migrate::{
     MIGRATION_0000_SQL, MIGRATION_0001_SQL, MIGRATION_0002_SQL, MigrateError, Migration,
     MigrationRecord, checksum_hex,

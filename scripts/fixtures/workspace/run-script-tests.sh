@@ -290,24 +290,7 @@ assert_fails_with 'catalog con dependencies' "${tmp}" 'catalog'
 cp "${REPO_ROOT}/vortex-core/crates/api/Cargo.toml" "${tmp}/vortex-core/crates/api/Cargo.toml"
 cp "${REPO_ROOT}/vortex-core/crates/catalog/Cargo.toml" "${tmp}/vortex-core/crates/catalog/Cargo.toml"
 cp "${REPO_ROOT}/vortex-core/crates/domain/Cargo.toml" "${tmp}/vortex-core/crates/domain/Cargo.toml"
-cat >"${tmp}/vortex-core/crates/storage/Cargo.toml" <<'EOF'
-[package]
-name = "storage"
-version = "0.1.0"
-edition.workspace = true
-publish = false
-
-[dependencies]
-surrealdb = { workspace = true, default-features = false, features = ["kv-rocksdb", "kv-mem"] }
-thiserror = { workspace = true }
-sha2 = { workspace = true }
-
-[dev-dependencies]
-tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
-
-[lints]
-workspace = true
-EOF
+cp "${REPO_ROOT}/vortex-core/crates/storage/Cargo.toml" "${tmp}/vortex-core/crates/storage/Cargo.toml"
 assert_ok 'storage con allowlist surrealdb' "${tmp}"
 
 # unhappy: storage declares axum
