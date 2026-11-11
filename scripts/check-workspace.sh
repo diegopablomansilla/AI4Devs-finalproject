@@ -59,7 +59,7 @@ domain_deps_allowed() {
   return 0
 }
 
-# `storage` allowlist: [dependencies] surrealdb + thiserror + sha2; [dev-dependencies] tokio only.
+# `storage` allowlist: [dependencies] surrealdb + thiserror + sha2 + domain (path) + tokio (sync); [dev-dependencies] tokio only.
 storage_deps_allowed() {
   crate_toml=$1
 
@@ -90,7 +90,7 @@ storage_deps_allowed() {
       /^\[dependencies\]/ { indeps = 1; next }
       /^\[/ { indeps = 0 }
       indeps && /^[^[:space:]#]/ { print }
-    ' "${crate_toml}" | grep -v -E '^(surrealdb|thiserror|sha2)[[:space:]]*=' || true
+    ' "${crate_toml}" | grep -v -E '^(surrealdb|thiserror|sha2|domain|tokio)[[:space:]]*=' || true
   )
   if [ -n "${other_deps}" ]; then
     return 1
@@ -114,6 +114,19 @@ storage_deps_allowed() {
     grep -E '^sha2[[:space:]]*=' "${crate_toml}" | grep -Eq 'workspace[[:space:]]*=[[:space:]]*true' \
       || return 1
   fi
+
+  if grep -E '^domain[[:space:]]*=' "${crate_toml}" >/dev/null 2>&1; then
+    grep -E '^domain[[:space:]]*=' "${crate_toml}" | grep -Fq 'path' \
+      || return 1
+  fi
+
+  if grep -E '^tokio[[:space:]]*=' "${crate_toml}" >/dev/null 2>&1; then
+    grep -E '^tokio[[:space:]]*=' "${crate_toml}" | grep -Eq 'workspace[[:space:]]*=[[:space:]]*true' \
+      || return 1
+    grep -E '^tokio[[:space:]]*=' "${crate_toml}" | grep -Fq 'sync' \
+      || return 1
+  fi
+
   return 0
 }
 
