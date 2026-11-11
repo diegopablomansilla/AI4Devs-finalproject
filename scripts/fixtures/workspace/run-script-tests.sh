@@ -269,8 +269,13 @@ workspace = true
 EOF
 assert_fails_with 'api con clap' "${tmp}" 'api'
 
-# unhappy: catalog declares dependencies
+# happy: catalog declares path domain (T-02-05)
 cp "${REPO_ROOT}/vortex-core/crates/api/Cargo.toml" "${tmp}/vortex-core/crates/api/Cargo.toml"
+cp "${REPO_ROOT}/vortex-core/crates/catalog/Cargo.toml" "${tmp}/vortex-core/crates/catalog/Cargo.toml"
+cp "${REPO_ROOT}/vortex-core/crates/domain/Cargo.toml" "${tmp}/vortex-core/crates/domain/Cargo.toml"
+assert_ok 'catalog con path domain' "${tmp}"
+
+# unhappy: catalog declares surrealdb outside allowlist
 cat >"${tmp}/vortex-core/crates/catalog/Cargo.toml" <<'EOF'
 [package]
 name = "catalog"
@@ -279,12 +284,13 @@ edition.workspace = true
 publish = false
 
 [dependencies]
-serde = { workspace = true }
+domain = { path = "../domain" }
+surrealdb = { workspace = true }
 
 [lints]
 workspace = true
 EOF
-assert_fails_with 'catalog con dependencies' "${tmp}" 'catalog'
+assert_fails_with 'catalog con surrealdb' "${tmp}" 'catalog'
 
 # happy: storage declares surrealdb allowlist
 cp "${REPO_ROOT}/vortex-core/crates/api/Cargo.toml" "${tmp}/vortex-core/crates/api/Cargo.toml"

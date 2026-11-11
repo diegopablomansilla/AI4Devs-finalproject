@@ -1,1 +1,5 @@
-//! Crate `catalog` (placeholder for T-00-01-02).
+//! Catalog & Inventory — use cases (EP-02).
+
+pub mod categoria;
+
+pub use categoria::{CategoryOccupancy, CategoryService};

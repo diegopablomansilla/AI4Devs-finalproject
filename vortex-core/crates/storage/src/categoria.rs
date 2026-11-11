@@ -74,6 +74,15 @@ impl<'a> CategoryRepo for CategoriaRepo<'a> {
         let db = self.db;
         async move { update_impl(db, input).await }
     }
+
+    fn set_activo(
+        &self,
+        id: Id<Categoria>,
+        activo: bool,
+    ) -> impl Future<Output = Result<Categoria, DomainError>> + Send {
+        let db = self.db;
+        async move { set_activo_impl(db, id, activo).await }
+    }
 }
 
 async fn create_impl(db: &Db, input: NewCategoria) -> Result<Categoria, DomainError> {
@@ -289,7 +298,7 @@ async fn update_impl(db: &Db, input: UpdateCategoria) -> Result<Categoria, Domai
         Some(ref pid) => Some(fetch_one(db, pid.clone()).await?),
     };
 
-      if let Some(ref parent) = parent_snapshot
+    if let Some(ref parent) = parent_snapshot
         && parent.depth() >= MAX_DEPTH
     {
         return Err(DomainError::invalid_input(
@@ -361,6 +370,24 @@ async fn update_impl(db: &Db, input: UpdateCategoria) -> Result<Categoria, Domai
     tx.commit().await?;
 
     fetch_one(db, node_id).await
+}
+
+async fn set_activo_impl(
+    db: &Db,
+    id: Id<Categoria>,
+    activo: bool,
+) -> Result<Categoria, DomainError> {
+    let _ = fetch_one(db, id.clone()).await?;
+    let id_str = id.to_string();
+    let activo_sql = if activo { "true" } else { "false" };
+    let stmt = format!("UPDATE type::thing('categoria', '{id_str}') SET activo = {activo_sql};");
+    let event = OutboxEvent::try_new(OutboxEntity::Categoria, OutboxOp::Upsert, &id_str, None)
+        .map_err(|_| DomainError::unavailable(UnavailableCode::Unavailable))?;
+    let mut tx = db.tx();
+    tx.run(stmt);
+    tx.emit(event);
+    tx.commit().await?;
+    fetch_one(db, id).await
 }
 
 type TreeFields = (Option<Id<Categoria>>, Vec<Id<Categoria>>, Vec<String>);

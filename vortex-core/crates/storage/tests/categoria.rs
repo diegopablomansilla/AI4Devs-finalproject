@@ -558,3 +558,31 @@ async fn category_repo_rename_rejects_duplicate_slug() {
         }
     ));
 }
+
+#[tokio::test]
+async fn category_repo_set_activo_persists_inactive() {
+    let db = test_db().await;
+    let fijaciones = create_fijaciones(&db).await;
+    let before = db.record_count("outbox").await.expect("outbox");
+    let updated = repo(&db)
+        .set_activo(fijaciones.id.clone(), false)
+        .await
+        .expect("deactivate");
+    assert!(!updated.activo);
+    let loaded = repo(&db).get(fijaciones.id).await.expect("get");
+    assert!(!loaded.activo);
+    assert_eq!(db.record_count("outbox").await.expect("outbox"), before + 1);
+}
+
+#[tokio::test]
+async fn category_repo_set_activo_unknown_id_is_not_found() {
+    let db = test_db().await;
+    let before = db.record_count("outbox").await.expect("outbox");
+    let missing = Id::<Categoria>::generate();
+    let err = repo(&db)
+        .set_activo(missing, false)
+        .await
+        .expect_err("not found");
+    assert_eq!(err.code(), DomainCode::NotFound);
+    assert_eq!(db.record_count("outbox").await.expect("outbox"), before);
+}

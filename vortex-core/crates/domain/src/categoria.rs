@@ -218,6 +218,12 @@ pub trait CategoryRepo {
         &self,
         input: UpdateCategoria,
     ) -> impl Future<Output = Result<Categoria, DomainError>> + Send;
+
+    fn set_activo(
+        &self,
+        id: Id<Categoria>,
+        activo: bool,
+    ) -> impl Future<Output = Result<Categoria, DomainError>> + Send;
 }
 
 fn map_spanish_char(ch: char) -> Option<char> {
@@ -504,6 +510,14 @@ mod tests {
         ) -> impl Future<Output = Result<Categoria, DomainError>> + Send {
             async { Err(DomainError::unavailable(UnavailableCode::Unavailable)) }
         }
+
+        fn set_activo(
+            &self,
+            _id: Id<Categoria>,
+            _activo: bool,
+        ) -> impl Future<Output = Result<Categoria, DomainError>> + Send {
+            async { Err(DomainError::unavailable(UnavailableCode::Unavailable)) }
+        }
     }
 
     #[test]
@@ -522,5 +536,13 @@ mod tests {
             });
         }
         assert_update(&DummyCategoryRepo);
+    }
+
+    #[test]
+    fn category_repo_trait_exposes_set_activo() {
+        fn assert_set_activo<R: CategoryRepo>(r: &R) {
+            let _fut = r.set_activo(Id::generate(), false);
+        }
+        assert_set_activo(&DummyCategoryRepo);
     }
 }
