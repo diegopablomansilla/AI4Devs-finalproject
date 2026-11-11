@@ -1,5 +1,5 @@
 #!/usr/bin/env sh
-# Verifica vectra-web: árbol, tokens (T-01-02), router (T-01-01), componentes (T-01-03), overlays (T-01-04), product-card (T-01-05), api (T-01-06), errors (T-01-07).
+# Verifica vectra-web: árbol, tokens (T-01-02), router (T-01-01), componentes (T-01-03), overlays (T-01-04), product-card (T-01-05), api (T-01-06), errors (T-01-07), omnibox (T-01-08).
 set -eu
 
 if [ -n "${CHECK_ROOT:-}" ]; then
@@ -36,6 +36,7 @@ for rel in vx-modal.js vx-side-panel.js vx-toast.js; do
 done
 
 [ -f "${COMPONENTS_DIR}/vx-product-card.js" ] || fail "components_tree_includes_product_card: falta vectra-web/js/components/vx-product-card.js"
+[ -f "${COMPONENTS_DIR}/vx-omnibox.js" ] || fail "components_tree_includes_omnibox: falta vectra-web/js/components/vx-omnibox.js"
 
 DEV_HTML="${WEB}/dev/components.html"
 [ -f "${DEV_HTML}" ] || fail 'components_tree_includes_button_field_chip: falta vectra-web/dev/components.html'
@@ -57,6 +58,10 @@ if ! grep -q "<vx-product-card" "${DEV_HTML}"; then
 fi
 if ! grep -q 'variant="full"' "${DEV_HTML}" || ! grep -q 'variant="compact"' "${DEV_HTML}"; then
   fail "components_html_catalog_loads_product_card_variants: faltan variant=\"full\" y variant=\"compact\" en dev/components.html"
+fi
+
+if ! grep -q "<vx-omnibox" "${DEV_HTML}"; then
+  fail "components_html_catalog_loads_omnibox: falta <vx-omnibox> en dev/components.html"
 fi
 
 [ -f "${INDEX}" ] || fail 'index_html_declares_lang_es_and_versioned_module: falta vectra-web/index.html'
@@ -97,14 +102,16 @@ TOKENS_TEST="${ROOT}/scripts/fixtures/vectra-web/tokens.test.mjs"
 COMPONENTS_TEST="${ROOT}/scripts/fixtures/vectra-web/components.test.mjs"
 API_TEST="${ROOT}/scripts/fixtures/vectra-web/api.test.mjs"
 ERRORS_TEST="${ROOT}/scripts/fixtures/vectra-web/errors.test.mjs"
+OMNIBOX_TEST="${ROOT}/scripts/fixtures/vectra-web/omnibox.test.mjs"
 [ -f "${ROUTER_TEST}" ] || fail 'falta scripts/fixtures/vectra-web/router.test.mjs'
 [ -f "${TOKENS_TEST}" ] || fail 'falta scripts/fixtures/vectra-web/tokens.test.mjs'
 [ -f "${COMPONENTS_TEST}" ] || fail 'falta scripts/fixtures/vectra-web/components.test.mjs'
 [ -f "${API_TEST}" ] || fail 'falta scripts/fixtures/vectra-web/api.test.mjs'
 [ -f "${ERRORS_TEST}" ] || fail 'falta scripts/fixtures/vectra-web/errors.test.mjs'
+[ -f "${OMNIBOX_TEST}" ] || fail 'falta scripts/fixtures/vectra-web/omnibox.test.mjs'
 
 if ! command -v node >/dev/null 2>&1; then
   fail 'node no está en PATH (se requiere para tests del router)'
 fi
 
-node --test "${ROUTER_TEST}" "${TOKENS_TEST}" "${COMPONENTS_TEST}" "${API_TEST}" "${ERRORS_TEST}"
+node --test "${ROUTER_TEST}" "${TOKENS_TEST}" "${COMPONENTS_TEST}" "${API_TEST}" "${ERRORS_TEST}" "${OMNIBOX_TEST}"

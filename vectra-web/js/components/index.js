@@ -5,3 +5,4 @@ import "./vx-modal.js";
 import "./vx-side-panel.js";
 import "./vx-toast.js";
 import "./vx-product-card.js";
+import "./vx-omnibox.js";

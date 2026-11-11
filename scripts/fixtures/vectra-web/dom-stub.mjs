@@ -36,13 +36,37 @@ class EventTargetStub {
     );
   }
 
-  dispatchEvent(event) {
-    const list = [...(this._listeners.get(event.type) ?? [])];
-    for (const fn of list) {
-      fn.call(this, event);
+  /** @param {FakeNode | DocumentStub | FakeShadowRoot} node */
+  _fireListeners(node, event) {
+    const listeners = node._listeners?.get(event.type) ?? [];
+    for (const fn of [...listeners]) {
+      fn.call(node, event);
     }
-    if (this.parentNode && this.parentNode.host && event.bubbles) {
-      this.parentNode.host.dispatchEvent(event);
+  }
+
+  dispatchEvent(event) {
+    this._fireListeners(this, event);
+    if (!event.bubbles) {
+      return !event.defaultPrevented;
+    }
+    let current = this;
+    const doc = globalThis.document;
+    for (;;) {
+      /** @type {FakeNode | DocumentStub | FakeShadowRoot | null | undefined} */
+      let parent = current.parentNode ?? null;
+      if (parent && parent.host) {
+        if (!event.composed) {
+          break;
+        }
+        parent = parent.host;
+      } else if (!parent && current === doc?.body && doc) {
+        parent = doc;
+      }
+      if (!parent) {
+        break;
+      }
+      current = parent;
+      this._fireListeners(current, event);
     }
     return !event.defaultPrevented;
   }
@@ -205,6 +229,18 @@ class FakeNode extends EventTargetStub {
     }
     this._children.push(node);
     node.parentNode = this;
+    node.isConnected = true;
+    return node;
+  }
+
+  removeChild(node) {
+    const kids = this._children ?? [];
+    const idx = kids.indexOf(node);
+    if (idx !== -1) {
+      kids.splice(idx, 1);
+    }
+    node.parentNode = null;
+    node.isConnected = false;
     return node;
   }
 
@@ -270,6 +306,27 @@ export class HTMLElement extends FakeNode {
   }
 }
 
+class DocumentStub extends EventTargetStub {
+  constructor() {
+    super();
+    this.activeElement = null;
+    this.body = new FakeNode("BODY");
+    this.body.parentNode = this;
+  }
+
+  createElement(tag) {
+    return new FakeNode(String(tag).toUpperCase());
+  }
+
+  _setActiveElement(el) {
+    this.activeElement = el;
+  }
+
+  appendChild(node) {
+    return this.body.appendChild(node);
+  }
+}
+
 const registry = new Map();
 
 export const customElements = {
@@ -289,16 +346,7 @@ export const customElements = {
 };
 
 export function installDomGlobals() {
-  const doc = {
-    activeElement: null,
-    body: new FakeNode("BODY"),
-    createElement(tag) {
-      return new FakeNode(String(tag).toUpperCase());
-    },
-    _setActiveElement(el) {
-      this.activeElement = el;
-    },
-  };
+  const doc = new DocumentStub();
   globalThis.CSSStyleSheet = CSSStyleSheetStub;
   globalThis.HTMLElement = HTMLElement;
   globalThis.customElements = customElements;
