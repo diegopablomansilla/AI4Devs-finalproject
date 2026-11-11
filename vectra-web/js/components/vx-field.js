@@ -65,6 +65,12 @@ export class VxField extends HTMLElement {
       root.appendChild(this._help);
       root.appendChild(this._error);
       await applyComponentStyles(root, LOCAL_CSS);
+      this._input.addEventListener("change", () => {
+        this.setAttribute("value", this._input.value);
+        this.dispatchEvent(
+          new Event("change", { bubbles: true, composed: true }),
+        );
+      });
       this._built = true;
     }
     this._sync();

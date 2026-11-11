@@ -1,5 +1,5 @@
 #!/usr/bin/env sh
-# Verifica vectra-web: árbol, tokens (T-01-02), router (T-01-01), componentes (T-01-03), overlays (T-01-04), product-card (T-01-05), api (T-01-06), errors (T-01-07), omnibox foco (T-01-08), modos y vx-query (T-01-09), keyboard-list (T-01-10).
+# Verifica vectra-web: árbol, tokens (T-01-02), router (T-01-01), componentes (T-01-03), overlays (T-01-04), product-card (T-01-05), api (T-01-06), errors (T-01-07), omnibox foco (T-01-08), modos y vx-query (T-01-09), keyboard-list (T-01-10), admin shell y terminal (T-01-11).
 set -eu
 
 if [ -n "${CHECK_ROOT:-}" ]; then
@@ -105,6 +105,7 @@ API_TEST="${ROOT}/scripts/fixtures/vectra-web/api.test.mjs"
 ERRORS_TEST="${ROOT}/scripts/fixtures/vectra-web/errors.test.mjs"
 OMNIBOX_TEST="${ROOT}/scripts/fixtures/vectra-web/omnibox.test.mjs"
 KEYBOARD_LIST_TEST="${ROOT}/scripts/fixtures/vectra-web/keyboard-list.test.mjs"
+ADMIN_TEST="${ROOT}/scripts/fixtures/vectra-web/admin.test.mjs"
 [ -f "${ROUTER_TEST}" ] || fail 'falta scripts/fixtures/vectra-web/router.test.mjs'
 [ -f "${TOKENS_TEST}" ] || fail 'falta scripts/fixtures/vectra-web/tokens.test.mjs'
 [ -f "${COMPONENTS_TEST}" ] || fail 'falta scripts/fixtures/vectra-web/components.test.mjs'
@@ -112,9 +113,10 @@ KEYBOARD_LIST_TEST="${ROOT}/scripts/fixtures/vectra-web/keyboard-list.test.mjs"
 [ -f "${ERRORS_TEST}" ] || fail 'falta scripts/fixtures/vectra-web/errors.test.mjs'
 [ -f "${OMNIBOX_TEST}" ] || fail 'falta scripts/fixtures/vectra-web/omnibox.test.mjs'
 [ -f "${KEYBOARD_LIST_TEST}" ] || fail 'falta scripts/fixtures/vectra-web/keyboard-list.test.mjs'
+[ -f "${ADMIN_TEST}" ] || fail 'falta scripts/fixtures/vectra-web/admin.test.mjs'
 
 if ! command -v node >/dev/null 2>&1; then
   fail 'node no está en PATH (se requiere para tests del router)'
 fi
 
-node --test "${ROUTER_TEST}" "${TOKENS_TEST}" "${COMPONENTS_TEST}" "${API_TEST}" "${ERRORS_TEST}" "${OMNIBOX_TEST}" "${KEYBOARD_LIST_TEST}"
+node --test "${ROUTER_TEST}" "${TOKENS_TEST}" "${COMPONENTS_TEST}" "${API_TEST}" "${ERRORS_TEST}" "${OMNIBOX_TEST}" "${KEYBOARD_LIST_TEST}" "${ADMIN_TEST}"

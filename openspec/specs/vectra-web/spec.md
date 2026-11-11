@@ -311,6 +311,19 @@ Antes de archive, la suite MUST incluir estos tests (nombres estables; ubicació
 | `router_invalid_admin_slug_is_not_found` | `scripts/fixtures/vectra-web/` (`node --test`) | *router* |
 | `router_operator_layout_has_omnibox_results_panel` | `scripts/fixtures/vectra-web/router.test.mjs` | layout operador |
 | `router_admin_view_has_no_omnibox` | `scripts/fixtures/vectra-web/router.test.mjs` | unhappy / frontera |
+| `router_admin_layout_has_menu_and_back_link` | `scripts/fixtures/vectra-web/router.test.mjs` | layout admin (Listo cuando T-01-11) |
+| `router_admin_menu_lists_eight_sections` | `router.test.mjs` | layout admin |
+| `router_admin_nav_to_categorias_does_not_reload` | `router.test.mjs` | layout admin |
+| `router_admin_back_to_operator_in_one_step` | `router.test.mjs` | layout admin (Listo cuando T-01-11) |
+| `router_admin_current_section_has_aria_current` | `router.test.mjs` | layout admin |
+| `router_admin_content_region_has_no_business_ui` | `router.test.mjs` | unhappy (No hace) |
+| `router_admin_unknown_slug_has_menu_without_current` | `router.test.mjs` | unhappy |
+| `router_admin_does_not_call_api` | `router.test.mjs` | unhappy |
+| `admin_terminal_name_persists_to_storage` | `scripts/fixtures/vectra-web/admin.test.mjs` o `router.test.mjs` | happy |
+| `admin_terminal_name_loads_from_storage` | `admin.test.mjs` o `router.test.mjs` | happy |
+| `admin_terminal_name_over_64_does_not_save` | `admin.test.mjs` o `router.test.mjs` | unhappy |
+| `admin_terminal_name_empty_clears_storage` | `admin.test.mjs` o `router.test.mjs` | unhappy |
+| `admin_terminal_storage_failure_does_not_throw` | `admin.test.mjs` o `router.test.mjs` | unhappy |
 | `omnibox_focuses_on_connect` | `scripts/fixtures/vectra-web/omnibox.test.mjs` | happy (Listo cuando T-01-08) |
 | `omnibox_focuses_on_vx_closed` | `omnibox.test.mjs` | happy (Listo cuando T-01-08) |
 | `omnibox_side_panel_close_focuses_omnibox` | `omnibox.test.mjs` | happy (Listo cuando T-01-08) |
@@ -382,7 +395,7 @@ Antes de archive, la suite MUST incluir estos tests (nombres estables; ubicació
 | `errors_unmatched_field_does_not_throw` | `errors.test.mjs` | unhappy |
 | `errors_toast_text_is_not_technical_code` | `errors.test.mjs` | unhappy |
 
-`./scripts/check-vectra-web.sh` MUST ejecutar el harness de árbol y los tests `node --test` (router, *tokens*, componentes, `api`, `errors`, `omnibox` y `keyboard-list`) y MUST terminar con código 0 sobre el árbol que cumple esta spec. MUST NOT agregar `package.json` ni dependencias npm. `cargo test --workspace` (manifiesto `vortex-core/Cargo.toml`) MUST seguir en verde (regresión; este change no agrega tests Rust). Los tests del *router* MUST asertar el `data-view` (y `data-section` cuando aplica), que no hubo recarga, y que la vista operador declara las tres regiones con `vx-omnibox` / `vx-side-panel` mientras admin no monta `vx-omnibox`. Los del árbol MUST asertar `lang="es"`, el `src` `/static/{{VERSION}}/js/app.js`, los `href` versionados de `tokens.css` y `base.css`, la presencia de los módulos de componentes (incluidos modal, panel, toast, product-card y omnibox), `js/api.js`, `js/errors.js`, `js/keyboard-list.js` y `dev/components.html`. Los de componentes MUST asertar Shadow DOM, `adoptedStyleSheets`, ARIA, unhappy path de loading, error de campo y chip deshabilitado, los de overlay/toast de la tabla, y los de `vx-product-card` de la tabla. Los de `api` MUST asertar JSON 2xx, cabecera de terminal, `signal`, `ApiError` `not_found` / `invalid_input` / `network` / `internal`, abort distinto de `network`, y omisión de cabecera sin nombre. Los de `errors` MUST asertar cobertura del enum `ErrorCode` + `network`, mensajes en español, `showError` → toast `error`, asignación a `vx-field` por `name`, fallback de `code` desconocido, abort sin toast, campo sin match sin throw, y que el toast no muestra el `code` técnico. Los de `omnibox` MUST asertar foco al conectar, foco tras `vx-closed` / cierre de panel, Escape que limpia, modos (`?hola` → `ai` + `vx-query`, selector Texto/Voz/IA, imagen con/sin `vision`) y los unhappy de consulta vacía, host desconectado, Escape con panel abierto, `?` no inicial, `mode` desconocido y ausencia de fetch. Los de `keyboard-list` MUST asertar recorrido con flechas y `aria-activedescendant`, Enter que abre, Escape que restaura el Omnibox sin borrar la consulta, reuso con opciones que no son tarjetas, y los unhappy de lista vacía, Enter sin selección, sin Omnibox y ausencia de fetch.
+`./scripts/check-vectra-web.sh` MUST ejecutar el harness de árbol y los tests `node --test` (router, admin, *tokens*, componentes, `api`, `errors`, `omnibox` y `keyboard-list`) y MUST terminar con código 0 sobre el árbol que cumple esta spec. MUST NOT agregar `package.json` ni dependencias npm. `cargo test --workspace` (manifiesto `vortex-core/Cargo.toml`) MUST seguir en verde (regresión; este change no agrega tests Rust). Los tests del *router* MUST asertar el `data-view` (y `data-section` cuando aplica), que no hubo recarga, que la vista operador declara las tres regiones con `vx-omnibox` / `vx-side-panel` mientras admin no monta `vx-omnibox`, y que la vista admin declara el menú de ocho secciones, el enlace `#/`, `aria-current` en la sección activa, `data-region="admin-content"` sin UI de negocio y el `vx-field` de terminal. Los del árbol MUST asertar `lang="es"`, el `src` `/static/{{VERSION}}/js/app.js`, los `href` versionados de `tokens.css` y `base.css`, la presencia de los módulos de componentes (incluidos modal, panel, toast, product-card y omnibox), `js/api.js`, `js/errors.js`, `js/keyboard-list.js` y `dev/components.html`. Los de componentes MUST asertar Shadow DOM, `adoptedStyleSheets`, ARIA, unhappy path de loading, error de campo y chip deshabilitado, los de overlay/toast de la tabla, y los de `vx-product-card` de la tabla. Los de `api` MUST asertar JSON 2xx, cabecera de terminal, `signal`, `ApiError` `not_found` / `invalid_input` / `network` / `internal`, abort distinto de `network`, y omisión de cabecera sin nombre. Los de `errors` MUST asertar cobertura del enum `ErrorCode` + `network`, mensajes en español, `showError` → toast `error`, asignación a `vx-field` por `name`, fallback de `code` desconocido, abort sin toast, campo sin match sin throw, y que el toast no muestra el `code` técnico. Los de `omnibox` MUST asertar foco al conectar, foco tras `vx-closed` / cierre de panel, Escape que limpia, modos (`?hola` → `ai` + `vx-query`, selector Texto/Voz/IA, imagen con/sin `vision`) y los unhappy de consulta vacía, host desconectado, Escape con panel abierto, `?` no inicial, `mode` desconocido y ausencia de fetch. Los de `keyboard-list` MUST asertar recorrido con flechas y `aria-activedescendant`, Enter que abre, Escape que restaura el Omnibox sin borrar la consulta, reuso con opciones que no son tarjetas, y los unhappy de lista vacía, Enter sin selección, sin Omnibox y ausencia de fetch. Los de administración / terminal MUST asertar persistencia de `vectra.terminal` (≤ 64), carga inicial, rechazo de > 64 con `error` en el campo, borrado de clave vacía, y que un storage que lanza no rompe la vista.
 
 #### Scenario: la suite acordada cubre happy y unhappy (happy)
 
@@ -397,6 +410,8 @@ Antes de archive, la suite MUST incluir estos tests (nombres estables; ubicació
 - **AND** los de `errors.js` (cobertura OpenAPI, toast, `vx-field`, abort, `code` desconocido) pasan
 - **AND** los de `vx-omnibox` (layout, foco, Escape, modos, `vx-query`, unhappy) pasan
 - **AND** los de `keyboard-list` (flechas, Enter, Escape al Omnibox, unhappy) pasan
+- **AND** los de layout admin (menú de ocho secciones, vuelta al operador, `aria-current`, contenido vacío) pasan
+- **AND** los de nombre de terminal (persistencia, > 64, vacío, storage que falla) pasan
 
 #### Scenario: falta el router o el documento (unhappy)
 
@@ -869,6 +884,127 @@ MUST conservar el enlace `<a href="#/admin/productos">` (texto en español) de T
 - **WHEN** el hash es `#/admin/productos`
 - **THEN** el *outlet* muestra `data-view="admin"`
 - **AND** no hay `vx-omnibox` en el *outlet*
+
+### Requirement: Layout de la vista administración
+
+Cuando el *router* pinta `data-view="admin"` (`#/admin/<sección>` con slug `[a-z0-9-]+`), el *outlet* MUST incluir, en este orden visual:
+
+1. Un encabezado con un enlace `<a href="#/">` cuyo texto visible está en español (p. ej. "Volver al operador"). Ese enlace MUST ser suficiente para volver a la vista operador **en un paso** (Listo cuando del ticket): un único cambio de *hash* a `#/` pinta `data-view="operator"` sin recargar el documento.
+2. Una navegación (`<nav>` o equivalente con nombre accesible en español, p. ej. `aria-label="Administración"`) con **exactamente** estos ítems, en este orden, cada uno un `<a>` cuyo `href` es `#/admin/<slug>` y cuyo texto visible es la etiqueta en español:
+
+| Slug | Etiqueta |
+|---|---|
+| `productos` | Productos |
+| `categorias` | Categorías |
+| `marcas` | Marcas |
+| `atributos` | Atributos |
+| `stock` | Stock |
+| `relaciones` | Relaciones |
+| `sinonimos` | Sinónimos |
+| `notas-tecnicas` | Notas técnicas |
+
+3. Una región `data-region="admin-content"` reservada al contenido de la sección activa. En este change MUST estar vacía de UI de negocio: MUST NOT contener `vx-product-card`, MUST NOT montar formularios de alta/edición de catálogo, MUST NOT llamar a `/api/v1/*` ni a `/health`. MAY mostrar un título o texto placeholder de la sección (español) sin datos.
+4. El ajuste "Nombre de esta terminal" (requirement siguiente), visible en la vista administración.
+
+El ítem del menú cuyo slug coincide con `data-section` MUST tener `aria-current="page"`. Los demás MUST NOT tener `aria-current="page"`. Si el slug no está en la tabla (sigue siendo administración válida por T-01-01), MUST pintar el mismo layout (menú + región vacía + ajuste de terminal) y MUST NOT marcar ningún ítem con `aria-current="page"`.
+
+MUST conservar el enlace del operador `<a href="#/admin/productos">`. MUST NOT pedir credenciales ni mostrar formulario de login (`input[type="password"]` o usuario/contraseña). MUST NOT incluir `vx-omnibox`. `base.css` MAY definir clases de layout (p. ej. `.vx-admin`) usando solo *tokens* `--vx-*` existentes. MUST NOT agregar *tokens* nuevos.
+
+#### Scenario: el menú lista las ocho secciones y el enlace de vuelta (happy, Listo cuando)
+
+- **WHEN** la app inicia con hash `#/admin/productos` (o se navega desde `#/`)
+- **THEN** el *outlet* muestra `data-view="admin"` y `data-section="productos"`
+- **AND** hay un `<nav>` con enlaces `href` a `#/admin/productos`, `#/admin/categorias`, `#/admin/marcas`, `#/admin/atributos`, `#/admin/stock`, `#/admin/relaciones`, `#/admin/sinonimos` y `#/admin/notas-tecnicas`
+- **AND** hay un enlace `href="#/"`
+- **AND** el ítem Productos tiene `aria-current="page"`
+
+#### Scenario: cambiar de sección no recarga (happy)
+
+- **WHEN** la vista administración está en `#/admin/productos`
+- **AND** el *hash* pasa a `#/admin/categorias`
+- **THEN** el *outlet* muestra `data-view="admin"` y `data-section="categorias"`
+- **AND** el ítem Categorías tiene `aria-current="page"`
+- **AND** Productos ya no tiene `aria-current="page"`
+- **AND** no se invoca recarga del documento
+
+#### Scenario: volver al operador en un paso (happy, Listo cuando)
+
+- **WHEN** la vista administración está visible (`#/admin/productos` u otra sección del menú)
+- **AND** se sigue el enlace `href="#/"` (o el *hash* pasa a `#/`)
+- **THEN** el *outlet* muestra `data-view="operator"`
+- **AND** ya no está visible `data-view="admin"`
+- **AND** no se invoca recarga del documento
+
+#### Scenario: la región de contenido no monta ABM (unhappy)
+
+- **WHEN** el hash es `#/admin/productos` (u otra sección del menú)
+- **THEN** `data-region="admin-content"` no contiene `vx-product-card`
+- **AND** no hay `<form>` de alta o edición de catálogo
+- **AND** no se envía ninguna petición HTTP
+
+#### Scenario: slug de admin no listado no marca el menú (unhappy)
+
+- **WHEN** el hash es `#/admin/foo`
+- **THEN** el *outlet* muestra `data-view="admin"` y `data-section="foo"`
+- **AND** el menú de ocho secciones sigue visible
+- **AND** ningún ítem del menú tiene `aria-current="page"`
+- **AND** no se lanza excepción
+
+#### Scenario: administración no pide credenciales (unhappy / frontera)
+
+- **WHEN** se navega a `#/admin/productos`
+- **THEN** no hay `input[type="password"]` ni campo de usuario
+- **AND** no hay `vx-omnibox`
+
+### Requirement: Nombre de esta terminal
+
+La vista administración MUST incluir un `vx-field` con etiqueta visible **"Nombre de esta terminal"** (español) y atributo `name="terminal"`. El valor MUST persistirse en `localStorage` bajo la clave `vectra.terminal` (la misma que `api.js` lee para `X-Vectra-Terminal`).
+
+Al pintar la vista, si la clave tiene un valor no vacío (tras recortar espacios), el campo MUST mostrar ese valor. Si falta o está vacía, el campo MUST quedar vacío y MUST NOT fallar.
+
+Al confirmar el valor del campo (evento `change`):
+
+- Un valor recortado no vacío de **como máximo 64 caracteres** MUST guardarse en `vectra.terminal` (el valor guardado MUST ser el recortado).
+- Un valor recortado vacío MUST borrar la clave (`removeItem`) y MUST NOT dejar `" "`.
+- Un valor recortado de **más de 64 caracteres** MUST NOT guardarse. El `vx-field` MUST exponer `error` con un mensaje en español (no el código técnico) y MUST NOT lanzar.
+- Si `localStorage` lanza al leer o escribir, MUST ignorarse el fallo y MUST NOT lanzar.
+
+MUST NOT enviar peticiones HTTP al guardar. MUST NOT importar `api.js` desde el *router* para este ajuste. El *router* (o el binder de la vista) MUST aceptar un `storage` inyectable en tests (mismo patrón que `createApi`).
+
+#### Scenario: un nombre válido se persiste (happy)
+
+- **WHEN** el campo "Nombre de esta terminal" confirma el valor `"Caja-1"`
+- **THEN** `storage["vectra.terminal"]` vale `"Caja-1"`
+- **AND** el campo no tiene `error`
+- **AND** no se envía ninguna petición HTTP
+
+#### Scenario: al entrar se muestra el nombre guardado (happy)
+
+- **WHEN** `storage["vectra.terminal"]` vale `"Mostrador"`
+- **AND** se pinta `#/admin/productos`
+- **THEN** el `vx-field` `name="terminal"` tiene `value` `"Mostrador"`
+
+#### Scenario: más de 64 caracteres no se guarda (unhappy)
+
+- **WHEN** el campo confirma un valor recortado de 65 caracteres o más
+- **THEN** `vectra.terminal` no cambia (sigue el valor previo o ausente)
+- **AND** el `vx-field` tiene atributo `error` con texto en español
+- **AND** no se lanza excepción
+
+#### Scenario: valor vacío borra la clave (unhappy)
+
+- **WHEN** `vectra.terminal` vale `"Caja-1"`
+- **AND** el campo confirma `""` o solo espacios
+- **THEN** la clave `vectra.terminal` ya no está en el storage
+- **AND** no se lanza excepción
+
+#### Scenario: storage que falla no rompe la vista (unhappy)
+
+- **WHEN** `storage.getItem` o `storage.setItem` lanza
+- **AND** se pinta la vista administración o se confirma el campo
+- **THEN** no se lanza excepción
+- **AND** la vista `data-view="admin"` sigue visible
+
 
 ### Requirement: vx-omnibox
 
