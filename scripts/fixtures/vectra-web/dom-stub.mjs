@@ -41,6 +41,9 @@ class EventTargetStub {
     for (const fn of list) {
       fn.call(this, event);
     }
+    if (this.parentNode && this.parentNode.host && event.bubbles) {
+      this.parentNode.host.dispatchEvent(event);
+    }
     return !event.defaultPrevented;
   }
 }
@@ -62,16 +65,52 @@ class FakeShadowRoot extends EventTargetStub {
     return node;
   }
 
-  querySelector(selector) {
+  _descendants() {
+    /** @type {FakeNode[]} */
+    const out = [];
+    const walk = (node) => {
+      const kids = node._children ?? [];
+      for (const child of kids) {
+        out.push(child);
+        walk(child);
+      }
+    };
+    walk(this);
+    return out;
+  }
+
+  _matchSelector(node, selector) {
+    const sel = String(selector);
     if (selector === "button") {
-      return this._children.find((n) => n.tagName === "BUTTON") ?? null;
+      return node.tagName === "BUTTON";
+    }
+    if (sel.includes("button") && sel.includes(":not")) {
+      return node.tagName === "BUTTON" && !node.disabled;
     }
     if (selector === "input") {
-      return this._children.find((n) => n.tagName === "INPUT") ?? null;
+      return node.tagName === "INPUT";
     }
     if (selector === '[role="alert"]') {
-      return this._children.find((n) => n.getAttribute("role") === "alert") ?? null;
+      return node.getAttribute("role") === "alert";
     }
+    if (selector === '[role="dialog"]') {
+      return node.getAttribute("role") === "dialog";
+    }
+    if (selector === "[data-close]") {
+      return node.tagName === "BUTTON" && node.hasAttribute("data-close");
+    }
+    if (selector === "[aria-live]") {
+      return node.hasAttribute("aria-live");
+    }
+    return false;
+  }
+
+  querySelector(selector) {
+    return this._descendants().find((n) => this._matchSelector(n, selector)) ?? null;
+  }
+
+  querySelectorAll(selector) {
+    return this._descendants().filter((n) => this._matchSelector(n, selector));
   }
 }
 
@@ -80,6 +119,7 @@ class FakeNode extends EventTargetStub {
     super();
     this.tagName = tagName;
     this.parentNode = null;
+    this.isConnected = true;
     this._attrs = {};
     this._text = "";
     this.shadowRoot = null;
@@ -99,15 +139,28 @@ class FakeNode extends EventTargetStub {
     this._text = String(value ?? "");
   }
 
+  focus() {
+    if (globalThis.document?._setActiveElement) {
+      globalThis.document._setActiveElement(this);
+    }
+  }
+
   setAttribute(name, value) {
     if (name === "disabled" && (value === "" || value === "disabled")) {
       this.disabled = true;
     }
-    this._attrs[name] = String(value);
+    if (name === "open" && (value === "" || value === "open")) {
+      this._attrs.open = "";
+    } else {
+      this._attrs[name] = String(value);
+    }
   }
 
   getAttribute(name) {
     if (name === "disabled" && this.disabled) {
+      return "";
+    }
+    if (name === "open" && "open" in this._attrs) {
       return "";
     }
     return this._attrs[name] ?? null;
@@ -117,6 +170,9 @@ class FakeNode extends EventTargetStub {
     if (name === "disabled") {
       return this.disabled;
     }
+    if (name === "open") {
+      return "open" in this._attrs;
+    }
     return name in this._attrs;
   }
 
@@ -124,7 +180,19 @@ class FakeNode extends EventTargetStub {
     if (name === "disabled") {
       this.disabled = false;
     }
+    if (name === "open") {
+      delete this._attrs.open;
+    }
     delete this._attrs[name];
+  }
+
+  appendChild(node) {
+    if (!this._children) {
+      this._children = [];
+    }
+    this._children.push(node);
+    node.parentNode = this;
+    return node;
   }
 
   attachShadow() {
@@ -149,6 +217,7 @@ export class Event {
     this.type = type;
     this.bubbles = init.bubbles ?? false;
     this.cancelable = init.cancelable ?? false;
+    this.composed = init.composed ?? false;
     this.defaultPrevented = false;
     this.detail = init.detail;
   }
@@ -162,6 +231,14 @@ export class CustomEvent extends Event {
   constructor(type, init = {}) {
     super(type, init);
     this.detail = init.detail;
+  }
+}
+
+export class KeyboardEvent extends Event {
+  constructor(type, init = {}) {
+    super(type, init);
+    this.key = init.key ?? "";
+    this.shiftKey = init.shiftKey ?? false;
   }
 }
 
@@ -190,14 +267,21 @@ export const customElements = {
 };
 
 export function installDomGlobals() {
+  const doc = {
+    activeElement: null,
+    body: new FakeNode("BODY"),
+    createElement(tag) {
+      return new FakeNode(String(tag).toUpperCase());
+    },
+    _setActiveElement(el) {
+      this.activeElement = el;
+    },
+  };
   globalThis.CSSStyleSheet = CSSStyleSheetStub;
   globalThis.HTMLElement = HTMLElement;
   globalThis.customElements = customElements;
   globalThis.Event = Event;
   globalThis.CustomEvent = CustomEvent;
-  globalThis.document = {
-    createElement(tag) {
-      return new FakeNode(String(tag).toUpperCase());
-    },
-  };
+  globalThis.KeyboardEvent = KeyboardEvent;
+  globalThis.document = doc;
 }
