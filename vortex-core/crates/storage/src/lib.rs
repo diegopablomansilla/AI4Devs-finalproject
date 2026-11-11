@@ -5,7 +5,8 @@ pub mod testing;
 mod tx;
 
 pub use migrate::{
-    MIGRATION_0000_SQL, MIGRATION_0001_SQL, MigrateError, Migration, MigrationRecord, checksum_hex,
+    MIGRATION_0000_SQL, MIGRATION_0001_SQL, MIGRATION_0002_SQL, MigrateError, Migration,
+    MigrationRecord, checksum_hex,
 };
 pub use tx::{OutboxNotifier, Tx};
 

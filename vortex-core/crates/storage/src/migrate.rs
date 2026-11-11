@@ -13,6 +13,9 @@ pub const MIGRATION_0000_SQL: &str = include_str!("../migrations/0000_migracion.
 /// SQL for migration `0001` (exported for tests).
 pub const MIGRATION_0001_SQL: &str = include_str!("../migrations/0001_outbox.surql");
 
+/// SQL for migration `0002` (exported for tests).
+pub const MIGRATION_0002_SQL: &str = include_str!("../migrations/0002_categoria.surql");
+
 /// One versioned migration script.
 #[derive(Debug, Clone, Copy)]
 pub struct Migration {
@@ -31,6 +34,11 @@ const EMBEDDED: &[Migration] = &[
         version: 1,
         name: "outbox",
         sql: MIGRATION_0001_SQL,
+    },
+    Migration {
+        version: 2,
+        name: "categoria",
+        sql: MIGRATION_0002_SQL,
     },
 ];
 
