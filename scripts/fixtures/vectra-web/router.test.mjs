@@ -202,3 +202,30 @@ describe("parseHash", () => {
     });
   });
 });
+
+describe("router_operator_layout_has_omnibox_results_panel", () => {
+  test("vista operador declara regiones y vx-omnibox", () => {
+    const { outlet, window, document } = createTestDom("#/");
+    startRouter({ window, document, outlet });
+    const html = outlet.innerHTML;
+    assert.match(html, /data-view="operator"/);
+    assert.match(html, /data-region="omnibox"/);
+    assert.match(html, /<vx-omnibox\b/);
+    assert.match(html, /data-region="results"/);
+    assert.match(html, /data-region="side-panel"/);
+    assert.match(html, /<vx-side-panel\b/);
+    assert.doesNotMatch(html, /<vx-side-panel[^>]*\sopen\b/);
+    assert.match(html, /href="#\/admin\/productos"/);
+  });
+});
+
+describe("router_admin_view_has_no_omnibox", () => {
+  test("#/admin/productos sin vx-omnibox", () => {
+    const { outlet, window, document } = createTestDom("#/admin/productos");
+    startRouter({ window, document, outlet });
+    const html = outlet.innerHTML;
+    assert.match(html, /data-view="admin"/);
+    assert.doesNotMatch(html, /<vx-omnibox\b/);
+    assert.doesNotMatch(html, /data-region="omnibox"/);
+  });
+});

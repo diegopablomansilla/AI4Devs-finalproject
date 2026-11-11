@@ -16,10 +16,10 @@ El repositorio MUST contener el directorio `vectra-web/` en la raíz, con al men
 - `vectra-web/js/router.js`
 - `vectra-web/js/api.js`
 - `vectra-web/js/errors.js`
-- `vectra-web/js/components/index.js`, `shared.js`, `vx-button.js`, `vx-field.js`, `vx-chip.js`, `vx-modal.js`, `vx-side-panel.js`, `vx-toast.js`, `vx-product-card.js`
+- `vectra-web/js/components/index.js`, `shared.js`, `vx-button.js`, `vx-field.js`, `vx-chip.js`, `vx-modal.js`, `vx-side-panel.js`, `vx-toast.js`, `vx-product-card.js`, `vx-omnibox.js`
 - `vectra-web/dev/components.html`
 
-`index.html` MUST declarar `lang="es"` en el elemento `html`. MUST incluir un *outlet* identificable (p. ej. `id="app"`) donde el *router* pinta la vista. MUST cargar `js/app.js` como ES Module (`type="module"`) con `src` igual a `/static/{{VERSION}}/js/app.js` (el placeholder literal `{{VERSION}}`; el Gateway de T-00-19 lo sustituye al servir). MUST enlazar `css/tokens.css` y `css/base.css` (en ese orden) con `href` `/static/{{VERSION}}/css/tokens.css` y `/static/{{VERSION}}/css/base.css`. MUST NOT exigir un *bundler*, `package.json` ni dependencias npm para cargar la app. `js/app.js` MUST importar el *router* con `import` de ES Module y MUST importar `js/components/index.js` para registrar `vx-button`, `vx-field`, `vx-chip`, `vx-modal`, `vx-side-panel`, `vx-toast` y `vx-product-card`. Este change MUST NOT exigir que `app.js` importe `errors.js` (los callers de negocio llegan en tickets posteriores).
+`index.html` MUST declarar `lang="es"` en el elemento `html`. MUST incluir un *outlet* identificable (p. ej. `id="app"`) donde el *router* pinta la vista. MUST cargar `js/app.js` como ES Module (`type="module"`) con `src` igual a `/static/{{VERSION}}/js/app.js` (el placeholder literal `{{VERSION}}`; el Gateway de T-00-19 lo sustituye al servir). MUST enlazar `css/tokens.css` y `css/base.css` (en ese orden) con `href` `/static/{{VERSION}}/css/tokens.css` y `/static/{{VERSION}}/css/base.css`. MUST NOT exigir un *bundler*, `package.json` ni dependencias npm para cargar la app. `js/app.js` MUST importar el *router* con `import` de ES Module y MUST importar `js/components/index.js` para registrar `vx-button`, `vx-field`, `vx-chip`, `vx-modal`, `vx-side-panel`, `vx-toast`, `vx-product-card` y `vx-omnibox`. Este change MUST NOT exigir que `app.js` importe `errors.js` (los callers de negocio llegan en tickets posteriores).
 
 #### Scenario: el documento está en español y carga el módulo versionado (happy)
 
@@ -35,7 +35,7 @@ El repositorio MUST contener el directorio `vectra-web/` en la raíz, con al men
 - **THEN** existen `css/` y `js/components/` como directorios
 - **AND** existen los archivos `js/app.js`, `js/router.js`, `js/api.js` y `js/errors.js`
 - **AND** existen `css/tokens.css` y `css/base.css`
-- **AND** existen `js/components/vx-button.js`, `vx-field.js`, `vx-chip.js`, `vx-modal.js`, `vx-side-panel.js`, `vx-toast.js`, `vx-product-card.js`, `shared.js`, `index.js` y `dev/components.html`
+- **AND** existen `js/components/vx-button.js`, `vx-field.js`, `vx-chip.js`, `vx-modal.js`, `vx-side-panel.js`, `vx-toast.js`, `vx-product-card.js`, `vx-omnibox.js`, `shared.js`, `index.js` y `dev/components.html`
 
 #### Scenario: index.html enlaza tokens y base versionados (happy)
 
@@ -97,6 +97,13 @@ El repositorio MUST contener el directorio `vectra-web/` en la raíz, con al men
 - **THEN** el comando termina con código distinto de 0
 - **AND** el mensaje nombra `errors.js`
 
+#### Scenario: falta vx-omnibox.js (unhappy)
+
+- **WHEN** falta `vectra-web/js/components/vx-omnibox.js`
+- **AND** se ejecuta `./scripts/check-vectra-web.sh`
+- **THEN** el comando termina con código distinto de 0
+- **AND** el mensaje nombra `vx-omnibox.js`
+
 ### Requirement: Router hash Operador y Administración sin recargar
 
 El *router* MUST interpretar el *hash* de la URL (fragmento tras `#`) y MUST pintar una sola vista en el *outlet*:
@@ -106,7 +113,7 @@ El *router* MUST interpretar el *hash* de la URL (fragmento tras `#`) y MUST pin
 | vacío, `#` o `#/` | Operador | `data-view="operator"` |
 | `#/admin/<sección>` con `<sección>` = un slug `[a-z0-9-]+` | Administración de esa sección | `data-view="admin"` y `data-section="<sección>"` |
 
-La vista operador MUST incluir un enlace `<a href="#/admin/productos">` (texto en español). La vista administración MUST incluir un enlace `<a href="#/">` para volver al operador (texto en español). MUST NOT pedir credenciales ni mostrar un formulario de login al entrar a `#/admin/…`.
+La vista operador MUST incluir un enlace `<a href="#/admin/productos">` (texto en español) y MUST cumplir el requirement «Layout de la vista operador». La vista administración MUST incluir un enlace `<a href="#/">` para volver al operador (texto en español). MUST NOT pedir credenciales ni mostrar un formulario de login al entrar a `#/admin/…`.
 
 Al arrancar, el *router* MUST pintar la vista que corresponde al *hash* actual. Al cambiar el *hash* (navegación del usuario o asignación a `location.hash`), MUST actualizar el *outlet* y MUST NOT recargar el documento (`location.reload` / carga completa de `index.html`). `#/admin/productos` MUST ser una sección válida.
 
@@ -279,17 +286,29 @@ Antes de archive, la suite MUST incluir estos tests (nombres estables; ubicació
 | `components_tree_includes_button_field_chip` | `scripts/check-vectra-web.sh` | harness de árbol |
 | `components_tree_includes_modal_panel_toast` | `scripts/check-vectra-web.sh` | harness de árbol |
 | `components_tree_includes_product_card` | `scripts/check-vectra-web.sh` | harness de árbol |
+| `components_tree_includes_omnibox` | `scripts/check-vectra-web.sh` | harness de árbol |
 | `api_tree_includes_api_js` | `scripts/check-vectra-web.sh` | harness de árbol |
 | `errors_tree_includes_errors_js` | `scripts/check-vectra-web.sh` | harness de árbol |
 | `components_html_catalog_loads_three_tags` | `scripts/fixtures/vectra-web/components.test.mjs` | catálogo |
 | `components_html_catalog_loads_overlay_tags` | `scripts/fixtures/vectra-web/components.test.mjs` | catálogo |
 | `components_html_catalog_loads_product_card_variants` | `scripts/fixtures/vectra-web/components.test.mjs` | catálogo (Listo cuando T-01-05) |
+| `components_html_catalog_loads_omnibox` | `scripts/fixtures/vectra-web/omnibox.test.mjs` o `components.test.mjs` | catálogo |
 | `router_operator_to_admin_productos_does_not_reload` | `scripts/fixtures/vectra-web/` (`node --test`) | *router* (DOM de prueba) |
 | `router_admin_productos_to_operator_does_not_reload` | `scripts/fixtures/vectra-web/` (`node --test`) | *router* (DOM de prueba) |
 | `router_empty_hash_is_operator` | `scripts/fixtures/vectra-web/` (`node --test`) | *router* |
 | `router_unknown_hash_is_not_found` | `scripts/fixtures/vectra-web/` (`node --test`) | *router* |
 | `router_admin_without_section_is_not_found` | `scripts/fixtures/vectra-web/` (`node --test`) | *router* |
 | `router_invalid_admin_slug_is_not_found` | `scripts/fixtures/vectra-web/` (`node --test`) | *router* |
+| `router_operator_layout_has_omnibox_results_panel` | `scripts/fixtures/vectra-web/router.test.mjs` | layout operador |
+| `router_admin_view_has_no_omnibox` | `scripts/fixtures/vectra-web/router.test.mjs` | unhappy / frontera |
+| `omnibox_focuses_on_connect` | `scripts/fixtures/vectra-web/omnibox.test.mjs` | happy (Listo cuando) |
+| `omnibox_focuses_on_vx_closed` | `omnibox.test.mjs` | happy (Listo cuando) |
+| `omnibox_side_panel_close_focuses_omnibox` | `omnibox.test.mjs` | happy (Listo cuando) |
+| `omnibox_escape_clears_query` | `omnibox.test.mjs` | happy |
+| `omnibox_escape_on_empty_query_does_not_throw` | `omnibox.test.mjs` | unhappy |
+| `omnibox_vx_closed_when_disconnected_does_not_throw` | `omnibox.test.mjs` | unhappy |
+| `omnibox_escape_with_open_panel_does_not_clear_query` | `omnibox.test.mjs` | unhappy |
+| `omnibox_does_not_emit_vx_query` | `omnibox.test.mjs` | unhappy (T-01-09) |
 | `tokens_root_declares_vx_contract` | `scripts/fixtures/vectra-web/` (`node --test`) | *tokens* |
 | `tokens_text_surface_pairs_meet_wcag_aa` | `scripts/fixtures/vectra-web/` (`node --test`) | contraste WCAG |
 | `tokens_low_contrast_pair_fails` | `scripts/fixtures/vectra-web/` (`node --test`) | contraste (unhappy, fixture) |
@@ -335,7 +354,7 @@ Antes de archive, la suite MUST incluir estos tests (nombres estables; ubicació
 | `errors_unmatched_field_does_not_throw` | `errors.test.mjs` | unhappy |
 | `errors_toast_text_is_not_technical_code` | `errors.test.mjs` | unhappy |
 
-`./scripts/check-vectra-web.sh` MUST ejecutar el harness de árbol y los tests `node --test` (router, *tokens*, componentes, `api` y `errors`) y MUST terminar con código 0 sobre el árbol que cumple esta spec. MUST NOT agregar `package.json` ni dependencias npm. `cargo test --workspace` (manifiesto `vortex-core/Cargo.toml`) MUST seguir en verde (regresión; este change no agrega tests Rust). Los tests del *router* MUST asertar el `data-view` (y `data-section` cuando aplica) y que no hubo recarga. Los del árbol MUST asertar `lang="es"`, el `src` `/static/{{VERSION}}/js/app.js`, los `href` versionados de `tokens.css` y `base.css`, la presencia de los módulos de componentes (incluidos modal, panel, toast y product-card), `js/api.js`, `js/errors.js` y `dev/components.html`. Los de componentes MUST asertar Shadow DOM, `adoptedStyleSheets`, ARIA, unhappy path de loading, error de campo y chip deshabilitado, los de overlay/toast de la tabla, y los de `vx-product-card` de la tabla. Los de `api` MUST asertar JSON 2xx, cabecera de terminal, `signal`, `ApiError` `not_found` / `invalid_input` / `network` / `internal`, abort distinto de `network`, y omisión de cabecera sin nombre. Los de `errors` MUST asertar cobertura del enum `ErrorCode` + `network`, mensajes en español, `showError` → toast `error`, asignación a `vx-field` por `name`, fallback de `code` desconocido, abort sin toast, campo sin match sin throw, y que el toast no muestra el `code` técnico.
+`./scripts/check-vectra-web.sh` MUST ejecutar el harness de árbol y los tests `node --test` (router, *tokens*, componentes, `api`, `errors` y `omnibox`) y MUST terminar con código 0 sobre el árbol que cumple esta spec. MUST NOT agregar `package.json` ni dependencias npm. `cargo test --workspace` (manifiesto `vortex-core/Cargo.toml`) MUST seguir en verde (regresión; este change no agrega tests Rust). Los tests del *router* MUST asertar el `data-view` (y `data-section` cuando aplica), que no hubo recarga, y que la vista operador declara las tres regiones con `vx-omnibox` / `vx-side-panel` mientras admin no monta `vx-omnibox`. Los del árbol MUST asertar `lang="es"`, el `src` `/static/{{VERSION}}/js/app.js`, los `href` versionados de `tokens.css` y `base.css`, la presencia de los módulos de componentes (incluidos modal, panel, toast, product-card y omnibox), `js/api.js`, `js/errors.js` y `dev/components.html`. Los de componentes MUST asertar Shadow DOM, `adoptedStyleSheets`, ARIA, unhappy path de loading, error de campo y chip deshabilitado, los de overlay/toast de la tabla, y los de `vx-product-card` de la tabla. Los de `api` MUST asertar JSON 2xx, cabecera de terminal, `signal`, `ApiError` `not_found` / `invalid_input` / `network` / `internal`, abort distinto de `network`, y omisión de cabecera sin nombre. Los de `errors` MUST asertar cobertura del enum `ErrorCode` + `network`, mensajes en español, `showError` → toast `error`, asignación a `vx-field` por `name`, fallback de `code` desconocido, abort sin toast, campo sin match sin throw, y que el toast no muestra el `code` técnico. Los de `omnibox` MUST asertar foco al conectar, foco tras `vx-closed` / cierre de panel, Escape que limpia, y los unhappy de consulta vacía, host desconectado, Escape con panel abierto y ausencia de `vx-query`.
 
 #### Scenario: la suite acordada cubre happy y unhappy (happy)
 
@@ -348,6 +367,7 @@ Antes de archive, la suite MUST incluir estos tests (nombres estables; ubicació
 - **AND** los de componentes (botón, campo, chip, modal, panel, toast, product-card) pasan
 - **AND** los de `api.js` (JSON 2xx, `not_found`, `network`, abort) pasan
 - **AND** los de `errors.js` (cobertura OpenAPI, toast, `vx-field`, abort, `code` desconocido) pasan
+- **AND** los de `vx-omnibox` (layout, foco al cargar, foco tras cerrar panel, Escape, unhappy) pasan
 
 #### Scenario: falta el router o el documento (unhappy)
 
@@ -423,7 +443,7 @@ Antes de archive, la suite MUST incluir estos tests (nombres estables; ubicació
 
 ### Requirement: Página de muestra components.html
 
-`vectra-web/dev/components.html` MUST existir, `lang="es"`, MUST enlazar `../css/tokens.css` y `../css/base.css`, MUST cargar `../js/components/index.js` como módulo y MUST incluir al menos un `vx-button`, un `vx-field`, un `vx-chip`, un `vx-modal`, un `vx-side-panel`, un `vx-toast`, un `vx-product-card` con `variant="full"` y un `vx-product-card` con `variant="compact"`, ambos con datos de ejemplo (SKU, nombre, precio, stock). MUST incluir un control que abra el panel de muestra de modo que, al cerrarlo, el foco vuelva a ese control. Al menos una tarjeta de muestra MUST tener `stock="0"`. Al menos la variante `full` MUST incluir marca, ubicación e imagen o *placeholder*.
+`vectra-web/dev/components.html` MUST existir, `lang="es"`, MUST enlazar `../css/tokens.css` y `../css/base.css`, MUST cargar `../js/components/index.js` como módulo y MUST incluir al menos un `vx-button`, un `vx-field`, un `vx-chip`, un `vx-modal`, un `vx-side-panel`, un `vx-toast`, un `vx-product-card` con `variant="full"` y un `vx-product-card` con `variant="compact"`, ambos con datos de ejemplo (SKU, nombre, precio, stock), y un `vx-omnibox`. MUST incluir un control que abra el panel de muestra de modo que, al cerrarlo, el foco vuelva a ese control **salvo** que haya un `vx-omnibox` conectado, en cuyo caso el foco MUST quedar en el Omnibox (Listo cuando T-01-08). Al menos una tarjeta de muestra MUST tener `stock="0"`. Al menos la variante `full` MUST incluir marca, ubicación e imagen o *placeholder*.
 
 #### Scenario: catálogo declara los tres tags (happy)
 
@@ -443,9 +463,14 @@ Antes de archive, la suite MUST incluir estos tests (nombres estables; ubicació
 - **THEN** contiene un `vx-product-card` con `variant="full"` y otro con `variant="compact"`
 - **AND** hay datos de ejemplo (sku y name) en esas etiquetas
 
+#### Scenario: catálogo declara vx-omnibox (happy)
+
+- **WHEN** se lee `vectra-web/dev/components.html`
+- **THEN** contiene la etiqueta `vx-omnibox`
+
 #### Scenario: falta un tag en la muestra (unhappy)
 
-- **WHEN** falta cualquiera de los tags `vx-button`, `vx-field`, `vx-chip`, `vx-modal`, `vx-side-panel`, `vx-toast` o `vx-product-card` en `components.html`
+- **WHEN** falta cualquiera de los tags `vx-button`, `vx-field`, `vx-chip`, `vx-modal`, `vx-side-panel`, `vx-toast`, `vx-product-card` o `vx-omnibox` en `components.html`
 - **THEN** el harness termina con código distinto de 0
 
 ### Requirement: vx-modal
@@ -782,3 +807,98 @@ Si se pasa un mapa al que le falta un valor del enum (p. ej. se omite `timeout`)
 - **WHEN** el chequeo compara el enum `ErrorCode` con un mapa que omite al menos un valor del enum (p. ej. `timeout`)
 - **THEN** termina con código distinto de 0
 - **AND** el mensaje nombra el `code` que falta
+
+### Requirement: Layout de la vista operador
+
+Cuando el *router* pinta `data-view="operator"` (`#/`, `#` o hash vacío), el *outlet* MUST incluir, en este orden visual de arriba hacia abajo:
+
+1. Una región `data-region="omnibox"` que contiene exactamente un `vx-omnibox`.
+2. Una región `data-region="results"` reservada para resultados (T-03-15). En este change MUST estar vacía de `vx-product-card` y MUST NOT llamar a `/search`.
+3. Una región `data-region="side-panel"` que contiene un `vx-side-panel` **sin** atributo `open` (lugar para T-04-08).
+
+MUST conservar el enlace `<a href="#/admin/productos">` (texto en español) de T-01-01. MUST NOT pedir credenciales. Las vistas `data-view="admin"` y `data-view="not-found"` MUST NOT incluir `vx-omnibox`.
+
+`base.css` MAY definir clases de layout (p. ej. `.vx-operator`) usando solo *tokens* `--vx-*` existentes. MUST NOT agregar *tokens* nuevos.
+
+#### Scenario: la vista operador tiene Omnibox, resultados y panel (happy)
+
+- **WHEN** la app inicia con hash `#/` (o vacío / `#`)
+- **THEN** el *outlet* muestra `data-view="operator"`
+- **AND** existe `data-region="omnibox"` con un `vx-omnibox`
+- **AND** existe `data-region="results"`
+- **AND** existe `data-region="side-panel"` con un `vx-side-panel` que no está `open`
+- **AND** hay un enlace `href="#/admin/productos"`
+
+#### Scenario: administración no monta el Omnibox (unhappy)
+
+- **WHEN** el hash es `#/admin/productos`
+- **THEN** el *outlet* muestra `data-view="admin"`
+- **AND** no hay `vx-omnibox` en el *outlet*
+
+### Requirement: vx-omnibox
+
+`vectra-web/js/components/vx-omnibox.js` MUST registrar el custom element `vx-omnibox`. MUST usar `attachShadow({ mode: "open" })` y `adoptedStyleSheets` (hojas compartidas de *tokens*/*base* más hoja local). MUST usar `var(--vx-*)`. El control de texto MUST usar `min-height` y `min-width` de `var(--vx-touch-min)`.
+
+El host o su contenido MUST exponer un landmark de búsqueda (`role="search"`) y un nombre accesible en español (p. ej. `aria-label="Buscar"` o etiqueta visible "Buscar"). MUST renderizar un `<input>` de consulta (tipo `search` o `text`) en el shadow.
+
+La consulta MUST ser el `value` del input y MUST reflejarse en el atributo `value` del host cuando cambia. Un `value` inicial en el host MUST copiarse al input.
+
+MUST NOT implementar selector de modos (texto/voz/IA/imagen), MUST NOT emitir `vx-query`, MUST NOT llamar a `/search` ni a otros endpoints, MUST NOT importar `api.js`.
+
+#### Scenario: el Omnibox es un campo de búsqueda accesible (happy)
+
+- **WHEN** se conecta un `vx-omnibox` al documento
+- **THEN** tiene Shadow DOM abierto y `adoptedStyleSheets`
+- **AND** hay un `<input>` de consulta con `min-height`/`min-width` de `var(--vx-touch-min)`
+- **AND** hay `role="search"` y nombre accesible en español
+
+#### Scenario: Escape limpia la consulta (happy)
+
+- **WHEN** un `vx-omnibox` tiene consulta no vacía (p. ej. `tornillo`) y su input tiene el foco
+- **AND** se pulsa Escape
+- **THEN** el `value` del input y del host queda `""`
+
+#### Scenario: Escape con consulta vacía no lanza (unhappy)
+
+- **WHEN** un `vx-omnibox` tiene consulta `""` y su input tiene el foco
+- **AND** se pulsa Escape
+- **THEN** no se lanza excepción
+- **AND** el `value` sigue `""`
+
+#### Scenario: Escape con el panel abierto no vacía la consulta (unhappy)
+
+- **WHEN** un `vx-omnibox` tiene consulta no vacía
+- **AND** un `vx-side-panel` del mismo documento está `open` (foco atrapado en el panel)
+- **AND** se pulsa Escape
+- **THEN** el panel se cierra (comportamiento T-01-04)
+- **AND** la consulta del Omnibox **no** queda vacía
+
+#### Scenario: no emite vx-query ni llama a search (unhappy)
+
+- **WHEN** el operador escribe en el Omnibox o pulsa Escape
+- **THEN** no se dispara un evento `vx-query`
+- **AND** no se envía una petición HTTP a `/search` ni a otro path
+
+### Requirement: Foco del Omnibox al cargar y al cerrar un panel
+
+Al conectar un `vx-omnibox` al documento (carga de la vista operador o vuelta desde administración), MUST poner el foco en su input de consulta. Ese es el **Listo cuando** «al cargar».
+
+El componente MUST escuchar el evento `vx-closed` (`bubbles`, `composed`, emitido por `vx-modal` / `vx-side-panel`). Al recibirlo, si el host sigue conectado, MUST poner el foco en su input. MUST hacerlo en un *microtask* (o turno posterior al listener síncrono del overlay) para que el foco del Omnibox gane sobre la restauración al abridor de T-01-04. Si el host ya no está conectado, MUST ignorar el evento y MUST NOT lanzar.
+
+#### Scenario: al cargar el foco está en el Omnibox (happy)
+
+- **WHEN** se pinta la vista operador (o se conecta un `vx-omnibox` de prueba)
+- **THEN** `document.activeElement` es el input de consulta del Omnibox
+
+#### Scenario: al cerrar un panel el foco vuelve al Omnibox (happy)
+
+- **WHEN** la vista operador tiene un `vx-omnibox` y un `vx-side-panel` abierto
+- **AND** el panel se cierra (Escape o control de cierre) y emite `vx-closed`
+- **THEN** tras el *microtask*, `document.activeElement` es el input de consulta del Omnibox
+
+#### Scenario: vx-closed con Omnibox desconectado no lanza (unhappy)
+
+- **WHEN** un `vx-omnibox` se desconecta del documento
+- **AND** se dispara `vx-closed` en el documento
+- **THEN** no se lanza excepción
+- **AND** no se mueve el foco hacia un nodo desconectado

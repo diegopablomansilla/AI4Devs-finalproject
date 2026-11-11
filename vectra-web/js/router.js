@@ -45,9 +45,13 @@ export function parseHash(hash) {
  */
 function viewHtml(route) {
   if (route.view === "operator") {
-    return `<main data-view="operator">
-  <h1>Vista del operador</h1>
-  <p><a href="#/admin/productos">Ir a administración</a></p>
+    return `<main class="vx-operator" data-view="operator">
+  <header class="vx-operator-header">
+    <div data-region="omnibox"><vx-omnibox></vx-omnibox></div>
+    <p><a href="#/admin/productos">Ir a administración</a></p>
+  </header>
+  <div data-region="results" class="vx-operator-results vx-surface"></div>
+  <div data-region="side-panel"><vx-side-panel></vx-side-panel></div>
 </main>`;
   }
   if (route.view === "admin") {
