@@ -43,6 +43,23 @@ describe("components_html_catalog_loads_three_tags", () => {
   });
 });
 
+describe("components_html_catalog_loads_overlay_tags", () => {
+  test("muestra vx-modal, vx-side-panel, vx-toast", () => {
+    const html = read(COMPONENTS_HTML);
+    assert.match(html, /<vx-modal\b/);
+    assert.match(html, /<vx-side-panel\b/);
+    assert.match(html, /<vx-toast\b/);
+  });
+});
+
+describe("dom stub focus", () => {
+  test("focus actualiza document.activeElement", () => {
+    const node = document.createElement("button");
+    node.focus();
+    assert.equal(document.activeElement, node);
+  });
+});
+
 describe("vx components", () => {
   before(async () => {
     const sharedUrl = new URL(
@@ -128,5 +145,91 @@ describe("vx components", () => {
     });
     el.shadowRoot.querySelector("button").click();
     assert.equal(fired, false);
+  });
+
+  test("vx_modal_escape_emits_vx_closed", async () => {
+    const modal = customElements._create("vx-modal");
+    await modal.connectedCallback();
+    let closed = 0;
+    modal.addEventListener("vx-closed", (e) => {
+      closed += 1;
+      assert.equal(e.bubbles, true);
+      assert.equal(e.composed, true);
+    });
+    modal.show();
+    assert.equal(modal.hasAttribute("open"), true);
+    modal.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    assert.equal(modal.hasAttribute("open"), false);
+    assert.equal(closed, 1);
+  });
+
+  test("vx_modal_tab_stays_inside", async () => {
+    const modal = customElements._create("vx-modal");
+    await modal.connectedCallback();
+    modal.show();
+    const buttons = modal.shadowRoot.querySelectorAll("button");
+    assert.ok(buttons.length >= 2, "modal necesita al menos dos botones enfocables");
+    const last = buttons[buttons.length - 1];
+    last.focus();
+    assert.equal(document.activeElement, last);
+    modal.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", bubbles: true }));
+    assert.notEqual(document.activeElement, last);
+    assert.ok(buttons.includes(document.activeElement));
+  });
+
+  test("vx_side_panel_close_restores_focus_to_opener", async () => {
+    const opener = document.createElement("button");
+    opener.id = "open-panel";
+    document.body.appendChild(opener);
+    opener.focus();
+    assert.equal(document.activeElement, opener);
+
+    const panel = customElements._create("vx-side-panel");
+    await panel.connectedCallback();
+    panel.show(opener);
+    panel.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    assert.equal(document.activeElement, opener);
+  });
+
+  test("overlay_already_closed_escape_does_not_emit", async () => {
+    const modal = customElements._create("vx-modal");
+    await modal.connectedCallback();
+    let closed = 0;
+    modal.addEventListener("vx-closed", () => {
+      closed += 1;
+    });
+    modal.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    assert.equal(closed, 0);
+  });
+
+  test("vx_toast_info_aria_live_polite", async () => {
+    const toast = customElements._create("vx-toast");
+    toast.setAttribute("variant", "info");
+    await toast.connectedCallback();
+    const live = toast.shadowRoot.querySelector("[aria-live]");
+    assert.ok(live);
+    assert.equal(live.getAttribute("aria-live"), "polite");
+    toast.setAttribute("variant", "error");
+    toast.attributeChangedCallback("variant", "info", "error");
+    assert.equal(live.getAttribute("aria-live"), "assertive");
+  });
+
+  test("vx_toast_without_aria_live_fails", async () => {
+    const toast = customElements._create("vx-toast");
+    await toast.connectedCallback();
+    const live = toast.shadowRoot.querySelector("[aria-live]");
+    assert.ok(live, "vx-toast debe exponer aria-live");
+    assert.ok(
+      live.getAttribute("aria-live") === "polite" ||
+        live.getAttribute("aria-live") === "assertive",
+    );
+  });
+
+  test("vx_toast_unknown_variant_falls_back_to_info", async () => {
+    const toast = customElements._create("vx-toast");
+    toast.setAttribute("variant", "warning");
+    await toast.connectedCallback();
+    const live = toast.shadowRoot.querySelector("[aria-live]");
+    assert.equal(live.getAttribute("aria-live"), "polite");
   });
 });

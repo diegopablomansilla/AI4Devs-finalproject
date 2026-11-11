@@ -1,5 +1,5 @@
 #!/usr/bin/env sh
-# Verifica vectra-web: árbol, tokens (T-01-02), router (T-01-01), componentes (T-01-03).
+# Verifica vectra-web: árbol, tokens (T-01-02), router (T-01-01), componentes (T-01-03), overlays (T-01-04).
 set -eu
 
 if [ -n "${CHECK_ROOT:-}" ]; then
@@ -29,12 +29,22 @@ for rel in shared.js index.js vx-button.js vx-field.js vx-chip.js; do
   [ -f "${COMPONENTS_DIR}/${rel}" ] || fail "components_tree_includes_button_field_chip: falta vectra-web/js/components/${rel}"
 done
 
+for rel in vx-modal.js vx-side-panel.js vx-toast.js; do
+  [ -f "${COMPONENTS_DIR}/${rel}" ] || fail "components_tree_includes_modal_panel_toast: falta vectra-web/js/components/${rel}"
+done
+
 DEV_HTML="${WEB}/dev/components.html"
 [ -f "${DEV_HTML}" ] || fail 'components_tree_includes_button_field_chip: falta vectra-web/dev/components.html'
 
 for tag in vx-button vx-field vx-chip; do
   if ! grep -q "<${tag}" "${DEV_HTML}"; then
     fail "components_html_catalog_loads_three_tags: falta <${tag}> en dev/components.html"
+  fi
+done
+
+for tag in vx-modal vx-side-panel vx-toast; do
+  if ! grep -q "<${tag}" "${DEV_HTML}"; then
+    fail "components_html_catalog_loads_overlay_tags: falta <${tag}> en dev/components.html"
   fi
 done
 

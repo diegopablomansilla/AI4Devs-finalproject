@@ -60,6 +60,28 @@
       </div>
     </section>
 
+    <section aria-labelledby="sec-overlay">
+      <h2 id="sec-overlay">Superposiciones</h2>
+      <div class="row">
+        <vx-button id="btn-open-modal" variant="ghost">Abrir modal</vx-button>
+        <vx-button id="btn-open-panel" variant="primary">Abrir panel lateral</vx-button>
+      </div>
+      <vx-modal id="demo-modal">Contenido de ejemplo del modal.</vx-modal>
+      <vx-side-panel id="demo-panel">Contenido del panel lateral.</vx-side-panel>
+      <vx-toast variant="info">Operación completada.</vx-toast>
+      <vx-toast variant="error">No se pudo guardar.</vx-toast>
+    </section>
+
     <script type="module" src="../js/components/index.js"></script>
+    <script type="module">
+      const modal = document.getElementById("demo-modal");
+      const panel = document.getElementById("demo-panel");
+      document.getElementById("btn-open-modal")?.addEventListener("click", (e) => {
+        modal?.show(e.currentTarget);
+      });
+      document.getElementById("btn-open-panel")?.addEventListener("click", (e) => {
+        panel?.show(e.currentTarget);
+      });
+    </script>
   </body>
 </html>
