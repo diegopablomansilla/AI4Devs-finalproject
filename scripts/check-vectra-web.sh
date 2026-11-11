@@ -1,5 +1,5 @@
 #!/usr/bin/env sh
-# Verifica vectra-web: árbol, tokens (T-01-02), router (T-01-01), componentes (T-01-03), overlays (T-01-04), product-card (T-01-05), api (T-01-06), errors (T-01-07), omnibox foco (T-01-08), modos y vx-query (T-01-09), keyboard-list (T-01-10), admin shell y terminal (T-01-11), health y capacidades (T-01-12).
+# Verifica vectra-web: árbol, tokens (T-01-02), router (T-01-01), componentes (T-01-03), overlays (T-01-04), product-card (T-01-05), api (T-01-06), errors (T-01-07), omnibox foco (T-01-08), modos y vx-query (T-01-09), keyboard-list (T-01-10), admin shell y terminal (T-01-11), health y capacidades (T-01-12), manifest PWA (T-01-13).
 set -eu
 
 if [ -n "${CHECK_ROOT:-}" ]; then
@@ -27,6 +27,11 @@ INDEX="${WEB}/index.html"
 [ -f "${WEB}/js/errors.js" ] || fail 'errors_tree_includes_errors_js: falta vectra-web/js/errors.js'
 [ -f "${WEB}/js/keyboard-list.js" ] || fail 'keyboard_list_tree_includes_module: falta vectra-web/js/keyboard-list.js'
 [ -f "${WEB}/js/health.js" ] || fail 'health_tree_includes_health_js: falta vectra-web/js/health.js'
+[ -f "${WEB}/manifest.webmanifest" ] || fail 'manifest_tree_includes_webmanifest: falta vectra-web/manifest.webmanifest'
+
+for icon in icon-192.png icon-512.png icon-192-maskable.png icon-512-maskable.png; do
+  [ -f "${WEB}/icons/${icon}" ] || fail "manifest_tree_includes_png_icons: falta vectra-web/icons/${icon}"
+done
 
 COMPONENTS_DIR="${WEB}/js/components"
 for rel in shared.js index.js vx-button.js vx-field.js vx-chip.js; do
@@ -93,6 +98,14 @@ if ! grep -q 'href="/static/{{VERSION}}/css/base.css"' "${INDEX}"; then
   fail 'index_html_links_versioned_tokens_and_base: falta link href="/static/{{VERSION}}/css/base.css"'
 fi
 
+if ! grep -Eq 'rel="manifest"[[:space:]]+href="/manifest\.webmanifest"|href="/manifest\.webmanifest"[[:space:]]+rel="manifest"' "${INDEX}"; then
+  fail 'index_html_links_unversioned_manifest: falta link rel="manifest" href="/manifest.webmanifest"'
+fi
+
+if ! grep -q 'name="theme-color" content="#0A0A0A"' "${INDEX}"; then
+  fail 'index_html_declares_theme_color: falta meta name="theme-color" content="#0A0A0A"'
+fi
+
 TOKENS_LINE=$(grep -n 'href="/static/{{VERSION}}/css/tokens.css"' "${INDEX}" | head -1 | cut -d: -f1)
 BASE_LINE=$(grep -n 'href="/static/{{VERSION}}/css/base.css"' "${INDEX}" | head -1 | cut -d: -f1)
 if [ -n "${TOKENS_LINE}" ] && [ -n "${BASE_LINE}" ] && [ "${TOKENS_LINE}" -ge "${BASE_LINE}" ]; then
@@ -108,6 +121,7 @@ OMNIBOX_TEST="${ROOT}/scripts/fixtures/vectra-web/omnibox.test.mjs"
 KEYBOARD_LIST_TEST="${ROOT}/scripts/fixtures/vectra-web/keyboard-list.test.mjs"
 ADMIN_TEST="${ROOT}/scripts/fixtures/vectra-web/admin.test.mjs"
 HEALTH_TEST="${ROOT}/scripts/fixtures/vectra-web/health.test.mjs"
+MANIFEST_TEST="${ROOT}/scripts/fixtures/vectra-web/manifest.test.mjs"
 [ -f "${ROUTER_TEST}" ] || fail 'falta scripts/fixtures/vectra-web/router.test.mjs'
 [ -f "${TOKENS_TEST}" ] || fail 'falta scripts/fixtures/vectra-web/tokens.test.mjs'
 [ -f "${COMPONENTS_TEST}" ] || fail 'falta scripts/fixtures/vectra-web/components.test.mjs'
@@ -117,9 +131,10 @@ HEALTH_TEST="${ROOT}/scripts/fixtures/vectra-web/health.test.mjs"
 [ -f "${KEYBOARD_LIST_TEST}" ] || fail 'falta scripts/fixtures/vectra-web/keyboard-list.test.mjs'
 [ -f "${ADMIN_TEST}" ] || fail 'falta scripts/fixtures/vectra-web/admin.test.mjs'
 [ -f "${HEALTH_TEST}" ] || fail 'falta scripts/fixtures/vectra-web/health.test.mjs'
+[ -f "${MANIFEST_TEST}" ] || fail 'falta scripts/fixtures/vectra-web/manifest.test.mjs'
 
 if ! command -v node >/dev/null 2>&1; then
   fail 'node no está en PATH (se requiere para tests del router)'
 fi
 
-node --test "${ROUTER_TEST}" "${TOKENS_TEST}" "${COMPONENTS_TEST}" "${API_TEST}" "${ERRORS_TEST}" "${OMNIBOX_TEST}" "${KEYBOARD_LIST_TEST}" "${ADMIN_TEST}" "${HEALTH_TEST}"
+node --test "${ROUTER_TEST}" "${TOKENS_TEST}" "${COMPONENTS_TEST}" "${API_TEST}" "${ERRORS_TEST}" "${OMNIBOX_TEST}" "${KEYBOARD_LIST_TEST}" "${ADMIN_TEST}" "${HEALTH_TEST}" "${MANIFEST_TEST}"

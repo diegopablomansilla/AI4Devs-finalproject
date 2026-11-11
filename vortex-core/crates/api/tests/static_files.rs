@@ -243,6 +243,31 @@ async fn manifest_sends_no_cache() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn manifest_replaces_version() {
+    let fixture = StaticFixture::new().with_app_shell();
+    fs::write(
+        fixture.web.join("manifest.webmanifest"),
+        r#"{"name":"Vectra","icons":[{"src":"/static/{{VERSION}}/icons/icon-192.png"}]}"#,
+    )
+    .expect("manifest with placeholder");
+    let (addr, handle) = serve(fixture.state()).await;
+    wait_ready(addr).await;
+
+    let resp = http_request(addr, "GET", "/manifest.webmanifest").await;
+    handle.abort();
+
+    assert_eq!(resp.status, 200);
+    assert!(
+        resp.content_type.starts_with("application/manifest+json"),
+        "content-type: {}",
+        resp.content_type
+    );
+    assert_eq!(resp.cache_control, "no-cache");
+    assert!(!resp.body.contains("{{VERSION}}"));
+    assert!(resp.body.contains(api_version()));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn static_asset_sends_immutable_cache() {
     let fixture = StaticFixture::new().with_app_js("console.log('v');");
     let (addr, handle) = serve(fixture.state()).await;

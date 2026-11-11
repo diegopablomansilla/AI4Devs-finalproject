@@ -490,6 +490,7 @@ Antes de archive, la suite MUST incluir estos tests (nombres estables; crate / t
 | `static_path_traversal_returns_404` | `api` | integración del crate |
 | `sw_js_sends_no_cache` | `api` | integración del crate |
 | `manifest_sends_no_cache` | `api` | integración del crate |
+| `manifest_replaces_version` | `api` | integración del crate |
 | `media_file_sends_long_cache` | `api` | integración del crate |
 | `media_missing_returns_404` | `api` | integración del crate |
 | `media_path_traversal_returns_404` | `api` | integración del crate |
@@ -500,7 +501,7 @@ Antes de archive, la suite MUST incluir estos tests (nombres estables; crate / t
 | `vortex_serve_inaccessible_storage_exits` | `vortex` | binario |
 | `vortex_serve_unwritable_datos_exits` | `vortex` | binario |
 
-`cargo test --workspace` (manifiesto `vortex-core/Cargo.toml`) MUST ejecutarlos. Los tests de `problem+json` MUST asertar estado HTTP, `Content-Type: application/problem+json` y `code`. Los de middleware MUST cubrir cuerpo excedido, timeout y cabeceras (`Cache-Control`, `Content-Encoding`). Los de `/health` MUST asertar 200/503, `Content-Type: application/json` y `status` agregado. Los de `/metrics` MUST asertar 200, `text/plain` y el histograma de una petición previa. Los de estáticos MUST asertar `Cache-Control` (`no-cache` vs `max-age=31536000` + `immutable`) y el 404 `not_found` de archivo ausente, versión distinta y *path traversal`. Los de arranque ordenado MUST asertar `/health` `ok` con `storage` `up`, spans `boot.*` en el log, y que una base inaccesible o `paths.datos` no escribible terminan con error sin dejar el puerto escuchando. Los stubs de los demás subcomandos MUST seguir cubiertos.
+`cargo test --workspace` (manifiesto `vortex-core/Cargo.toml`) MUST ejecutarlos. Los tests de `problem+json` MUST asertar estado HTTP, `Content-Type: application/problem+json` y `code`. Los de middleware MUST cubrir cuerpo excedido, timeout y cabeceras (`Cache-Control`, `Content-Encoding`). Los de `/health` MUST asertar 200/503, `Content-Type: application/json` y `status` agregado. Los de `/metrics` MUST asertar 200, `text/plain` y el histograma de una petición previa. Los de estáticos MUST asertar `Cache-Control` (`no-cache` vs `max-age=31536000` + `immutable`), la sustitución de `{{VERSION}}` en `index.html` y en `manifest.webmanifest`, y el 404 `not_found` de archivo ausente, versión distinta y *path traversal*. Los de arranque ordenado MUST asertar `/health` `ok` con `storage` `up`, spans `boot.*` en el log, y que una base inaccesible o `paths.datos` no escribible terminan con error sin dejar el puerto escuchando. Los stubs de los demás subcomandos MUST seguir cubiertos.
 
 #### Scenario: la suite acordada cubre happy y unhappy (happy)
 
@@ -511,7 +512,7 @@ Antes de archive, la suite MUST incluir estos tests (nombres estables; crate / t
 - **AND** los de cuerpo excedido, timeout, cabeceras y span HTTP pasan
 - **AND** los de `GET /health` (200 `ok`/`degraded`, 503 `starting`/`down`, no `problem+json`) pasan
 - **AND** los de `GET /metrics` (200 `text/plain`, histograma de petición previa, no `problem+json`, `POST` no es scrape) pasan
-- **AND** los de estáticos (`no-cache` / inmutable, `{{VERSION}}`, 404 de ausente / versión / *traversal*) pasan
+- **AND** los de estáticos (`no-cache` / inmutable, `{{VERSION}}` en `index.html` y en el *manifest*, 404 de ausente / versión / *traversal*) pasan
 - **AND** los de arranque ordenado (`health` `ok` + `storage` `up`, duraciones `boot.*`, Storage inaccesible, `datos` no escribible) pasan
 
 ### Requirement: GET /metrics expone texto Prometheus
@@ -561,13 +562,13 @@ El router de `build_router` MUST registrar estos GET (y MUST NOT exigir que los 
 |---|---|---|---|
 | `/` y `/index.html` | `{web}/index.html` | `no-cache` | HTML con cada `{{VERSION}}` reemplazado por `version` |
 | `/sw.js` | `{web}/sw.js` | `no-cache` | bytes del archivo |
-| `/manifest.webmanifest` | `{web}/manifest.webmanifest` | `no-cache` | bytes del archivo |
+| `/manifest.webmanifest` | `{web}/manifest.webmanifest` | `no-cache` | texto con cada `{{VERSION}}` reemplazado por `version` |
 | `/static/{version}/{*path}` | `{web}/{path}` | `max-age=31536000, immutable` | bytes del archivo, solo si `{version}` es exactamente `AppState.version` y `{path}` es un archivo regular bajo `{web}` |
 | `/media/{*path}` | `{media}/{path}` | `max-age=31536000, immutable` | bytes del archivo, solo si `{path}` es un archivo regular bajo `{media}` |
 
-`Content-Type` de `/` e `/index.html` MUST ser `text/html` (MAY incluir `charset=utf-8`). Las demás rutas MUST enviar un `Content-Type` coherente con el recurso (p. ej. `text/javascript` o `application/javascript` para `.js`; `application/manifest+json` para el *manifest*; tipo de imagen o `application/octet-stream` para `/media`). Estas respuestas MUST NOT enviar `Cache-Control: no-store` (el middleware de `/api/*` no aplica). `{{VERSION}}` MUST sustituirse en `index.html` de forma literal, todas las ocurrencias; MUST NOT interpretarse como plantilla fuera de ese placeholder.
+`Content-Type` de `/` e `/index.html` MUST ser `text/html` (MAY incluir `charset=utf-8`). Las demás rutas MUST enviar un `Content-Type` coherente con el recurso (p. ej. `text/javascript` o `application/javascript` para `.js`; `application/manifest+json` para el *manifest*; tipo de imagen o `application/octet-stream` para `/media`). Estas respuestas MUST NOT enviar `Cache-Control: no-store` (el middleware de `/api/*` no aplica). `{{VERSION}}` MUST sustituirse de forma literal, todas las ocurrencias, en `index.html` **y** en `manifest.webmanifest`; MUST NOT interpretarse como plantilla fuera de esos dos archivos.
 
-Una petición GET cuyo archivo no existe, cuyo `{path}` no es un archivo regular (directorio, raíz vacía), cuyo `{version}` de `/static/` no coincide, o que intente salir de `{web}` / `{media}` (`..`, `%2e%2e`, barra inicial, enlace que resuelva fuera de la raíz) MUST responder `404` con `Content-Type: application/problem+json` y `code` `not_found`. MUST NOT devolver el contenido de un archivo fuera de esas raíces. MUST NOT listar directorios. Un método distinto de GET sobre estas rutas MUST NOT ser `200` con el cuerpo del estático. Este change MUST NOT crear `vectra-web/` ni el contenido de la SPA; los tests MUST usar un árbol temporal de fixtures.
+Una petición GET cuyo archivo no existe, cuyo `{path}` no es un archivo regular (directorio, raíz vacía), cuyo `{version}` de `/static/` no coincide, o que intente salir de `{web}` / `{media}` (`..`, `%2e%2e`, barra inicial, enlace que resuelva fuera de la raíz) MUST responder `404` con `Content-Type: application/problem+json` y `code` `not_found`. MUST NOT devolver el contenido de un archivo fuera de esas raíces. MUST NOT listar directorios. Un método distinto de GET sobre estas rutas MUST NOT ser `200` con el cuerpo del estático. Los tests de este requirement MUST usar un árbol temporal de fixtures (MUST NOT depender del árbol `vectra-web/` real).
 
 #### Scenario: index.html sustituye VERSION y envía no-cache (happy)
 
@@ -610,6 +611,15 @@ Una petición GET cuyo archivo no existe, cuyo `{path}` no es un archivo regular
 - **THEN** la respuesta tiene estado 200
 - **AND** `Cache-Control` es `no-cache`
 - **AND** `Cache-Control` no es `no-store`
+
+#### Scenario: manifest sustituye VERSION (happy)
+
+- **WHEN** `{web}` contiene `manifest.webmanifest` con el texto `{{VERSION}}` (p. ej. en un `src` de ícono)
+- **AND** se envía `GET /manifest.webmanifest`
+- **THEN** la respuesta tiene estado HTTP 200
+- **AND** `Content-Type` es `application/manifest+json`
+- **AND** el cuerpo contiene el valor de `version` y no contiene `{{VERSION}}`
+- **AND** `Cache-Control` es `no-cache`
 
 #### Scenario: /media envía caché larga (happy)
 
