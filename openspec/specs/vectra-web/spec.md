@@ -14,6 +14,7 @@ El repositorio MUST contener el directorio `vectra-web/` en la raíz, con al men
 - `vectra-web/css/base.css`
 - `vectra-web/js/app.js`
 - `vectra-web/js/router.js`
+- `vectra-web/js/api.js`
 - `vectra-web/js/components/index.js`, `shared.js`, `vx-button.js`, `vx-field.js`, `vx-chip.js`, `vx-modal.js`, `vx-side-panel.js`, `vx-toast.js`, `vx-product-card.js`
 - `vectra-web/dev/components.html`
 
@@ -31,7 +32,7 @@ El repositorio MUST contener el directorio `vectra-web/` en la raíz, con al men
 
 - **WHEN** se inspecciona `vectra-web/`
 - **THEN** existen `css/` y `js/components/` como directorios
-- **AND** existen los archivos `js/app.js` y `js/router.js`
+- **AND** existen los archivos `js/app.js`, `js/router.js` y `js/api.js`
 - **AND** existen `css/tokens.css` y `css/base.css`
 - **AND** existen `js/components/vx-button.js`, `vx-field.js`, `vx-chip.js`, `vx-modal.js`, `vx-side-panel.js`, `vx-toast.js`, `vx-product-card.js`, `shared.js`, `index.js` y `dev/components.html`
 
@@ -80,6 +81,13 @@ El repositorio MUST contener el directorio `vectra-web/` en la raíz, con al men
 - **AND** se ejecuta `./scripts/check-vectra-web.sh`
 - **THEN** el comando termina con código distinto de 0
 - **AND** el mensaje nombra `vx-product-card.js`
+
+#### Scenario: falta api.js (unhappy)
+
+- **WHEN** falta `vectra-web/js/api.js`
+- **AND** se ejecuta `./scripts/check-vectra-web.sh`
+- **THEN** el comando termina con código distinto de 0
+- **AND** el mensaje nombra `api.js`
 
 ### Requirement: Router hash Operador y Administración sin recargar
 
@@ -263,6 +271,7 @@ Antes de archive, la suite MUST incluir estos tests (nombres estables; ubicació
 | `components_tree_includes_button_field_chip` | `scripts/check-vectra-web.sh` | harness de árbol |
 | `components_tree_includes_modal_panel_toast` | `scripts/check-vectra-web.sh` | harness de árbol |
 | `components_tree_includes_product_card` | `scripts/check-vectra-web.sh` | harness de árbol |
+| `api_tree_includes_api_js` | `scripts/check-vectra-web.sh` | harness de árbol |
 | `components_html_catalog_loads_three_tags` | `scripts/fixtures/vectra-web/components.test.mjs` | catálogo |
 | `components_html_catalog_loads_overlay_tags` | `scripts/fixtures/vectra-web/components.test.mjs` | catálogo |
 | `components_html_catalog_loads_product_card_variants` | `scripts/fixtures/vectra-web/components.test.mjs` | catálogo (Listo cuando) |
@@ -296,8 +305,18 @@ Antes de archive, la suite MUST incluir estos tests (nombres estables; ubicació
 | `vx_product_card_unknown_variant_falls_back_to_full` | `components.test.mjs` | unhappy |
 | `vx_product_card_missing_image_shows_placeholder` | `components.test.mjs` | unhappy |
 | `vx_product_card_zero_stock_without_marker_fails` | `components.test.mjs` | unhappy |
+| `api_request_parses_json_ok` | `scripts/fixtures/vectra-web/api.test.mjs` | happy |
+| `api_request_posts_json_body` | `api.test.mjs` | happy |
+| `api_request_sends_terminal_header` | `api.test.mjs` | happy |
+| `api_request_forwards_abort_signal` | `api.test.mjs` | happy |
+| `api_request_problem_json_not_found` | `api.test.mjs` | unhappy (Listo cuando) |
+| `api_request_invalid_input_exposes_errors` | `api.test.mjs` | unhappy |
+| `api_request_network_failure_is_network_code` | `api.test.mjs` | unhappy |
+| `api_request_abort_is_not_network` | `api.test.mjs` | unhappy |
+| `api_request_non_json_error_is_internal` | `api.test.mjs` | unhappy |
+| `api_request_omits_terminal_header_when_empty` | `api.test.mjs` | unhappy |
 
-`./scripts/check-vectra-web.sh` MUST ejecutar el harness de árbol y los tests `node --test` (router, *tokens* y componentes) y MUST terminar con código 0 sobre el árbol que cumple esta spec. MUST NOT agregar `package.json` ni dependencias npm. `cargo test --workspace` (manifiesto `vortex-core/Cargo.toml`) MUST seguir en verde (regresión; este change no agrega tests Rust). Los tests del *router* MUST asertar el `data-view` (y `data-section` cuando aplica) y que no hubo recarga. Los del árbol MUST asertar `lang="es"`, el `src` `/static/{{VERSION}}/js/app.js`, los `href` versionados de `tokens.css` y `base.css`, y la presencia de los módulos de componentes (incluidos modal, panel, toast y product-card) y `dev/components.html`. Los de componentes MUST asertar Shadow DOM, `adoptedStyleSheets`, ARIA, unhappy path de loading, error de campo y chip deshabilitado, los de overlay/toast de la tabla, y los de `vx-product-card` de la tabla.
+`./scripts/check-vectra-web.sh` MUST ejecutar el harness de árbol y los tests `node --test` (router, *tokens*, componentes y `api`) y MUST terminar con código 0 sobre el árbol que cumple esta spec. MUST NOT agregar `package.json` ni dependencias npm. `cargo test --workspace` (manifiesto `vortex-core/Cargo.toml`) MUST seguir en verde (regresión; este change no agrega tests Rust). Los tests del *router* MUST asertar el `data-view` (y `data-section` cuando aplica) y que no hubo recarga. Los del árbol MUST asertar `lang="es"`, el `src` `/static/{{VERSION}}/js/app.js`, los `href` versionados de `tokens.css` y `base.css`, la presencia de los módulos de componentes (incluidos modal, panel, toast y product-card), `js/api.js` y `dev/components.html`. Los de componentes MUST asertar Shadow DOM, `adoptedStyleSheets`, ARIA, unhappy path de loading, error de campo y chip deshabilitado, los de overlay/toast de la tabla, y los de `vx-product-card` de la tabla. Los de `api` MUST asertar JSON 2xx, cabecera de terminal, `signal`, `ApiError` `not_found` / `invalid_input` / `network` / `internal`, abort distinto de `network`, y omisión de cabecera sin nombre.
 
 #### Scenario: la suite acordada cubre happy y unhappy (happy)
 
@@ -308,6 +327,7 @@ Antes de archive, la suite MUST incluir estos tests (nombres estables; ubicació
 - **AND** los de `lang="es"` y el módulo versionado pasan
 - **AND** los de *tokens*, contraste, transparencia reducida y `base.css` pasan
 - **AND** los de componentes (botón, campo, chip, modal, panel, toast, product-card) pasan
+- **AND** los de `api.js` (JSON 2xx, `not_found`, `network`, abort) pasan
 
 #### Scenario: falta el router o el documento (unhappy)
 
@@ -554,3 +574,83 @@ Si `stock` representa cero (`0`, `0.0`, `0.00` u otro decimal equivalente a cero
 
 - **WHEN** un `vx-product-card` tiene `stock="0"` y no expone `data-out-of-stock` ni el texto "Sin stock"
 - **THEN** el test de componentes termina con código distinto de 0
+
+### Requirement: Cliente HTTP JSON y ApiError
+
+`vectra-web/js/api.js` MUST exportar `request` y `ApiError`. `request(method, path, options)` MUST enviar una petición HTTP JSON al mismo origen. `path` MUST ser una ruta absoluta desde el origen (p. ej. `/api/v1/search`, `/health`, `/no-such-route`) y MUST NOT prefijar `/api/v1` por su cuenta (T-01-12 llama `/health`). MUST usar ES Module, MUST NOT exigir `package.json` ni un *bundler*. MUST NOT implementar SSE ni *multipart*. MUST NOT mapear `code` a mensajes de UI (T-01-07).
+
+`options` MAY incluir `body` (valor serializable a JSON) y `signal` (`AbortSignal`). Si `body` está presente, MUST enviar `JSON.stringify(body)` y la cabecera `Content-Type: application/json`. MUST reenviar `signal` a la capa HTTP para que el caller cancele con `AbortController` ([5.7](../../../docs/5-contract-api.md#57-búsqueda-search-as-you-type-y-cancelación)).
+
+Si `localStorage` tiene un valor no vacío (tras recortar espacios) en la clave `vectra.terminal`, MUST enviar la cabecera `X-Vectra-Terminal` con ese valor en la petición. Si la clave falta, está vacía o no hay almacenamiento, MUST omitir la cabecera y MUST NOT fallar por eso.
+
+Una respuesta 2xx MUST resolverse con el JSON parseado. Si el cuerpo está vacío (p. ej. 204), MUST resolverse con `null`. MUST NOT interpretar HTML ni SSE como JSON de negocio.
+
+Una respuesta no OK cuyo JSON incluye `code` (string) MUST rechazarse con `ApiError` cuyas propiedades `status`, `code` y `title` copian el cuerpo (y `status` HTTP si el cuerpo no trae `status`). `errors` MUST ser el array `errors` del cuerpo o `[]` si falta. Eso cubre el Listo cuando: un 404 `application/problem+json` con `code: "not_found"` produce `ApiError` con `code: "not_found"`.
+
+Si la capa HTTP rechaza por fallo de red (p. ej. `TypeError` de `fetch`), MUST rechazar con `ApiError` cuyo `code` es `"network"`. `"network"` no está en `ErrorCode` de OpenAPI; T-01-07 lo agrega al mapa de mensajes.
+
+Si la petición se aborta (`AbortError` / `name === "AbortError"`), MUST rechazar con ese error y MUST NOT convertirlo en `code: "network"`.
+
+Una respuesta no OK sin JSON parseable o sin `code` string MUST rechazarse con `ApiError` de `code: "internal"` y el `status` HTTP, sin lanzar otra clase.
+
+`ApiError` MUST ser instancia de `Error` y MUST exponer `{ status, code, title, errors }`.
+
+#### Scenario: JSON 2xx se parsea (happy)
+
+- **WHEN** `request("GET", "/api/v1/search")` recibe 200 con cuerpo `{"hits":[]}` y `Content-Type: application/json`
+- **THEN** la promesa se resuelve con un objeto cuya propiedad `hits` es un array vacío
+
+#### Scenario: POST JSON envía Content-Type y cuerpo (happy)
+
+- **WHEN** `request("POST", "/api/v1/products", { body: { sku: "P-1" } })` se invoca
+- **THEN** la petición HTTP usa método `POST` y ruta `/api/v1/products`
+- **AND** lleva `Content-Type: application/json`
+- **AND** el cuerpo es el JSON de `{ sku: "P-1" }`
+
+#### Scenario: cabecera de terminal desde localStorage (happy)
+
+- **WHEN** `localStorage["vectra.terminal"]` vale `"Caja-1"`
+- **AND** se llama `request("GET", "/health")`
+- **THEN** la petición incluye `X-Vectra-Terminal: Caja-1`
+
+#### Scenario: signal de AbortController se reenvía (happy)
+
+- **WHEN** se llama `request("GET", "/api/v1/search", { signal })` con un `AbortSignal`
+- **THEN** la capa HTTP recibe ese mismo `signal`
+
+#### Scenario: 404 problem+json es ApiError not_found (unhappy)
+
+- **WHEN** `request("GET", "/no-such-route")` recibe 404 `application/problem+json` con `code: "not_found"` y `title` no vacío
+- **THEN** la promesa se rechaza con `ApiError`
+- **AND** `error.code` es `"not_found"`
+- **AND** `error.status` es `404`
+- **AND** `error.title` es el `title` del cuerpo
+
+#### Scenario: invalid_input expone errors por campo (unhappy)
+
+- **WHEN** `request` recibe 400 `problem+json` con `code: "invalid_input"` y `errors: [{ "field": "sku", "message": "requerido" }]`
+- **THEN** se rechaza con `ApiError` cuyo `code` es `"invalid_input"`
+- **AND** `error.errors` tiene un elemento con `field: "sku"`
+
+#### Scenario: fallo de red es code network (unhappy)
+
+- **WHEN** la capa HTTP rechaza con un error que no es abort (p. ej. `TypeError: Failed to fetch`)
+- **THEN** se rechaza con `ApiError` cuyo `code` es `"network"`
+
+#### Scenario: abort no se disfraza de network (unhappy)
+
+- **WHEN** el `signal` aborta la petición
+- **THEN** se rechaza con un error cuyo `name` es `"AbortError"`
+- **AND** no es un `ApiError` con `code: "network"`
+
+#### Scenario: error no JSON es internal (unhappy)
+
+- **WHEN** `request` recibe 500 con cuerpo HTML o texto que no es JSON con `code`
+- **THEN** se rechaza con `ApiError` cuyo `code` es `"internal"`
+- **AND** `error.status` es `500`
+
+#### Scenario: sin nombre de terminal no envía la cabecera (unhappy)
+
+- **WHEN** `vectra.terminal` está ausente o es `""`
+- **AND** se llama `request("GET", "/health")`
+- **THEN** la petición no incluye la cabecera `X-Vectra-Terminal`
