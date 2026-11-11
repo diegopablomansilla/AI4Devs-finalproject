@@ -3,7 +3,13 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { installDomGlobals, customElements, CustomEvent, KeyboardEvent } from "./dom-stub.mjs";
+import {
+  installDomGlobals,
+  customElements,
+  CustomEvent,
+  KeyboardEvent,
+  Event,
+} from "./dom-stub.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.join(__dirname, "../../..");
@@ -18,6 +24,19 @@ const waitMicrotask = () => new Promise((resolve) => queueMicrotask(resolve));
 /** @param {import("./dom-stub.mjs").HTMLElement} omnibox */
 function omniboxInput(omnibox) {
   return omnibox.shadowRoot?.querySelector("input") ?? null;
+}
+
+/** @param {import("./dom-stub.mjs").HTMLElement} omnibox */
+function omniboxModeButton(omnibox, mode) {
+  return omnibox.shadowRoot?.querySelector(`[data-mode="${mode}"]`) ?? null;
+}
+
+/** @param {import("./dom-stub.mjs").HTMLElement} omnibox */
+function fireOmniboxInput(omnibox, value) {
+  const input = omniboxInput(omnibox);
+  assert.ok(input);
+  input.value = value;
+  input.dispatchEvent(new Event("input", { bubbles: true }));
 }
 
 installDomGlobals();
@@ -163,21 +182,155 @@ describe("omnibox", () => {
     assert.equal(box.getAttribute("value"), "tornillo");
   });
 
-  test("omnibox_does_not_emit_vx_query", async () => {
+  test("omnibox_question_prefix_sets_ai_mode_and_emits_vx_query", async () => {
     const box = customElements._create("vx-omnibox");
     document.body.appendChild(box);
     await box.connectedCallback();
-    let queries = 0;
-    box.addEventListener("vx-query", () => {
-      queries += 1;
+    /** @type {{ mode?: string; text?: string }} */
+    let lastDetail = {};
+    box.addEventListener("vx-query", (e) => {
+      lastDetail = e.detail ?? {};
     });
-    document.addEventListener("vx-query", () => {
-      queries += 1;
+    fireOmniboxInput(box, "?hola");
+    assert.equal(box.getAttribute("mode"), "ai");
+    const aiBtn = omniboxModeButton(box, "ai");
+    assert.equal(aiBtn?.getAttribute("aria-pressed"), "true");
+    assert.equal(lastDetail.mode, "ai");
+    assert.equal(lastDetail.text, "?hola");
+  });
+
+  test("omnibox_text_mode_emits_vx_query_with_mode_text", async () => {
+    const box = customElements._create("vx-omnibox");
+    document.body.appendChild(box);
+    await box.connectedCallback();
+  /** @type {{ mode?: string; text?: string }} */
+    let lastDetail = {};
+    box.addEventListener("vx-query", (e) => {
+      lastDetail = e.detail ?? {};
     });
+    fireOmniboxInput(box, "tornillo");
+    assert.equal(box.getAttribute("mode"), "text");
+    assert.equal(lastDetail.mode, "text");
+    assert.equal(lastDetail.text, "tornillo");
+  });
+
+  test("omnibox_click_ai_sets_mode_and_indicator", async () => {
+    const box = customElements._create("vx-omnibox");
+    document.body.appendChild(box);
+    await box.connectedCallback();
     const input = omniboxInput(box);
-    input.value = "perno";
-    input.dispatchEvent(new KeyboardEvent("keydown", { key: "a", bubbles: true }));
+    input.value = "broca";
+    /** @type {{ mode?: string; text?: string }} */
+    let lastDetail = {};
+    box.addEventListener("vx-query", (e) => {
+      lastDetail = e.detail ?? {};
+    });
+    const aiBtn = omniboxModeButton(box, "ai");
+    aiBtn?.click();
+    assert.equal(box.getAttribute("mode"), "ai");
+    assert.equal(aiBtn?.getAttribute("aria-pressed"), "true");
+    assert.equal(lastDetail.mode, "ai");
+    assert.equal(lastDetail.text, "broca");
+  });
+
+  test("omnibox_selector_shows_text_voice_ai", async () => {
+    const box = customElements._create("vx-omnibox");
+    document.body.appendChild(box);
+    await box.connectedCallback();
+    assert.ok(omniboxModeButton(box, "text"));
+    assert.ok(omniboxModeButton(box, "voice"));
+    assert.ok(omniboxModeButton(box, "ai"));
+    assert.equal(box.getAttribute("mode"), "text");
+    const imageBtn = omniboxModeButton(box, "image");
+    assert.ok(imageBtn);
+    assert.equal(imageBtn.hidden, true);
+  });
+
+  test("omnibox_image_mode_visible_with_vision", async () => {
+    const box = customElements._create("vx-omnibox");
+    box.setAttribute("vision", "");
+    document.body.appendChild(box);
+    await box.connectedCallback();
+    const imageBtn = omniboxModeButton(box, "image");
+    assert.ok(imageBtn);
+    assert.equal(imageBtn.hidden, false);
+    /** @type {{ mode?: string; text?: string }} */
+    let lastDetail = {};
+    box.addEventListener("vx-query", (e) => {
+      lastDetail = e.detail ?? {};
+    });
+    imageBtn?.click();
+    assert.equal(box.getAttribute("mode"), "image");
+    assert.equal(lastDetail.mode, "image");
+  });
+
+  test("omnibox_question_not_at_start_stays_text", async () => {
+    const box = customElements._create("vx-omnibox");
+    document.body.appendChild(box);
+    await box.connectedCallback();
+    /** @type {{ mode?: string; text?: string }} */
+    let lastDetail = {};
+    box.addEventListener("vx-query", (e) => {
+      lastDetail = e.detail ?? {};
+    });
+    fireOmniboxInput(box, "hola?");
+    assert.equal(box.getAttribute("mode"), "text");
+    assert.equal(lastDetail.mode, "text");
+  });
+
+  test("omnibox_image_mode_hidden_without_vision", async () => {
+    const box = customElements._create("vx-omnibox");
+    document.body.appendChild(box);
+    await box.connectedCallback();
+    const imageBtn = omniboxModeButton(box, "image");
+    assert.equal(imageBtn?.hidden, true);
+    imageBtn?.click();
+    assert.notEqual(box.getAttribute("mode"), "image");
+  });
+
+  test("omnibox_mode_does_not_call_search", async () => {
+    const box = customElements._create("vx-omnibox");
+    document.body.appendChild(box);
+    await box.connectedCallback();
+    let fetchCalls = 0;
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = () => {
+      fetchCalls += 1;
+      return Promise.resolve({ ok: true });
+    };
+    try {
+      fireOmniboxInput(box, "?hola");
+      omniboxModeButton(box, "voice")?.click();
+      omniboxModeButton(box, "ai")?.click();
+      assert.equal(fetchCalls, 0);
+    } finally {
+      globalThis.fetch = prevFetch;
+    }
+  });
+
+  test("omnibox_escape_on_ai_prefix_resets_to_text", async () => {
+    const box = customElements._create("vx-omnibox");
+    document.body.appendChild(box);
+    await box.connectedCallback();
+    fireOmniboxInput(box, "?hola");
+    assert.equal(box.getAttribute("mode"), "ai");
+    const input = omniboxInput(box);
+    input.focus();
     input.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
-    assert.equal(queries, 0);
+    assert.equal(input.value, "");
+    assert.equal(box.getAttribute("mode"), "text");
+  });
+
+  test("omnibox_unknown_mode_falls_back_to_text", async () => {
+    const box = customElements._create("vx-omnibox");
+    box.setAttribute("mode", "nope");
+    document.body.appendChild(box);
+    await box.connectedCallback();
+    assert.equal(box.getAttribute("mode"), "text");
+    assert.doesNotThrow(() => {
+      box.setAttribute("mode", "invalid");
+      box.attributeChangedCallback("mode", "nope", "invalid");
+    });
+    assert.equal(box.getAttribute("mode"), "text");
   });
 });

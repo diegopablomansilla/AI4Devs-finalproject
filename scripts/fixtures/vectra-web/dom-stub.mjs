@@ -139,6 +139,10 @@ class FakeShadowRoot extends EventTargetStub {
     if (selector === "[data-field]") {
       return node.hasAttribute("data-field");
     }
+    const dataModeMatch = selector.match(/^\[data-mode="([^"]+)"\]$/);
+    if (dataModeMatch) {
+      return node.getAttribute("data-mode") === dataModeMatch[1];
+    }
     return false;
   }
 
