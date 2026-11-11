@@ -2,15 +2,15 @@
 
 ## Purpose
 
-Define el esqueleto HTTP del API Gateway de Vortex Core: router con estado de aplicación clonable, traducción de errores de dominio y de Gateway a RFC 9457 (`application/problem+json`), middlewares transversales (límite de cuerpo, timeout, compresión, `Cache-Control: no-store` en `/api/*`, span de tracing), `GET /health` con snapshot agregado, `vortex serve` escuchando en HTTP según `server.bind`, respuesta 404 a rutas inexistentes y apagado ordenado con SIGTERM y Ctrl+C, de modo que el proceso arranque y termine limpio antes de TLS o rutas de negocio.
+Define el esqueleto HTTP del API Gateway de Vortex Core: router con estado de aplicación clonable, traducción de errores de dominio y de Gateway a RFC 9457 (`application/problem+json`), middlewares transversales (límite de cuerpo, timeout, compresión, `Cache-Control: no-store` en `/api/*`, span de tracing), `GET /health` con snapshot agregado, `GET /metrics` Prometheus, estáticos de la SPA (`index.html` con `{{VERSION}}`, `/static/<versión>/`, `sw.js`, *manifest*) y `/media/*` desde `<datos>/media`, `vortex serve` escuchando en HTTP según `server.bind`, respuesta 404 a rutas inexistentes y apagado ordenado con SIGTERM y Ctrl+C, de modo que el proceso arranque y termine limpio antes de TLS o rutas de negocio.
 
-Ticket padre: T-00-10, T-00-11, T-00-12, T-00-13. HU: HU-00-05, HU-00-06, HU-00-09, HU-01-05, HU-09-02.
+Ticket padre: T-00-10, T-00-11, T-00-12, T-00-13, T-00-14, T-00-19. HU: HU-00-05, HU-00-06, HU-00-09, HU-01-01, HU-01-05, HU-09-02.
 
 ## Requirements
 
 ### Requirement: build_router expone un router HTTP con AppState clonable
 
-El crate `api` MUST exportar `build_router` que acepta un `AppState` y MUST devolver el router HTTP del Gateway. `AppState` MUST ser clonable y MUST poder compartirse entre peticiones (servicios inyectados como `Arc<dyn …>` cuando existan). `AppState` MUST incluir un `HealthReport` (inyectado; MAY usar un snapshot por defecto con los seis componentes en `disabled` para tests). El router MUST registrar `GET /health` (requirement «GET /health expone el snapshot agregado»). El router MUST registrar `GET /metrics` (requirement «GET /metrics expone texto Prometheus»). El router MUST NOT registrar rutas de negocio ni estáticos. Una petición a una ruta no registrada MUST responder `404` con `Content-Type: application/problem+json` y `code` `not_found` (requirement «404 y 500 genéricos sin detalles internos»).
+El crate `api` MUST exportar `build_router` que acepta un `AppState` y MUST devolver el router HTTP del Gateway. `AppState` MUST ser clonable y MUST poder compartirse entre peticiones (servicios inyectados como `Arc<dyn …>` cuando existan). `AppState` MUST incluir un `HealthReport` (inyectado; MAY usar un snapshot por defecto con los seis componentes en `disabled` para tests). `AppState` MUST incluir raíces `web` y `media` y una `version` (requirement «Estáticos de la SPA y /media»). El router MUST registrar `GET /health` (requirement «GET /health expone el snapshot agregado»). El router MUST registrar `GET /metrics` (requirement «GET /metrics expone texto Prometheus»). El router MUST registrar los GET de estáticos y `/media` (requirement «Estáticos de la SPA y /media»). El router MUST NOT registrar rutas de negocio bajo `/api/v1`. Una petición a una ruta no registrada MUST responder `404` con `Content-Type: application/problem+json` y `code` `not_found` (requirement «404 y 500 genéricos sin detalles internos»).
 
 #### Scenario: ruta inexistente responde 404 (happy)
 
@@ -37,9 +37,16 @@ El crate `api` MUST exportar `build_router` que acepta un `AppState` y MUST devo
 - **THEN** la respuesta no tiene estado 404
 - **AND** el cuerpo no tiene `code` `not_found`
 
+#### Scenario: GET / está registrado cuando hay index.html (happy)
+
+- **WHEN** `AppState` apunta a un `{web}` con `index.html`
+- **AND** se envía `GET /` al router de `build_router`
+- **THEN** la respuesta no tiene estado 404
+- **AND** el cuerpo no tiene `code` `not_found`
+
 ### Requirement: GET /health expone el snapshot agregado
 
-El router de `build_router` MUST registrar `GET /health`. La respuesta MUST tener `Content-Type: application/json` y un cuerpo alineado al esquema `Health` de `docs/openapi.yaml`: `status` (`ok` | `degraded` | `starting` | `down`), `version` (string), `uptimeSeconds` (entero ≥ 0) y `components` con `storage`, `meilisearch`, `llm`, `speech`, `textEmbeddings` y `sync`, cada uno con `status` de componente. HTTP MUST ser **200** cuando el agregado es `ok` o `degraded`, y **503** cuando es `starting` o `down`. El cuerpo MUST NOT ser `application/problem+json`. Este change MUST NOT registrar rutas de negocio ni estáticos. `GET /health` MUST NOT enviar `Cache-Control: no-store` por el middleware de `/api/*`.
+El router de `build_router` MUST registrar `GET /health`. La respuesta MUST tener `Content-Type: application/json` y un cuerpo alineado al esquema `Health` de `docs/openapi.yaml`: `status` (`ok` | `degraded` | `starting` | `down`), `version` (string), `uptimeSeconds` (entero ≥ 0) y `components` con `storage`, `meilisearch`, `llm`, `speech`, `textEmbeddings` y `sync`, cada uno con `status` de componente. HTTP MUST ser **200** cuando el agregado es `ok` o `degraded`, y **503** cuando es `starting` o `down`. El cuerpo MUST NOT ser `application/problem+json`. Este change MUST NOT registrar rutas de negocio bajo `/api/v1`. `GET /health` MUST NOT enviar `Cache-Control: no-store` por el middleware de `/api/*`.
 
 #### Scenario: GET /health ok es 200 (happy)
 
@@ -90,7 +97,7 @@ El router de `build_router` MUST registrar `GET /health`. La respuesta MUST tene
 
 ### Requirement: vortex serve escucha HTTP en server.bind
 
-`vortex serve` MUST dejar de responder `no implementado`. MUST resolver el path de configuración como en `vortex-config` (`--config` gana sobre `VORTEX_CONFIG`), MUST cargar y validar el TOML, y MUST escuchar HTTP (sin TLS) en la dirección `server.bind`. MUST cablear un registro de salud que implementa `HealthReport`. MUST NOT abrir Storage, MUST NOT instalar el subscriber de logging, MUST NOT arrancar sidecars. Una petición HTTP a una ruta no registrada MUST responder 404 con `Content-Type: application/problem+json` y `code` `not_found`. `GET /health` contra ese bind MUST responder según el requirement «GET /health expone el snapshot agregado». `GET /metrics` contra ese bind MUST responder según el requirement «GET /metrics expone texto Prometheus».
+`vortex serve` MUST dejar de responder `no implementado`. MUST resolver el path de configuración como en `vortex-config` (`--config` gana sobre `VORTEX_CONFIG`), MUST cargar y validar el TOML, y MUST escuchar HTTP (sin TLS) en la dirección `server.bind`. MUST cablear un registro de salud que implementa `HealthReport`. MUST inyectar en `AppState` `paths.web` como raíz `web`, `paths.datos` unido a `media` como raíz `media`, y la `version` del binario. MUST NOT abrir Storage, MUST NOT instalar el subscriber de logging, MUST NOT arrancar sidecars. Una petición HTTP a una ruta no registrada MUST responder 404 con `Content-Type: application/problem+json` y `code` `not_found`. `GET /health` contra ese bind MUST responder según el requirement «GET /health expone el snapshot agregado». `GET /metrics` contra ese bind MUST responder según el requirement «GET /metrics expone texto Prometheus». `GET /` contra ese bind MUST responder según el requirement «Estáticos de la SPA y /media» cuando `{web}/index.html` existe.
 
 #### Scenario: vortex serve arranca y responde 404 (happy)
 
@@ -116,6 +123,16 @@ El router de `build_router` MUST registrar `GET /health`. La respuesta MUST tene
 - **THEN** la respuesta de `/metrics` tiene estado HTTP 200
 - **AND** `Content-Type` empieza por `text/plain`
 - **AND** el cuerpo incluye `http_request_duration_seconds`
+
+#### Scenario: vortex serve GET / sirve index.html desde paths.web (happy)
+
+- **WHEN** el TOML de prueba pone `paths.web` en un directorio temporal con `index.html` que contiene `{{VERSION}}`
+- **AND** se ejecuta `vortex serve --config <ese-toml>` escuchando en un bind de prueba
+- **AND** se envía `GET /` contra ese bind
+- **THEN** la respuesta tiene estado HTTP 200
+- **AND** `Content-Type` empieza por `text/html`
+- **AND** `Cache-Control` es `no-cache`
+- **AND** el cuerpo no contiene `{{VERSION}}`
 
 #### Scenario: vortex serve sin path de configuración (unhappy)
 
@@ -421,8 +438,20 @@ Antes de archive, la suite MUST incluir estos tests (nombres estables; crate / t
 | `get_metrics_omits_cache_control_no_store` | `api` | integración del crate |
 | `post_metrics_is_not_prometheus_200` | `api` | integración del crate |
 | `vortex_serve_get_metrics_returns_prometheus` | `vortex` | binario |
+| `index_html_replaces_version_and_sends_no_cache` | `api` | integración del crate |
+| `index_html_missing_returns_404` | `api` | integración del crate |
+| `static_asset_sends_immutable_cache` | `api` | integración del crate |
+| `static_asset_wrong_version_returns_404` | `api` | integración del crate |
+| `static_path_traversal_returns_404` | `api` | integración del crate |
+| `sw_js_sends_no_cache` | `api` | integración del crate |
+| `manifest_sends_no_cache` | `api` | integración del crate |
+| `media_file_sends_long_cache` | `api` | integración del crate |
+| `media_missing_returns_404` | `api` | integración del crate |
+| `media_path_traversal_returns_404` | `api` | integración del crate |
+| `post_index_is_not_200_html` | `api` | integración del crate |
+| `vortex_serve_serves_index_from_paths_web` | `vortex` | binario |
 
-`cargo test --workspace` (manifiesto `vortex-core/Cargo.toml`) MUST ejecutarlos. Los tests de `problem+json` MUST asertar estado HTTP, `Content-Type: application/problem+json` y `code`. Los de middleware MUST cubrir cuerpo excedido, timeout y cabeceras (`Cache-Control`, `Content-Encoding`). Los de `/health` MUST asertar 200/503, `Content-Type: application/json` y `status` agregado. Los de `/metrics` MUST asertar 200, `text/plain` y el histograma de una petición previa. Los stubs de los demás subcomandos MUST seguir cubiertos.
+`cargo test --workspace` (manifiesto `vortex-core/Cargo.toml`) MUST ejecutarlos. Los tests de `problem+json` MUST asertar estado HTTP, `Content-Type: application/problem+json` y `code`. Los de middleware MUST cubrir cuerpo excedido, timeout y cabeceras (`Cache-Control`, `Content-Encoding`). Los de `/health` MUST asertar 200/503, `Content-Type: application/json` y `status` agregado. Los de `/metrics` MUST asertar 200, `text/plain` y el histograma de una petición previa. Los de estáticos MUST asertar `Cache-Control` (`no-cache` vs `max-age=31536000` + `immutable`) y el 404 `not_found` de archivo ausente, versión distinta y *path traversal*. Los stubs de los demás subcomandos MUST seguir cubiertos.
 
 #### Scenario: la suite acordada cubre happy y unhappy (happy)
 
@@ -433,10 +462,11 @@ Antes de archive, la suite MUST incluir estos tests (nombres estables; crate / t
 - **AND** los de cuerpo excedido, timeout, cabeceras y span HTTP pasan
 - **AND** los de `GET /health` (200 `ok`/`degraded`, 503 `starting`/`down`, no `problem+json`) pasan
 - **AND** los de `GET /metrics` (200 `text/plain`, histograma de petición previa, no `problem+json`, `POST` no es scrape) pasan
+- **AND** los de estáticos (`no-cache` / inmutable, `{{VERSION}}`, 404 de ausente / versión / *traversal*) pasan
 
 ### Requirement: GET /metrics expone texto Prometheus
 
-El router de `build_router` MUST registrar `GET /metrics`. La respuesta MUST tener estado HTTP **200** y `Content-Type` que empiece por `text/plain` (MAY incluir parámetros `version` y `charset`). El cuerpo MUST ser texto de exposición Prometheus válido: al menos una línea `# TYPE` o una serie con nombre Prometheus, sin JSON de `problem+json`. Tras una petición HTTP previa distinta del scrape (p. ej. `GET /health`), el cuerpo MUST incluir el histograma `http_request_duration_seconds` de esa petición (capability `prometheus-metrics`). `GET /metrics` MUST NOT enviar `Cache-Control: no-store` por el middleware de `/api/*`. El cuerpo MUST NOT ser `application/problem+json`. Este change MUST NOT registrar rutas de negocio ni estáticos. El path y el content type MUST alinearse con `GET /metrics` en `docs/openapi.yaml` (sin modificar ese archivo).
+El router de `build_router` MUST registrar `GET /metrics`. La respuesta MUST tener estado HTTP **200** y `Content-Type` que empiece por `text/plain` (MAY incluir parámetros `version` y `charset`). El cuerpo MUST ser texto de exposición Prometheus válido: al menos una línea `# TYPE` o una serie con nombre Prometheus, sin JSON de `problem+json`. Tras una petición HTTP previa distinta del scrape (p. ej. `GET /health`), el cuerpo MUST incluir el histograma `http_request_duration_seconds` de esa petición (capability `prometheus-metrics`). `GET /metrics` MUST NOT enviar `Cache-Control: no-store` por el middleware de `/api/*`. El cuerpo MUST NOT ser `application/problem+json`. Este change MUST NOT registrar rutas de negocio bajo `/api/v1`. El path y el content type MUST alinearse con `GET /metrics` en `docs/openapi.yaml` (sin modificar ese archivo).
 
 #### Scenario: GET /metrics es 200 text/plain (happy)
 
@@ -470,3 +500,119 @@ El router de `build_router` MUST registrar `GET /metrics`. La respuesta MUST ten
 - **WHEN** se envía `POST /metrics` al router de `build_router`
 - **THEN** la respuesta no tiene estado 200 con cuerpo de exposición Prometheus
 - **AND** el cuerpo no se presenta como scrape exitoso de este endpoint
+
+### Requirement: Estáticos de la SPA y /media
+
+`AppState` MUST incluir una raíz `web` (directorio de `paths.web`), una raíz `media` (`<datos>/media`) y una cadena `version` no vacía. El constructor por defecto (`AppState::new` / `with_health`) MAY usar raíces inexistentes y `version` igual a `CARGO_PKG_VERSION` del crate `api`. `vortex serve` MUST inyectar `paths.web`, `paths.datos` unido a `media`, y la misma `version` que publica `/health`.
+
+El router de `build_router` MUST registrar estos GET (y MUST NOT exigir que los archivos existan al construir el router):
+
+| Ruta | Archivo en disco | `Cache-Control` | Cuerpo |
+|---|---|---|---|
+| `/` y `/index.html` | `{web}/index.html` | `no-cache` | HTML con cada `{{VERSION}}` reemplazado por `version` |
+| `/sw.js` | `{web}/sw.js` | `no-cache` | bytes del archivo |
+| `/manifest.webmanifest` | `{web}/manifest.webmanifest` | `no-cache` | bytes del archivo |
+| `/static/{version}/{*path}` | `{web}/{path}` | `max-age=31536000, immutable` | bytes del archivo, solo si `{version}` es exactamente `AppState.version` y `{path}` es un archivo regular bajo `{web}` |
+| `/media/{*path}` | `{media}/{path}` | `max-age=31536000, immutable` | bytes del archivo, solo si `{path}` es un archivo regular bajo `{media}` |
+
+`Content-Type` de `/` e `/index.html` MUST ser `text/html` (MAY incluir `charset=utf-8`). Las demás rutas MUST enviar un `Content-Type` coherente con el recurso (p. ej. `text/javascript` o `application/javascript` para `.js`; `application/manifest+json` para el *manifest*; tipo de imagen o `application/octet-stream` para `/media`). Estas respuestas MUST NOT enviar `Cache-Control: no-store` (el middleware de `/api/*` no aplica). `{{VERSION}}` MUST sustituirse en `index.html` de forma literal, todas las ocurrencias; MUST NOT interpretarse como plantilla fuera de ese placeholder.
+
+Una petición GET cuyo archivo no existe, cuyo `{path}` no es un archivo regular (directorio, raíz vacía), cuyo `{version}` de `/static/` no coincide, o que intente salir de `{web}` / `{media}` (`..`, `%2e%2e`, barra inicial, enlace que resuelva fuera de la raíz) MUST responder `404` con `Content-Type: application/problem+json` y `code` `not_found`. MUST NOT devolver el contenido de un archivo fuera de esas raíces. MUST NOT listar directorios. Un método distinto de GET sobre estas rutas MUST NOT ser `200` con el cuerpo del estático. Este change MUST NOT crear `vectra-web/` ni el contenido de la SPA; los tests MUST usar un árbol temporal de fixtures.
+
+#### Scenario: index.html sustituye VERSION y envía no-cache (happy)
+
+- **WHEN** `AppState` apunta a un `{web}` que contiene `index.html` con el texto `{{VERSION}}`
+- **AND** se envía `GET /` al router de `build_router`
+- **THEN** la respuesta tiene estado HTTP 200
+- **AND** `Content-Type` empieza por `text/html`
+- **AND** el cuerpo contiene el valor de `version` y no contiene `{{VERSION}}`
+- **AND** `Cache-Control` es `no-cache`
+- **AND** `Cache-Control` no es `no-store`
+
+#### Scenario: GET /index.html es el mismo documento (happy)
+
+- **WHEN** el mismo `{web}` del escenario anterior
+- **AND** se envía `GET /index.html`
+- **THEN** la respuesta tiene estado 200
+- **AND** el cuerpo no contiene `{{VERSION}}`
+- **AND** `Cache-Control` es `no-cache`
+
+#### Scenario: activo versionado envía caché inmutable (happy)
+
+- **WHEN** `{web}` contiene un archivo regular `app.js` (o equivalente) con cuerpo no vacío
+- **AND** se envía `GET /static/<version>/app.js` con `<version>` igual a `AppState.version`
+- **THEN** la respuesta tiene estado 200
+- **AND** el cuerpo coincide con el archivo
+- **AND** `Cache-Control` incluye `max-age=31536000` e `immutable`
+
+#### Scenario: sw.js envía no-cache (happy)
+
+- **WHEN** `{web}` contiene `sw.js`
+- **AND** se envía `GET /sw.js`
+- **THEN** la respuesta tiene estado 200
+- **AND** `Cache-Control` es `no-cache`
+- **AND** `Cache-Control` no es `no-store`
+
+#### Scenario: manifest envía no-cache (happy)
+
+- **WHEN** `{web}` contiene `manifest.webmanifest`
+- **AND** se envía `GET /manifest.webmanifest`
+- **THEN** la respuesta tiene estado 200
+- **AND** `Cache-Control` es `no-cache`
+- **AND** `Cache-Control` no es `no-store`
+
+#### Scenario: /media envía caché larga (happy)
+
+- **WHEN** `{media}` contiene un archivo regular cuyo nombre es un digest hex (p. ej. `3f2a9c.jpg` bajo un subdirectorio)
+- **AND** se envía `GET /media/<esa-ruta-relativa>`
+- **THEN** la respuesta tiene estado 200
+- **AND** el cuerpo coincide con el archivo
+- **AND** `Cache-Control` incluye `max-age=31536000` e `immutable`
+
+#### Scenario: index.html ausente es 404 problem+json (unhappy)
+
+- **WHEN** `{web}` no contiene `index.html` (raíz inexistente o directorio vacío)
+- **AND** se envía `GET /`
+- **THEN** la respuesta tiene estado HTTP 404
+- **AND** `Content-Type` es `application/problem+json`
+- **AND** el JSON tiene `code` `not_found`
+
+#### Scenario: activo con versión distinta es 404 (unhappy)
+
+- **WHEN** `{web}` contiene `app.js`
+- **AND** se envía `GET /static/not-the-version/app.js` con un segmento de versión distinto de `AppState.version`
+- **THEN** la respuesta tiene estado 404
+- **AND** `Content-Type` es `application/problem+json`
+- **AND** el JSON tiene `code` `not_found`
+- **AND** el cuerpo no es el contenido de `app.js`
+
+#### Scenario: path traversal en /static es 404 (unhappy)
+
+- **WHEN** `{web}` contiene `app.js` y el directorio padre de `{web}` contiene un archivo `secret.txt` fuera de `{web}`
+- **AND** se envía `GET /static/<version>/../secret.txt` o un path equivalente (`..`, `%2e%2e`)
+- **THEN** la respuesta tiene estado 404
+- **AND** `Content-Type` es `application/problem+json`
+- **AND** el JSON tiene `code` `not_found`
+- **AND** el cuerpo no contiene el contenido de `secret.txt`
+
+#### Scenario: path traversal en /media es 404 (unhappy)
+
+- **WHEN** `{media}` está bajo `{datos}` y existe un archivo fuera de `{media}` accesible vía `..`
+- **AND** se envía `GET /media/../<archivo-fuera>`
+- **THEN** la respuesta tiene estado 404
+- **AND** el JSON tiene `code` `not_found`
+- **AND** el cuerpo no es ese archivo
+
+#### Scenario: /media inexistente es 404 (unhappy)
+
+- **WHEN** se envía `GET /media/no-such-object.bin` y ese path no existe bajo `{media}`
+- **THEN** la respuesta tiene estado 404
+- **AND** `Content-Type` es `application/problem+json`
+- **AND** el JSON tiene `code` `not_found`
+
+#### Scenario: POST / no es HTML 200 (unhappy)
+
+- **WHEN** `{web}` contiene `index.html`
+- **AND** se envía `POST /` al router de `build_router`
+- **THEN** la respuesta no tiene estado 200 con `Content-Type` `text/html` y el documento sustituido
+- **AND** el cuerpo no se presenta como éxito de este estático

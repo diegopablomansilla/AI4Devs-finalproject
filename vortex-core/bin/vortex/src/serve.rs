@@ -1,6 +1,6 @@
 //! `vortex serve` — HTTP listener and graceful shutdown (T-00-10).
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use std::sync::Arc;
 
@@ -67,7 +67,12 @@ async fn serve_config(config: Config) -> i32 {
     };
 
     let health = Arc::new(HealthRegistry::new(env!("CARGO_PKG_VERSION")));
-    let router = build_router(AppState::with_health(health));
+    let web_root = PathBuf::from(&config.paths.web);
+    let media_root = Path::new(&config.paths.datos).join("media");
+    let state = AppState::with_health(health)
+        .with_static_roots(web_root, media_root)
+        .with_version(env!("CARGO_PKG_VERSION"));
+    let router = build_router(state);
     if let Err(e) = serve(listener, router)
         .with_graceful_shutdown(shutdown_signal())
         .await
