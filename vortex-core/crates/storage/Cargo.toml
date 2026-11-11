@@ -5,9 +5,11 @@ edition.workspace = true
 publish = false
 
 [dependencies]
+domain = { path = "../domain" }
 surrealdb = { workspace = true, default-features = false, features = ["kv-rocksdb", "kv-mem"] }
 thiserror = { workspace = true }
 sha2 = { workspace = true }
+tokio = { workspace = true, features = ["sync"] }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

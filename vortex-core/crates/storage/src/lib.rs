@@ -2,15 +2,19 @@
 
 mod migrate;
 pub mod testing;
+mod tx;
 
 pub use migrate::{
     MIGRATION_0000_SQL, MIGRATION_0001_SQL, MigrateError, Migration, MigrationRecord, checksum_hex,
 };
+pub use tx::{OutboxNotifier, Tx};
 
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use surrealdb::engine::local::{Db as SurrealEngine, Mem, RocksDb};
 use surrealdb::{Error as SurrealError, Surreal};
+use tokio::sync::Notify;
 
 /// Subdirectorio del motor bajo `<paths.datos>` (T-00-05 / T-00-20).
 pub const DB_DIR_NAME: &str = "db";
@@ -20,7 +24,8 @@ const DB: &str = "comercio";
 
 /// Embedded SurrealDB handle. Production opens RocksDB via [`Db::open`]; tests may use [`testing::test_db`].
 pub struct Db {
-    inner: Surreal<SurrealEngine>,
+    pub(crate) inner: Surreal<SurrealEngine>,
+    pub(crate) outbox_notify: Arc<Notify>,
 }
 
 /// Failure to open the embedded database. Maps conceptually to `DomainError::Unavailable` / `unavailable`.
@@ -82,7 +87,10 @@ async fn bootstrap_session(
         .await
         .map_err(|e| OpenError::surreal(path_for_errors, e))?;
 
-    Ok(Db { inner })
+    Ok(Db {
+        inner,
+        outbox_notify: Arc::new(Notify::new()),
+    })
 }
 
 impl Db {

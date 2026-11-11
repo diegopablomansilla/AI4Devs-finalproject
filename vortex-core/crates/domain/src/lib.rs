@@ -4,6 +4,7 @@ pub mod decimal;
 pub mod error;
 pub mod health;
 pub mod id;
+pub mod outbox;
 pub mod timestamp;
 
 pub use decimal::{Decimal, InvalidDecimal};
@@ -16,4 +17,5 @@ pub use health::{
     HealthSnapshot, aggregate,
 };
 pub use id::{Id, InvalidId};
+pub use outbox::{OutboxEntity, OutboxEvent, OutboxEventError, OutboxOp};
 pub use timestamp::{InvalidTimestamp, Timestamp};
