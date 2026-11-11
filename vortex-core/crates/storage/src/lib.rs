@@ -3,7 +3,9 @@
 mod migrate;
 pub mod testing;
 
-pub use migrate::{MIGRATION_0000_SQL, MigrateError, Migration, MigrationRecord, checksum_hex};
+pub use migrate::{
+    MIGRATION_0000_SQL, MIGRATION_0001_SQL, MigrateError, Migration, MigrationRecord, checksum_hex,
+};
 
 use std::path::{Path, PathBuf};
 

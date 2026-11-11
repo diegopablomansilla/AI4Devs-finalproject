@@ -10,6 +10,9 @@ use crate::{Db, OpenError};
 /// SQL for migration `0000` (exported for tests).
 pub const MIGRATION_0000_SQL: &str = include_str!("../migrations/0000_migracion.surql");
 
+/// SQL for migration `0001` (exported for tests).
+pub const MIGRATION_0001_SQL: &str = include_str!("../migrations/0001_outbox.surql");
+
 /// One versioned migration script.
 #[derive(Debug, Clone, Copy)]
 pub struct Migration {
@@ -18,11 +21,18 @@ pub struct Migration {
     pub sql: &'static str,
 }
 
-const EMBEDDED: &[Migration] = &[Migration {
-    version: 0,
-    name: "migracion",
-    sql: MIGRATION_0000_SQL,
-}];
+const EMBEDDED: &[Migration] = &[
+    Migration {
+        version: 0,
+        name: "migracion",
+        sql: MIGRATION_0000_SQL,
+    },
+    Migration {
+        version: 1,
+        name: "outbox",
+        sql: MIGRATION_0001_SQL,
+    },
+];
 
 /// Row stored in `migracion` (for tests and diagnostics).
 #[derive(Debug, Clone, PartialEq, Eq)]

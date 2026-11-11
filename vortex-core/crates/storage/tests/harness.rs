@@ -4,7 +4,7 @@ use std::io::Write as _;
 use std::path::PathBuf;
 
 use storage::testing::{test_db, test_db_rocks};
-use storage::{Db, MIGRATION_0000_SQL, checksum_hex};
+use storage::{Db, MIGRATION_0000_SQL, MIGRATION_0001_SQL, checksum_hex};
 
 fn unique_file_path(prefix: &str) -> PathBuf {
     std::env::temp_dir().join(format!("vortex-harness-{prefix}-{}", std::process::id()))
@@ -14,9 +14,11 @@ fn unique_file_path(prefix: &str) -> PathBuf {
 async fn test_db_applies_embedded_migrations() {
     let db = test_db().await;
     let rows = db.list_migrations().await.expect("list migrations");
-    assert_eq!(rows.len(), 1);
-    assert_eq!(rows[0].version, 0);
-    assert_eq!(rows[0].checksum, checksum_hex(MIGRATION_0000_SQL));
+    assert_eq!(rows.len(), 2);
+    let row0 = rows.iter().find(|r| r.version == 0).expect("version 0");
+    assert_eq!(row0.checksum, checksum_hex(MIGRATION_0000_SQL));
+    let row1 = rows.iter().find(|r| r.version == 1).expect("version 1");
+    assert_eq!(row1.checksum, checksum_hex(MIGRATION_0001_SQL));
 
     let (ns, db_name) = db.session_ns_db().await.expect("session");
     assert_eq!(ns, "vectra");
@@ -28,8 +30,9 @@ async fn test_db_rocks_applies_embedded_migrations() {
     let wrapped = test_db_rocks().await;
     assert!(wrapped.path().exists());
     let rows = wrapped.list_migrations().await.expect("list migrations");
-    assert_eq!(rows.len(), 1);
-    assert_eq!(rows[0].version, 0);
+    assert_eq!(rows.len(), 2);
+    assert!(rows.iter().any(|r| r.version == 0));
+    assert!(rows.iter().any(|r| r.version == 1));
 }
 
 #[tokio::test]
