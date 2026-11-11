@@ -4,7 +4,7 @@
 
 Define el esqueleto HTTP del API Gateway de Vortex Core: router con estado de aplicación clonable, traducción de errores de dominio y de Gateway a RFC 9457 (`application/problem+json`), middlewares transversales (límite de cuerpo, timeout, compresión, `Cache-Control: no-store` en `/api/*`, span de tracing), `GET /health` con snapshot agregado, `GET /metrics` Prometheus, estáticos de la SPA (`index.html` con `{{VERSION}}`, `/static/<versión>/`, `sw.js`, *manifest*) y `/media/*` desde `<datos>/media`, `vortex serve` escuchando en HTTP según `server.bind`, respuesta 404 a rutas inexistentes y apagado ordenado con SIGTERM y Ctrl+C, de modo que el proceso arranque y termine limpio antes de TLS o rutas de negocio.
 
-Ticket padre: T-00-10, T-00-11, T-00-12, T-00-13, T-00-14, T-00-19. HU: HU-00-05, HU-00-06, HU-00-09, HU-01-01, HU-01-05, HU-09-02.
+Ticket padre: T-00-10, T-00-11, T-00-12, T-00-13, T-00-14, T-00-19, T-00-20. HU: HU-00-05, HU-00-06, HU-00-09, HU-01-01, HU-01-05, HU-09-02.
 
 ## Requirements
 
@@ -97,7 +97,7 @@ El router de `build_router` MUST registrar `GET /health`. La respuesta MUST tene
 
 ### Requirement: vortex serve escucha HTTP en server.bind
 
-`vortex serve` MUST dejar de responder `no implementado`. MUST resolver el path de configuración como en `vortex-config` (`--config` gana sobre `VORTEX_CONFIG`), MUST cargar y validar el TOML, y MUST escuchar HTTP (sin TLS) en la dirección `server.bind`. MUST cablear un registro de salud que implementa `HealthReport`. MUST inyectar en `AppState` `paths.web` como raíz `web`, `paths.datos` unido a `media` como raíz `media`, y la `version` del binario. MUST NOT abrir Storage, MUST NOT instalar el subscriber de logging, MUST NOT arrancar sidecars. Una petición HTTP a una ruta no registrada MUST responder 404 con `Content-Type: application/problem+json` y `code` `not_found`. `GET /health` contra ese bind MUST responder según el requirement «GET /health expone el snapshot agregado». `GET /metrics` contra ese bind MUST responder según el requirement «GET /metrics expone texto Prometheus». `GET /` contra ese bind MUST responder según el requirement «Estáticos de la SPA y /media» cuando `{web}/index.html` existe.
+`vortex serve` MUST dejar de responder `no implementado`. MUST resolver el path de configuración como en `vortex-config` (`--config` gana sobre `VORTEX_CONFIG`), MUST cargar y validar el TOML, MUST instalar el subscriber de logging (capability `vortex-logging`), MUST abrir Storage y migrar según el requirement «Arranque ordenado de vortex serve (paso 1)», y MUST escuchar HTTP (sin TLS) en la dirección `server.bind` **solo después** de esas fases. MUST cablear un registro de salud que implementa `HealthReport`. MUST inyectar en `AppState` `paths.web` como raíz `web`, `paths.datos` unido a `media` como raíz `media`, y la `version` del binario. MUST NOT arrancar sidecars. Una petición HTTP a una ruta no registrada MUST responder 404 con `Content-Type: application/problem+json` y `code` `not_found`. `GET /health` contra ese bind MUST responder según el requirement «GET /health expone el snapshot agregado» y, en un arranque exitoso de este change, MUST coincidir con «Arranque ordenado de vortex serve (paso 1)». `GET /metrics` contra ese bind MUST responder según el requirement «GET /metrics expone texto Prometheus». `GET /` contra ese bind MUST responder según el requirement «Estáticos de la SPA y /media» cuando `{web}/index.html` existe.
 
 #### Scenario: vortex serve arranca y responde 404 (happy)
 
@@ -112,7 +112,8 @@ El router de `build_router` MUST registrar `GET /health`. La respuesta MUST tene
 - **WHEN** se ejecuta `vortex serve --config <toml-válido>` escuchando en un bind de prueba
 - **AND** se envía `GET /health` contra ese bind
 - **THEN** la respuesta tiene `Content-Type: application/json`
-- **AND** el JSON tiene `status`, `version`, `uptimeSeconds` y `components` con los seis nombres
+- **AND** el JSON tiene `status` `ok`, `version`, `uptimeSeconds` y `components` con los seis nombres
+- **AND** `components.storage.status` es `up`
 - **AND** el JSON no tiene `code` de `problem+json`
 
 #### Scenario: vortex serve GET /metrics responde Prometheus (happy)
@@ -165,6 +166,50 @@ El router de `build_router` MUST registrar `GET /health`. La respuesta MUST tene
 - **THEN** el proceso termina con código distinto de 0
 - **AND** el proceso no queda colgado
 - **AND** stderr indica un fallo al escuchar o al enlazar
+
+### Requirement: Arranque ordenado de vortex serve (paso 1)
+
+`vortex serve` MUST arrancar en este orden, sobre HTTP en `localhost` (sin TLS): (1) cargar y validar `Config`; (2) instalar el subscriber de logging; (3) abrir Storage embebido en `<paths.datos>/db` y aplicar las migraciones embebidas; (4) publicar salud; (5) escuchar en `server.bind`. MUST NOT arrancar sidecars ni el Index Sync Worker (T-00-27). MUST NOT inyectar Storage en `AppState` en este change.
+
+Antes de abrir Storage, el registro de salud MUST publicar `storage` en `starting` (el resto de componentes MAY permanecer `disabled`). Tras migrar con éxito, MUST publicar `storage` en `up`. El listener TCP MUST NOT aceptarse hasta que Storage y migraciones terminen OK. El primer `GET /health` observable contra ese bind MUST tener `status` `ok`, HTTP 200, `components.storage.status` `up`, y los demás componentes en `disabled` (agregado `ok`).
+
+Si falla la configuración, la instalación de logs, la apertura de Storage o las migraciones, el proceso MUST terminar con código distinto de 0, MUST escribir el error en stderr (y en logs si el subscriber ya está instalado), y MUST NOT quedar escuchando HTTP.
+
+Cada fase (config, logging, storage, health, api) MUST registrar su duración en un span o evento `tracing` cuyo nombre empiece por `boot.` (`boot.config`, `boot.logging`, `boot.storage`, `boot.health`, `boot.api`). El JSON bajo `<datos>/logs/` MUST incluir esos nombres cuando el arranque llega a instalar logging.
+
+#### Scenario: vortex serve espera health ok con storage up (happy)
+
+- **WHEN** se ejecuta `vortex serve --config <toml-válido>` con `paths.datos` en un directorio temporal escribible y `server.bind` libre en `127.0.0.1`
+- **THEN** el proceso queda escuchando en esa dirección
+- **AND** `GET /health` contra ese bind recibe HTTP 200
+- **AND** `Content-Type` es `application/json`
+- **AND** el JSON tiene `status` `ok`
+- **AND** `components.storage.status` es `up`
+- **AND** el JSON no tiene `code` de `problem+json`
+
+#### Scenario: las fases de boot registran duración (happy)
+
+- **WHEN** el mismo arranque exitoso del escenario anterior
+- **THEN** existe al menos un archivo bajo `<paths.datos>/logs/` cuyo nombre empieza por `vortex.log`
+- **AND** el JSON incluye spans o eventos `boot.config`, `boot.logging`, `boot.storage`, `boot.health` y `boot.api`
+- **AND** cada uno registra una duración (campo de elapsed / `busy` / equivalente de `tracing`)
+
+#### Scenario: base inaccesible no expone la API (unhappy)
+
+- **WHEN** `paths.datos` es un directorio escribible (los logs pueden crearse)
+- **AND** `<paths.datos>/db` es un archivo regular (no un directorio de RocksDB)
+- **AND** se ejecuta `vortex serve` con ese config y un `server.bind` libre
+- **THEN** el proceso termina con código distinto de 0
+- **AND** el proceso no queda escuchando HTTP en `server.bind`
+- **AND** stderr o el log indican un fallo de Storage o de apertura de la base
+
+#### Scenario: logs no escribibles no expone la API (unhappy)
+
+- **WHEN** `paths.datos` apunta a un archivo regular
+- **AND** se ejecuta `vortex serve` con ese config y un `server.bind` libre
+- **THEN** el proceso termina con código distinto de 0
+- **AND** el proceso no queda escuchando HTTP en `server.bind`
+- **AND** stderr nombra la clave `paths.datos` o `logs`
 
 ### Requirement: Apagado ordenado con SIGTERM y Ctrl+C
 
@@ -388,7 +433,7 @@ Una respuesta cuya ruta empieza por `/api/` o es exactamente `/api` MUST incluir
 
 ### Requirement: Span de tracing por petición HTTP
 
-Cada petición atendida por `build_router` MUST abrir un span de `tracing` que registre al menos el método HTTP, la ruta (path o ruta coincidente), el estado de la respuesta y la duración. El Gateway MUST NOT instalar el subscriber global de logging en este change (`vortex serve` sigue sin cablear T-00-06). Si hay un subscriber activo (p. ej. en un test), el span MUST ser observable.
+Cada petición atendida por `build_router` MUST abrir un span de `tracing` que registre al menos el método HTTP, la ruta (path o ruta coincidente), el estado de la respuesta y la duración. El crate `api` MUST NOT instalar el subscriber global; `vortex serve` lo instala (capability `vortex-logging`). Si hay un subscriber activo (p. ej. en un test del crate `api`), el span MUST ser observable.
 
 #### Scenario: span incluye método, ruta, estado y duración (happy)
 
@@ -450,8 +495,12 @@ Antes de archive, la suite MUST incluir estos tests (nombres estables; crate / t
 | `media_path_traversal_returns_404` | `api` | integración del crate |
 | `post_index_is_not_200_html` | `api` | integración del crate |
 | `vortex_serve_serves_index_from_paths_web` | `vortex` | binario |
+| `vortex_serve_health_ok_with_storage_up` | `vortex` | binario |
+| `vortex_serve_boot_logs_phase_durations` | `vortex` | binario |
+| `vortex_serve_inaccessible_storage_exits` | `vortex` | binario |
+| `vortex_serve_unwritable_datos_exits` | `vortex` | binario |
 
-`cargo test --workspace` (manifiesto `vortex-core/Cargo.toml`) MUST ejecutarlos. Los tests de `problem+json` MUST asertar estado HTTP, `Content-Type: application/problem+json` y `code`. Los de middleware MUST cubrir cuerpo excedido, timeout y cabeceras (`Cache-Control`, `Content-Encoding`). Los de `/health` MUST asertar 200/503, `Content-Type: application/json` y `status` agregado. Los de `/metrics` MUST asertar 200, `text/plain` y el histograma de una petición previa. Los de estáticos MUST asertar `Cache-Control` (`no-cache` vs `max-age=31536000` + `immutable`) y el 404 `not_found` de archivo ausente, versión distinta y *path traversal*. Los stubs de los demás subcomandos MUST seguir cubiertos.
+`cargo test --workspace` (manifiesto `vortex-core/Cargo.toml`) MUST ejecutarlos. Los tests de `problem+json` MUST asertar estado HTTP, `Content-Type: application/problem+json` y `code`. Los de middleware MUST cubrir cuerpo excedido, timeout y cabeceras (`Cache-Control`, `Content-Encoding`). Los de `/health` MUST asertar 200/503, `Content-Type: application/json` y `status` agregado. Los de `/metrics` MUST asertar 200, `text/plain` y el histograma de una petición previa. Los de estáticos MUST asertar `Cache-Control` (`no-cache` vs `max-age=31536000` + `immutable`) y el 404 `not_found` de archivo ausente, versión distinta y *path traversal`. Los de arranque ordenado MUST asertar `/health` `ok` con `storage` `up`, spans `boot.*` en el log, y que una base inaccesible o `paths.datos` no escribible terminan con error sin dejar el puerto escuchando. Los stubs de los demás subcomandos MUST seguir cubiertos.
 
 #### Scenario: la suite acordada cubre happy y unhappy (happy)
 
@@ -463,6 +512,7 @@ Antes de archive, la suite MUST incluir estos tests (nombres estables; crate / t
 - **AND** los de `GET /health` (200 `ok`/`degraded`, 503 `starting`/`down`, no `problem+json`) pasan
 - **AND** los de `GET /metrics` (200 `text/plain`, histograma de petición previa, no `problem+json`, `POST` no es scrape) pasan
 - **AND** los de estáticos (`no-cache` / inmutable, `{{VERSION}}`, 404 de ausente / versión / *traversal*) pasan
+- **AND** los de arranque ordenado (`health` `ok` + `storage` `up`, duraciones `boot.*`, Storage inaccesible, `datos` no escribible) pasan
 
 ### Requirement: GET /metrics expone texto Prometheus
 

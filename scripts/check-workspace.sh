@@ -266,7 +266,7 @@ api_deps_allowed() {
   return 0
 }
 
-# `vortex` allowlist: [dependencies] config + tracing stack + clap + api + tokio + axum; [dev-dependencies] serde_json only.
+# `vortex` allowlist: config + tracing stack + clap + api + supervisor + storage + tokio + axum; [dev-dependencies] serde_json only.
 vortex_deps_allowed() {
   crate_toml=$1
 
@@ -297,7 +297,7 @@ vortex_deps_allowed() {
       /^\[dependencies\]/ { indeps = 1; next }
       /^\[/ { indeps = 0 }
       indeps && /^[^[:space:]#]/ { print }
-    ' "${crate_toml}" | grep -v -E '^(toml|serde|thiserror|tracing|tracing-subscriber|tracing-appender|clap|api|supervisor|tokio|axum)[[:space:]]*=' || true
+    ' "${crate_toml}" | grep -v -E '^(toml|serde|thiserror|tracing|tracing-subscriber|tracing-appender|clap|api|supervisor|storage|tokio|axum)[[:space:]]*=' || true
   )
   if [ -n "${other_deps}" ]; then
     return 1
@@ -315,6 +315,10 @@ vortex_deps_allowed() {
   fi
   if grep -E '^supervisor[[:space:]]*=' "${crate_toml}" >/dev/null 2>&1; then
     grep -E '^supervisor[[:space:]]*=' "${crate_toml}" | grep -Fq 'path' \
+      || return 1
+  fi
+  if grep -E '^storage[[:space:]]*=' "${crate_toml}" >/dev/null 2>&1; then
+    grep -E '^storage[[:space:]]*=' "${crate_toml}" | grep -Fq 'path' \
       || return 1
   fi
   return 0

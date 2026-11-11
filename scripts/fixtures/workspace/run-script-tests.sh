@@ -359,6 +359,36 @@ cp "${REPO_ROOT}/vortex-core/crates/supervisor/Cargo.toml" "${tmp}/vortex-core/c
 cp "${REPO_ROOT}/vortex-core/bin/vortex/Cargo.toml" "${tmp}/vortex-core/bin/vortex/Cargo.toml"
 assert_ok 'vortex con allowlist de configuración' "${tmp}"
 
+# happy: vortex declares path storage (T-00-20)
+cat >"${tmp}/vortex-core/bin/vortex/Cargo.toml" <<'EOF'
+[package]
+name = "vortex"
+version = "0.1.0"
+edition.workspace = true
+publish = false
+
+[dependencies]
+api = { path = "../../crates/api" }
+supervisor = { path = "../../crates/supervisor" }
+storage = { path = "../../crates/storage" }
+toml = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true, features = ["json", "env-filter"] }
+tracing-appender = { workspace = true }
+clap = { workspace = true, features = ["derive"] }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "net", "signal"] }
+axum = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }
+
+[lints]
+workspace = true
+EOF
+assert_ok 'vortex con path storage' "${tmp}"
+
 # unhappy: vortex declares metrics
 cat >"${tmp}/vortex-core/bin/vortex/Cargo.toml" <<'EOF'
 [package]

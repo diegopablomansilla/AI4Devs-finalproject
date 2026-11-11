@@ -3,10 +3,9 @@
 use std::sync::RwLock;
 use std::time::Instant;
 
-use domain::{
-    ComponentHealth, ComponentId, ComponentStatus, HealthComponents, HealthReport, HealthSnapshot,
-    aggregate,
-};
+use domain::{ComponentHealth, HealthComponents, HealthReport, HealthSnapshot, aggregate};
+
+pub use domain::{ComponentId, ComponentStatus};
 
 pub struct HealthRegistry {
     version: String,
