@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Vectra — componentes</title>
+    <link rel="stylesheet" href="../css/tokens.css" />
+    <link rel="stylesheet" href="../css/base.css" />
+    <style>
+      body {
+        padding: var(--vx-space-4);
+        max-width: 40rem;
+      }
+      h1 {
+        margin-top: 0;
+      }
+      section {
+        margin-bottom: var(--vx-space-4);
+      }
+      .row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--vx-space-2);
+        align-items: center;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Design system — muestra</h1>
+    <p>Navegá con Tab; controles con mínimo 44 px.</p>
+
+    <section aria-labelledby="sec-button">
+      <h2 id="sec-button">Botones</h2>
+      <div class="row">
+        <vx-button variant="primary">Primario</vx-button>
+        <vx-button variant="ghost">Fantasma</vx-button>
+        <vx-button variant="danger">Peligro</vx-button>
+        <vx-button loading>Cargando</vx-button>
+        <vx-button disabled>Deshabilitado</vx-button>
+      </div>
+    </section>
+
+    <section aria-labelledby="sec-field">
+      <h2 id="sec-field">Campos</h2>
+      <vx-field label="Nombre" help="Texto visible en el mostrador" name="nombre"></vx-field>
+      <vx-field
+        label="SKU"
+        help="Código interno"
+        error="El SKU es obligatorio"
+        name="sku"
+      ></vx-field>
+    </section>
+
+    <section aria-labelledby="sec-chip">
+      <h2 id="sec-chip">Chips</h2>
+      <div class="row">
+        <vx-chip count="12">Marcas</vx-chip>
+        <vx-chip selected>Con stock</vx-chip>
+        <vx-chip disabled>No disponible</vx-chip>
+      </div>
+    </section>
+
+    <script type="module" src="../js/components/index.js"></script>
+  </body>
+</html>

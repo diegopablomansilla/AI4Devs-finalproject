@@ -1,5 +1,5 @@
 #!/usr/bin/env sh
-# Verifica vectra-web: árbol, design tokens (T-01-02) y tests del router.
+# Verifica vectra-web: árbol, tokens (T-01-02), router (T-01-01), componentes (T-01-03).
 set -eu
 
 if [ -n "${CHECK_ROOT:-}" ]; then
@@ -23,6 +23,20 @@ INDEX="${WEB}/index.html"
 [ -d "${WEB}/js/components" ] || fail 'vectra_web_tree_includes_css_app_router_components: falta vectra-web/js/components/'
 [ -f "${WEB}/js/app.js" ] || fail 'vectra_web_tree_includes_css_app_router_components: falta vectra-web/js/app.js'
 [ -f "${WEB}/js/router.js" ] || fail 'vectra_web_tree_includes_css_app_router_components: falta vectra-web/js/router.js'
+
+COMPONENTS_DIR="${WEB}/js/components"
+for rel in shared.js index.js vx-button.js vx-field.js vx-chip.js; do
+  [ -f "${COMPONENTS_DIR}/${rel}" ] || fail "components_tree_includes_button_field_chip: falta vectra-web/js/components/${rel}"
+done
+
+DEV_HTML="${WEB}/dev/components.html"
+[ -f "${DEV_HTML}" ] || fail 'components_tree_includes_button_field_chip: falta vectra-web/dev/components.html'
+
+for tag in vx-button vx-field vx-chip; do
+  if ! grep -q "<${tag}" "${DEV_HTML}"; then
+    fail "components_html_catalog_loads_three_tags: falta <${tag}> en dev/components.html"
+  fi
+done
 
 [ -f "${INDEX}" ] || fail 'index_html_declares_lang_es_and_versioned_module: falta vectra-web/index.html'
 
@@ -59,11 +73,13 @@ fi
 
 ROUTER_TEST="${ROOT}/scripts/fixtures/vectra-web/router.test.mjs"
 TOKENS_TEST="${ROOT}/scripts/fixtures/vectra-web/tokens.test.mjs"
+COMPONENTS_TEST="${ROOT}/scripts/fixtures/vectra-web/components.test.mjs"
 [ -f "${ROUTER_TEST}" ] || fail 'falta scripts/fixtures/vectra-web/router.test.mjs'
 [ -f "${TOKENS_TEST}" ] || fail 'falta scripts/fixtures/vectra-web/tokens.test.mjs'
+[ -f "${COMPONENTS_TEST}" ] || fail 'falta scripts/fixtures/vectra-web/components.test.mjs'
 
 if ! command -v node >/dev/null 2>&1; then
   fail 'node no está en PATH (se requiere para tests del router)'
 fi
 
-node --test "${ROUTER_TEST}" "${TOKENS_TEST}"
+node --test "${ROUTER_TEST}" "${TOKENS_TEST}" "${COMPONENTS_TEST}"
