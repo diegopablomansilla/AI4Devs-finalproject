@@ -378,6 +378,12 @@ class DocumentStub extends EventTargetStub {
     if (sel === "[data-offline-banner]") {
       return node.hasAttribute("data-offline-banner");
     }
+    if (sel === "[data-update-banner]") {
+      return node.hasAttribute("data-update-banner");
+    }
+    if (sel === "[data-update-reload]") {
+      return node.hasAttribute("data-update-reload");
+    }
     if (sel === "vx-omnibox") {
       return node.localName === "vx-omnibox";
     }

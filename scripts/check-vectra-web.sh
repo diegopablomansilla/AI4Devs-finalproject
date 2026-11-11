@@ -1,5 +1,5 @@
 #!/usr/bin/env sh
-# Verifica vectra-web: árbol, tokens (T-01-02), router (T-01-01), componentes (T-01-03), overlays (T-01-04), product-card (T-01-05), api (T-01-06), errors (T-01-07), omnibox foco (T-01-08), modos y vx-query (T-01-09), keyboard-list (T-01-10), admin shell y terminal (T-01-11), health y capacidades (T-01-12), manifest PWA (T-01-13), Service Worker y aviso offline (T-01-14).
+# Verifica vectra-web: árbol, tokens (T-01-02), router (T-01-01), componentes (T-01-03), overlays (T-01-04), product-card (T-01-05), api (T-01-06), errors (T-01-07), omnibox foco (T-01-08), modos y vx-query (T-01-09), keyboard-list (T-01-10), admin shell y terminal (T-01-11), health y capacidades (T-01-12), manifest PWA (T-01-13), Service Worker y aviso offline (T-01-14), actualización del SW (T-01-15).
 set -eu
 
 if [ -n "${CHECK_ROOT:-}" ]; then
@@ -27,6 +27,7 @@ INDEX="${WEB}/index.html"
 [ -f "${WEB}/js/errors.js" ] || fail 'errors_tree_includes_errors_js: falta vectra-web/js/errors.js'
 [ -f "${WEB}/js/keyboard-list.js" ] || fail 'keyboard_list_tree_includes_module: falta vectra-web/js/keyboard-list.js'
 [ -f "${WEB}/js/health.js" ] || fail 'health_tree_includes_health_js: falta vectra-web/js/health.js'
+[ -f "${WEB}/js/sw-update.js" ] || fail 'sw_update_tree_includes_module: falta vectra-web/js/sw-update.js'
 [ -f "${WEB}/manifest.webmanifest" ] || fail 'manifest_tree_includes_webmanifest: falta vectra-web/manifest.webmanifest'
 [ -f "${WEB}/sw.js" ] || fail 'sw_tree_includes_sw_js: falta vectra-web/sw.js'
 
