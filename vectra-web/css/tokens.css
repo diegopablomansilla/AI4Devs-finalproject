@@ -1,0 +1,28 @@
+:root {
+  --vx-color-bg: #0A0A0A;
+  --vx-color-surface: rgba(255, 255, 255, 0.08);
+  --vx-color-surface-solid: #1C1C1E;
+  --vx-color-text: #F5F5F7;
+  --vx-color-text-muted: #C7C7CC;
+  --vx-color-accent: #0A84FF;
+  --vx-color-error: #FF453A;
+  --vx-color-success: #30D158;
+  --vx-color-focus-ring: #64D2FF;
+  --vx-color-on-accent: #0A0A0A;
+  --vx-color-on-error: #0A0A0A;
+  --vx-color-on-success: #0A0A0A;
+  --vx-space-1: 4px;
+  --vx-space-2: 8px;
+  --vx-space-3: 16px;
+  --vx-space-4: 24px;
+  --vx-radius-sm: 8px;
+  --vx-radius-md: 16px;
+  --vx-touch-min: 44px;
+  --vx-surface-blur: 20px;
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  :root {
+    --vx-color-surface: var(--vx-color-surface-solid);
+  }
+}
