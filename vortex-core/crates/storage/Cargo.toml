@@ -6,6 +6,7 @@ publish = false
 
 [dependencies]
 domain = { path = "../domain" }
+serde = { workspace = true, features = ["derive"] }
 surrealdb = { workspace = true, default-features = false, features = ["kv-rocksdb", "kv-mem"] }
 thiserror = { workspace = true }
 sha2 = { workspace = true }

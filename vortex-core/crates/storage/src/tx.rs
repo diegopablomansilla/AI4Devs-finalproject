@@ -137,7 +137,7 @@ fn map_surreal_error(err: SurrealError, statements: &[String]) -> DomainError {
     map_surreal_message(&err.to_string(), statements)
 }
 
-fn map_surreal_message(msg: &str, statements: &[String]) -> DomainError {
+pub(crate) fn map_surreal_message(msg: &str, statements: &[String]) -> DomainError {
     let lower = msg.to_lowercase();
 
     if lower.contains("stock_negativo") {
