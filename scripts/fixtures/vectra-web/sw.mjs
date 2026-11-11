@@ -142,6 +142,12 @@ export function createMemoryCacheMock() {
       }
       return null;
     },
+    async keys() {
+      return [...stores.keys()];
+    },
+    async delete(name) {
+      return stores.delete(name);
+    },
   };
 }
 

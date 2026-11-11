@@ -150,6 +150,7 @@ function viewHtml(route, terminalValue) {
   if (route.view === "operator") {
     return `<main class="vx-operator" data-view="operator">
   <header class="vx-operator-header">
+    <p class="vx-update-banner" data-update-banner hidden aria-live="polite">Nueva versión disponible <button type="button" data-update-reload>Recargar</button></p>
     <p class="vx-offline-banner" data-offline-banner hidden aria-live="assertive">Sin conexión con el Nodo Maestro</p>
     <p class="vx-health-status" data-health aria-live="polite"></p>
     <div data-region="omnibox"><vx-omnibox></vx-omnibox></div>
@@ -173,6 +174,7 @@ function viewHtml(route, terminalValue) {
     }).join("\n");
     return `<main class="vx-admin" data-view="admin" data-section="${safeSection}">
   <header class="vx-admin-header">
+    <p class="vx-update-banner" data-update-banner hidden aria-live="polite">Nueva versión disponible <button type="button" data-update-reload>Recargar</button></p>
     <p class="vx-offline-banner" data-offline-banner hidden aria-live="assertive">Sin conexión con el Nodo Maestro</p>
     <p class="vx-health-status" data-health aria-live="polite"></p>
     <p><a href="#/">Volver al operador</a></p>

@@ -1,4 +1,4 @@
-/* Service Worker: app shell versionado (T-01-14). Ciclo de actualización en T-01-15. */
+/* Service Worker: app shell versionado (T-01-14) + actualización (T-01-15). */
 const CACHE = "vectra-shell-{{VERSION}}";
 
 const PRECACHE = [
@@ -13,6 +13,7 @@ const PRECACHE = [
   "/static/{{VERSION}}/js/errors.js",
   "/static/{{VERSION}}/js/keyboard-list.js",
   "/static/{{VERSION}}/js/health.js",
+  "/static/{{VERSION}}/js/sw-update.js",
   "/static/{{VERSION}}/js/components/index.js",
   "/static/{{VERSION}}/js/components/shared.js",
   "/static/{{VERSION}}/js/components/overlay.js",
@@ -48,6 +49,18 @@ function isNetworkOnlyPath(pathname) {
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(PRECACHE)));
+});
+
+self.addEventListener("activate", (event) => {
+  event.waitUntil(
+    caches.keys().then((keys) =>
+      Promise.all(
+        keys
+          .filter((key) => key.startsWith("vectra-shell-") && key !== CACHE)
+          .map((key) => caches.delete(key)),
+      ),
+    ),
+  );
 });
 
 self.addEventListener("fetch", (event) => {
