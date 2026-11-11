@@ -102,6 +102,19 @@ class FakeShadowRoot extends EventTargetStub {
     if (selector === "[aria-live]") {
       return node.hasAttribute("aria-live");
     }
+    if (selector === "img") {
+      return node.tagName === "IMG";
+    }
+    if (selector === '[data-field="image-placeholder"]') {
+      return node.getAttribute("data-field") === "image-placeholder";
+    }
+    const dataFieldMatch = selector.match(/^\[data-field="([^"]+)"\]$/);
+    if (dataFieldMatch) {
+      return node.getAttribute("data-field") === dataFieldMatch[1];
+    }
+    if (selector === "[data-field]") {
+      return node.hasAttribute("data-field");
+    }
     return false;
   }
 
@@ -209,6 +222,15 @@ class FakeNode extends EventTargetStub {
     if (this.parentNode && this.parentNode.host) {
       this.parentNode.host.dispatchEvent(new Event("click", { bubbles: true }));
     }
+  }
+
+  querySelector(selector) {
+    const sel = String(selector);
+    if (sel === '[slot="name"]') {
+      const kids = this._children ?? [];
+      return kids.find((c) => c.getAttribute("slot") === "name") ?? null;
+    }
+    return null;
   }
 }
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env sh
-# Verifica vectra-web: árbol, tokens (T-01-02), router (T-01-01), componentes (T-01-03), overlays (T-01-04).
+# Verifica vectra-web: árbol, tokens (T-01-02), router (T-01-01), componentes (T-01-03), overlays (T-01-04), product-card (T-01-05).
 set -eu
 
 if [ -n "${CHECK_ROOT:-}" ]; then
@@ -33,6 +33,8 @@ for rel in vx-modal.js vx-side-panel.js vx-toast.js; do
   [ -f "${COMPONENTS_DIR}/${rel}" ] || fail "components_tree_includes_modal_panel_toast: falta vectra-web/js/components/${rel}"
 done
 
+[ -f "${COMPONENTS_DIR}/vx-product-card.js" ] || fail "components_tree_includes_product_card: falta vectra-web/js/components/vx-product-card.js"
+
 DEV_HTML="${WEB}/dev/components.html"
 [ -f "${DEV_HTML}" ] || fail 'components_tree_includes_button_field_chip: falta vectra-web/dev/components.html'
 
@@ -47,6 +49,13 @@ for tag in vx-modal vx-side-panel vx-toast; do
     fail "components_html_catalog_loads_overlay_tags: falta <${tag}> en dev/components.html"
   fi
 done
+
+if ! grep -q "<vx-product-card" "${DEV_HTML}"; then
+  fail "components_html_catalog_loads_product_card_variants: falta <vx-product-card> en dev/components.html"
+fi
+if ! grep -q 'variant="full"' "${DEV_HTML}" || ! grep -q 'variant="compact"' "${DEV_HTML}"; then
+  fail "components_html_catalog_loads_product_card_variants: faltan variant=\"full\" y variant=\"compact\" en dev/components.html"
+fi
 
 [ -f "${INDEX}" ] || fail 'index_html_declares_lang_es_and_versioned_module: falta vectra-web/index.html'
 
