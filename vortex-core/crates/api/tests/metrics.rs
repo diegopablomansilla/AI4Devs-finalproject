@@ -116,6 +116,7 @@ async fn scrape_does_not_emit_domain_series() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn get_metrics_returns_prometheus_text() {
     let (addr, handle) = serve().await;
+    let (_, _, _, _) = http_request_text(addr, "GET", "/health", None).await;
     let (status, ctype, body, _) = http_request_text(addr, "GET", "/metrics", None).await;
     handle.abort();
     assert_eq!(status, 200);
