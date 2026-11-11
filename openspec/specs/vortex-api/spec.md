@@ -561,12 +561,12 @@ El router de `build_router` MUST registrar estos GET (y MUST NOT exigir que los 
 | Ruta | Archivo en disco | `Cache-Control` | Cuerpo |
 |---|---|---|---|
 | `/` y `/index.html` | `{web}/index.html` | `no-cache` | HTML con cada `{{VERSION}}` reemplazado por `version` |
-| `/sw.js` | `{web}/sw.js` | `no-cache` | bytes del archivo |
+| `/sw.js` | `{web}/sw.js` | `no-cache` | texto con cada `{{VERSION}}` reemplazado por `version` |
 | `/manifest.webmanifest` | `{web}/manifest.webmanifest` | `no-cache` | texto con cada `{{VERSION}}` reemplazado por `version` |
 | `/static/{version}/{*path}` | `{web}/{path}` | `max-age=31536000, immutable` | bytes del archivo, solo si `{version}` es exactamente `AppState.version` y `{path}` es un archivo regular bajo `{web}` |
 | `/media/{*path}` | `{media}/{path}` | `max-age=31536000, immutable` | bytes del archivo, solo si `{path}` es un archivo regular bajo `{media}` |
 
-`Content-Type` de `/` e `/index.html` MUST ser `text/html` (MAY incluir `charset=utf-8`). Las demás rutas MUST enviar un `Content-Type` coherente con el recurso (p. ej. `text/javascript` o `application/javascript` para `.js`; `application/manifest+json` para el *manifest*; tipo de imagen o `application/octet-stream` para `/media`). Estas respuestas MUST NOT enviar `Cache-Control: no-store` (el middleware de `/api/*` no aplica). `{{VERSION}}` MUST sustituirse de forma literal, todas las ocurrencias, en `index.html` **y** en `manifest.webmanifest`; MUST NOT interpretarse como plantilla fuera de esos dos archivos.
+`Content-Type` de `/` e `/index.html` MUST ser `text/html` (MAY incluir `charset=utf-8`). Las demás rutas MUST enviar un `Content-Type` coherente con el recurso (p. ej. `text/javascript` o `application/javascript` para `.js`; `application/manifest+json` para el *manifest*; tipo de imagen o `application/octet-stream` para `/media`). Estas respuestas MUST NOT enviar `Cache-Control: no-store` (el middleware de `/api/*` no aplica). `{{VERSION}}` MUST sustituirse de forma literal, todas las ocurrencias, en `index.html`, `manifest.webmanifest` **y** `sw.js`; MUST NOT interpretarse como plantilla fuera de esos tres archivos.
 
 Una petición GET cuyo archivo no existe, cuyo `{path}` no es un archivo regular (directorio, raíz vacía), cuyo `{version}` de `/static/` no coincide, o que intente salir de `{web}` / `{media}` (`..`, `%2e%2e`, barra inicial, enlace que resuelva fuera de la raíz) MUST responder `404` con `Content-Type: application/problem+json` y `code` `not_found`. MUST NOT devolver el contenido de un archivo fuera de esas raíces. MUST NOT listar directorios. Un método distinto de GET sobre estas rutas MUST NOT ser `200` con el cuerpo del estático. Los tests de este requirement MUST usar un árbol temporal de fixtures (MUST NOT depender del árbol `vectra-web/` real).
 
@@ -603,6 +603,15 @@ Una petición GET cuyo archivo no existe, cuyo `{path}` no es un archivo regular
 - **THEN** la respuesta tiene estado 200
 - **AND** `Cache-Control` es `no-cache`
 - **AND** `Cache-Control` no es `no-store`
+
+#### Scenario: sw.js sustituye VERSION (happy)
+
+- **WHEN** `{web}` contiene `sw.js` con el texto `{{VERSION}}` (p. ej. en el nombre de caché o en una URL de precache)
+- **AND** se envía `GET /sw.js`
+- **THEN** la respuesta tiene estado HTTP 200
+- **AND** `Content-Type` es `text/javascript` o `application/javascript`
+- **AND** el cuerpo contiene el valor de `version` y no contiene `{{VERSION}}`
+- **AND** `Cache-Control` es `no-cache`
 
 #### Scenario: manifest envía no-cache (happy)
 

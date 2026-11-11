@@ -75,6 +75,19 @@ textarea:focus-visible {
   font-size: 0.875rem;
 }
 
+.vx-offline-banner {
+  margin: 0;
+  padding: var(--vx-space-2);
+  background-color: var(--vx-color-error);
+  color: var(--vx-color-on-error);
+  font-size: 0.875rem;
+  border-radius: var(--vx-radius-sm);
+}
+
+.vx-offline-banner[hidden] {
+  display: none;
+}
+
 .vx-operator-results {
   flex: 1;
   min-height: 8rem;

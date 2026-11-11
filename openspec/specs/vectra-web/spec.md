@@ -11,6 +11,7 @@ El repositorio MUST contener el directorio `vectra-web/` en la raíz, con al men
 
 - `vectra-web/index.html`
 - `vectra-web/manifest.webmanifest`
+- `vectra-web/sw.js`
 - `vectra-web/icons/icon-192.png`, `icon-512.png`, `icon-192-maskable.png`, `icon-512-maskable.png`
 - `vectra-web/css/tokens.css`
 - `vectra-web/css/base.css`
@@ -23,7 +24,7 @@ El repositorio MUST contener el directorio `vectra-web/` en la raíz, con al men
 - `vectra-web/js/components/index.js`, `shared.js`, `vx-button.js`, `vx-field.js`, `vx-chip.js`, `vx-modal.js`, `vx-side-panel.js`, `vx-toast.js`, `vx-product-card.js`, `vx-omnibox.js`
 - `vectra-web/dev/components.html`
 
-`index.html` MUST declarar `lang="es"` en el elemento `html`. MUST incluir un *outlet* identificable (p. ej. `id="app"`) donde el *router* pinta la vista. MUST cargar `js/app.js` como ES Module (`type="module"`) con `src` igual a `/static/{{VERSION}}/js/app.js` (el placeholder literal `{{VERSION}}`; el Gateway de T-00-19 lo sustituye al servir). MUST enlazar `css/tokens.css` y `css/base.css` (en ese orden) con `href` `/static/{{VERSION}}/css/tokens.css` y `/static/{{VERSION}}/css/base.css`. MUST enlazar el *manifest* con `href="/manifest.webmanifest"` y MUST declarar `theme-color` `#0A0A0A` (requirement «Manifest PWA de Vectra»). MUST NOT exigir un *bundler*, `package.json` ni dependencias npm para cargar la app. `js/app.js` MUST importar el *router* con `import` de ES Module, MUST importar `js/components/index.js` para registrar `vx-button`, `vx-field`, `vx-chip`, `vx-modal`, `vx-side-panel`, `vx-toast`, `vx-product-card` y `vx-omnibox`, y MUST arrancar el *poller* de `js/health.js`. Este change MUST NOT exigir que `app.js` importe `errors.js` ni `keyboard-list.js` (el cableado de resultados llega en T-03-15).
+`index.html` MUST declarar `lang="es"` en el elemento `html`. MUST incluir un *outlet* identificable (p. ej. `id="app"`) donde el *router* pinta la vista. MUST cargar `js/app.js` como ES Module (`type="module"`) con `src` igual a `/static/{{VERSION}}/js/app.js` (el placeholder literal `{{VERSION}}`; el Gateway de T-00-19 lo sustituye al servir). MUST enlazar `css/tokens.css` y `css/base.css` (en ese orden) con `href` `/static/{{VERSION}}/css/tokens.css` y `/static/{{VERSION}}/css/base.css`. MUST enlazar el *manifest* con `href="/manifest.webmanifest"` y MUST declarar `theme-color` `#0A0A0A` (requirement «Manifest PWA de Vectra»). MUST NOT exigir un *bundler*, `package.json` ni dependencias npm para cargar la app. `js/app.js` MUST importar el *router* con `import` de ES Module, MUST importar `js/components/index.js` para registrar `vx-button`, `vx-field`, `vx-chip`, `vx-modal`, `vx-side-panel`, `vx-toast`, `vx-product-card` y `vx-omnibox`, MUST arrancar el *poller* de `js/health.js`, y MUST registrar el Service Worker (requirement «Service Worker del app shell»). Este change MUST NOT exigir que `app.js` importe `errors.js` ni `keyboard-list.js` (el cableado de resultados llega en T-03-15).
 
 #### Scenario: el documento está en español y carga el módulo versionado (happy)
 
@@ -53,6 +54,11 @@ El repositorio MUST contener el directorio `vectra-web/` en la raíz, con al men
 - **WHEN** se inspecciona `vectra-web/`
 - **THEN** existe `manifest.webmanifest`
 - **AND** existen `icons/icon-192.png`, `icons/icon-512.png`, `icons/icon-192-maskable.png` e `icons/icon-512-maskable.png`
+
+#### Scenario: el árbol incluye sw.js (happy)
+
+- **WHEN** se inspecciona `vectra-web/`
+- **THEN** existe `sw.js`
 
 #### Scenario: falta index.html o lang=es (unhappy)
 
@@ -134,6 +140,13 @@ El repositorio MUST contener el directorio `vectra-web/` en la raíz, con al men
 - **AND** se ejecuta `./scripts/check-vectra-web.sh`
 - **THEN** el comando termina con código distinto de 0
 - **AND** el mensaje nombra `manifest.webmanifest`
+
+#### Scenario: falta sw.js (unhappy)
+
+- **WHEN** falta `vectra-web/sw.js`
+- **AND** se ejecuta `./scripts/check-vectra-web.sh`
+- **THEN** el comando termina con código distinto de 0
+- **AND** el mensaje nombra `sw.js`
 
 ### Requirement: Router hash Operador y Administración sin recargar
 
@@ -326,6 +339,7 @@ Antes de archive, la suite MUST incluir estos tests (nombres estables; ubicació
 | `api_tree_includes_api_js` | `scripts/check-vectra-web.sh` | harness de árbol |
 | `errors_tree_includes_errors_js` | `scripts/check-vectra-web.sh` | harness de árbol |
 | `health_tree_includes_health_js` | `scripts/check-vectra-web.sh` | harness de árbol |
+| `sw_tree_includes_sw_js` | `scripts/check-vectra-web.sh` | harness de árbol |
 | `components_html_catalog_loads_three_tags` | `scripts/fixtures/vectra-web/components.test.mjs` | catálogo |
 | `components_html_catalog_loads_overlay_tags` | `scripts/fixtures/vectra-web/components.test.mjs` | catálogo |
 | `components_html_catalog_loads_product_card_variants` | `scripts/fixtures/vectra-web/components.test.mjs` | catálogo (Listo cuando T-01-05) |
@@ -346,6 +360,8 @@ Antes de archive, la suite MUST incluir estos tests (nombres estables; ubicació
 | `router_admin_back_to_operator_in_one_step` | `router.test.mjs` | layout admin (Listo cuando T-01-11) |
 | `router_admin_current_section_has_aria_current` | `router.test.mjs` | layout admin |
 | `router_admin_header_has_data_health` | `router.test.mjs` | layout admin |
+| `router_operator_header_has_offline_banner` | `router.test.mjs` | layout operador |
+| `router_admin_header_has_offline_banner` | `router.test.mjs` | layout admin |
 | `router_admin_content_region_has_no_business_ui` | `router.test.mjs` | unhappy (No hace T-01-11) |
 | `router_admin_unknown_slug_has_menu_without_current` | `router.test.mjs` | unhappy |
 | `router_admin_does_not_call_api` | `router.test.mjs` | unhappy |
@@ -385,6 +401,9 @@ Antes de archive, la suite MUST incluir estos tests (nombres estables; ubicació
 | `health_503_starting_parses_snapshot` | `health.test.mjs` | unhappy |
 | `health_invalid_body_does_not_throw` | `health.test.mjs` | unhappy |
 | `health_does_not_show_reduced_search_banner` | `health.test.mjs` | unhappy (No hace) |
+| `health_network_failure_shows_offline_banner` | `health.test.mjs` | happy (Listo cuando T-01-14) |
+| `health_reachable_hides_offline_banner` | `health.test.mjs` | happy |
+| `health_degraded_does_not_show_offline_banner` | `health.test.mjs` | unhappy |
 | `manifest_json_is_valid` | `scripts/fixtures/vectra-web/manifest.test.mjs` | happy |
 | `manifest_declares_vectra_standalone_and_colors` | `manifest.test.mjs` | happy (Listo cuando T-01-13) |
 | `manifest_declares_192_512_and_maskable_icons` | `manifest.test.mjs` | happy (Listo cuando T-01-13) |
@@ -394,7 +413,13 @@ Antes de archive, la suite MUST incluir estos tests (nombres estables; ubicació
 | `manifest_without_maskable_icon_fails` | `manifest.test.mjs` | unhappy (fixture) |
 | `manifest_icon_src_file_missing_fails` | `manifest.test.mjs` | unhappy (fixture) |
 | `manifest_wrong_icon_dimensions_fail` | `manifest.test.mjs` | unhappy (fixture) |
-| `manifest_does_not_register_service_worker` | `manifest.test.mjs` | unhappy (No hace) |
+| `app_registers_service_worker` | `scripts/fixtures/vectra-web/sw.test.mjs` o `manifest.test.mjs` | happy |
+| `sw_precache_is_versioned_app_shell` | `scripts/fixtures/vectra-web/sw.test.mjs` | happy |
+| `sw_navigation_online_uses_network` | `sw.test.mjs` | happy |
+| `sw_navigation_offline_serves_cached_shell` | `sw.test.mjs` | happy (Listo cuando T-01-14) |
+| `sw_health_and_api_are_network_only` | `sw.test.mjs` | unhappy (No hace) |
+| `sw_precache_with_api_or_media_fails` | `sw.test.mjs` | unhappy (fixture) |
+| `sw_register_without_service_worker_does_not_throw` | `sw.test.mjs` | unhappy |
 | `keyboard_list_arrow_down_selects_first_and_updates_activedescendant` | `scripts/fixtures/vectra-web/keyboard-list.test.mjs` | happy |
 | `keyboard_list_enter_opens_active_item` | `keyboard-list.test.mjs` | happy (Listo cuando T-01-10) |
 | `keyboard_list_escape_restores_omnibox_without_clearing` | `keyboard-list.test.mjs` | happy (Listo cuando T-01-10) |
@@ -449,7 +474,7 @@ Antes de archive, la suite MUST incluir estos tests (nombres estables; ubicació
 | `errors_unmatched_field_does_not_throw` | `errors.test.mjs` | unhappy |
 | `errors_toast_text_is_not_technical_code` | `errors.test.mjs` | unhappy |
 
-`./scripts/check-vectra-web.sh` MUST ejecutar el harness de árbol y los tests `node --test` (router, admin, *tokens*, componentes, `api`, `errors`, `omnibox`, `keyboard-list`, `health` y `manifest`) y MUST terminar con código 0 sobre el árbol que cumple esta spec. MUST NOT agregar `package.json` ni dependencias npm. `cargo test --workspace` (manifiesto `vortex-core/Cargo.toml`) MUST seguir en verde (regresión más `manifest_replaces_version` en el crate `api`). Los tests del *router* MUST asertar el `data-view` (y `data-section` cuando aplica), que no hubo recarga, que la vista operador declara las tres regiones con `vx-omnibox` / `vx-side-panel` mientras admin no monta `vx-omnibox`, que operador y admin declaran `[data-health]` en el encabezado, y que la vista admin declara el menú de ocho secciones, el enlace `#/`, `aria-current` en la sección activa, `data-region="admin-content"` sin UI de negocio y el `vx-field` de terminal. Los del árbol MUST asertar `lang="es"`, el `src` `/static/{{VERSION}}/js/app.js`, los `href` versionados de `tokens.css` y `base.css`, el *link* `/manifest.webmanifest`, `theme-color` `#0A0A0A`, la presencia de `manifest.webmanifest` e íconos PNG, los módulos de componentes (incluidos modal, panel, toast, product-card y omnibox), `js/api.js`, `js/errors.js`, `js/keyboard-list.js`, `js/health.js` y `dev/components.html`. Los de componentes MUST asertar Shadow DOM, `adoptedStyleSheets`, ARIA, unhappy path de loading, error de campo y chip deshabilitado, los de overlay/toast de la tabla, y los de `vx-product-card` de la tabla. Los de `api` MUST asertar JSON 2xx, cabecera de terminal, `signal`, `ApiError` `not_found` / `invalid_input` / `network` / `internal`, abort distinto de `network`, y omisión de cabecera sin nombre. Los de `errors` MUST asertar cobertura del enum `ErrorCode` + `network`, mensajes en español, `showError` → toast `error`, asignación a `vx-field` por `name`, fallback de `code` desconocido, abort sin toast, campo sin match sin throw, y que el toast no muestra el `code` técnico. Los de `omnibox` MUST asertar foco al conectar, foco tras `vx-closed` / cierre de panel, Escape que limpia, modos (`?hola` → `ai` + `vx-query`, selector Texto/Voz/IA, imagen con/sin `vision`), `ai-unavailable` / `voice-unavailable`, y los unhappy de consulta vacía, host desconectado, Escape con panel abierto, `?` no inicial, `mode` desconocido y ausencia de fetch. Los de `keyboard-list` MUST asertar recorrido con flechas y `aria-activedescendant`, Enter que abre, Escape que restaura el Omnibox sin borrar la consulta, reuso con opciones que no son tarjetas, y los unhappy de lista vacía, Enter sin selección, sin Omnibox y ausencia de fetch. Los de administración / terminal MUST asertar persistencia de `vectra.terminal` (≤ 64), carga inicial, rechazo de > 64 con `error` en el campo, borrado de clave vacía, y que un storage que lanza no rompe la vista. Los de `health` MUST asertar mapeo `llm: down` → IA off y texto on (Listo cuando T-01-12), intervalo 10 s, refetch al foco, indicador degradado, `speech` no `up`, `vision` ausente, y los unhappy de red, 503 `starting`, cuerpo inválido y ausencia del aviso de búsqueda reducida. Los de `manifest` MUST asertar JSON válido, Vectra / `standalone` / `#0A0A0A`, íconos 192/512 *any* y *maskable* con IHDR coincidente, y los unhappy de JSON inválido, sin `standalone`, sin *maskable*, `src` huérfano, dimensiones incorrectas y ausencia de registro de Service Worker.
+`./scripts/check-vectra-web.sh` MUST ejecutar el harness de árbol y los tests `node --test` (router, admin, *tokens*, componentes, `api`, `errors`, `omnibox`, `keyboard-list`, `health`, `manifest` y `sw`) y MUST terminar con código 0 sobre el árbol que cumple esta spec. MUST NOT agregar `package.json` ni dependencias npm. `cargo test --workspace` (manifiesto `vortex-core/Cargo.toml`) MUST seguir en verde (regresión más `manifest_replaces_version` y `sw_js_replaces_version` en el crate `api`). Los tests del *router* MUST asertar el `data-view` (y `data-section` cuando aplica), que no hubo recarga, que la vista operador declara las tres regiones con `vx-omnibox` / `vx-side-panel` mientras admin no monta `vx-omnibox`, que operador y admin declaran `[data-health]` y `[data-offline-banner]` en el encabezado, y que la vista admin declara el menú de ocho secciones, el enlace `#/`, `aria-current` en la sección activa, `data-region="admin-content"` sin UI de negocio y el `vx-field` de terminal. Los del árbol MUST asertar `lang="es"`, el `src` `/static/{{VERSION}}/js/app.js`, los `href` versionados de `tokens.css` y `base.css`, el *link* `/manifest.webmanifest`, `theme-color` `#0A0A0A`, la presencia de `manifest.webmanifest` e íconos PNG, los módulos de componentes (incluidos modal, panel, toast, product-card y omnibox), `js/api.js`, `js/errors.js`, `js/keyboard-list.js`, `js/health.js`, `sw.js` y `dev/components.html`. Los de componentes MUST asertar Shadow DOM, `adoptedStyleSheets`, ARIA, unhappy path de loading, error de campo y chip deshabilitado, los de overlay/toast de la tabla, y los de `vx-product-card` de la tabla. Los de `api` MUST asertar JSON 2xx, cabecera de terminal, `signal`, `ApiError` `not_found` / `invalid_input` / `network` / `internal`, abort distinto de `network`, y omisión de cabecera sin nombre. Los de `errors` MUST asertar cobertura del enum `ErrorCode` + `network`, mensajes en español, `showError` → toast `error`, asignación a `vx-field` por `name`, fallback de `code` desconocido, abort sin toast, campo sin match sin throw, y que el toast no muestra el `code` técnico. Los de `omnibox` MUST asertar foco al conectar, foco tras `vx-closed` / cierre de panel, Escape que limpia, modos (`?hola` → `ai` + `vx-query`, selector Texto/Voz/IA, imagen con/sin `vision`), `ai-unavailable` / `voice-unavailable`, y los unhappy de consulta vacía, host desconectado, Escape con panel abierto, `?` no inicial, `mode` desconocido y ausencia de fetch. Los de `keyboard-list` MUST asertar recorrido con flechas y `aria-activedescendant`, Enter que abre, Escape que restaura el Omnibox sin borrar la consulta, reuso con opciones que no son tarjetas, y los unhappy de lista vacía, Enter sin selección, sin Omnibox y ausencia de fetch. Los de administración / terminal MUST asertar persistencia de `vectra.terminal` (≤ 64), carga inicial, rechazo de > 64 con `error` en el campo, borrado de clave vacía, y que un storage que lanza no rompe la vista. Los de `health` MUST asertar mapeo `llm: down` → IA off y texto on (Listo cuando T-01-12), intervalo 10 s, refetch al foco, indicador degradado, `speech` no `up`, `vision` ausente, banner PA-04 en fallo de red (Listo cuando T-01-14), oculto si el nodo responde, y los unhappy de red, 503 `starting`, cuerpo inválido, ausencia del aviso de búsqueda reducida y degradado sin banner PA-04. Los de `manifest` MUST asertar JSON válido, Vectra / `standalone` / `#0A0A0A`, íconos 192/512 *any* y *maskable* con IHDR coincidente, y los unhappy de JSON inválido, sin `standalone`, sin *maskable*, `src` huérfano y dimensiones incorrectas. Los de `sw` MUST asertar precache versionado del *app shell*, navegación red-primero con respaldo en caché, `/health` y `/api/*` solo red, registro en `app.js`, y los unhappy de precache con catálogo, `serviceWorker` ausente y falta de `sw.js`.
 
 #### Scenario: la suite acordada cubre happy y unhappy (happy)
 
@@ -466,8 +491,9 @@ Antes de archive, la suite MUST incluir estos tests (nombres estables; ubicació
 - **AND** los de `keyboard-list` (flechas, Enter, Escape al Omnibox, unhappy) pasan
 - **AND** los de layout admin (menú de ocho secciones, vuelta al operador, `aria-current`, contenido vacío) pasan
 - **AND** los de nombre de terminal (persistencia, > 64, vacío, storage que falla) pasan
-- **AND** los de `health.js` (`llm: down`, poll 10 s, foco, red, 503, sin banner de búsqueda reducida) pasan
-- **AND** los de *manifest* (JSON, standalone, íconos 192/512 *maskable*, sin Service Worker) pasan
+- **AND** los de `health.js` (`llm: down`, poll 10 s, foco, red, 503, banner PA-04, sin banner de búsqueda reducida) pasan
+- **AND** los de *manifest* (JSON, standalone, íconos 192/512 *maskable*) pasan
+- **AND** los de `sw.js` (precache versionado, navegación offline, `/api` y `/health` solo red, registro) pasan
 
 #### Scenario: falta el router o el documento (unhappy)
 
@@ -481,6 +507,13 @@ Antes de archive, la suite MUST incluir estos tests (nombres estables; ubicació
 - **AND** se ejecuta `./scripts/check-vectra-web.sh`
 - **THEN** el comando termina con código distinto de 0
 - **AND** el mensaje nombra `tokens.css`
+
+#### Scenario: falta sw.js (unhappy)
+
+- **WHEN** falta `vectra-web/sw.js`
+- **AND** se ejecuta `./scripts/check-vectra-web.sh`
+- **THEN** el comando termina con código distinto de 0
+- **AND** el mensaje nombra `sw.js`
 
 ### Requirement: Hojas compartidas adoptedStyleSheets
 
@@ -1321,9 +1354,9 @@ Mapeo desde el esquema `Health` de `docs/openapi.yaml` (el cliente MUST ignorar 
 | `vision` | `components.vision.status === "up"` si el campo existe; si falta, `false` |
 | `textSearch` | `true` en este change (MUST NOT deshabilitar el modo texto; T-03-31 cubre Meilisearch degradado) |
 
-HTTP **200** (`ok` / `degraded`) y **503** (`starting` / `down`) MUST parsearse como JSON `Health` (no son `problem+json`). Un fallo de red, abort, cuerpo no JSON o JSON sin `components` MUST producir `status: "unknown"`, `ai`/`voice`/`vision` en `false`, `textSearch` en `true`, MUST NOT lanzar y MUST NOT mostrar el aviso "Búsqueda en modo reducido".
+HTTP **200** (`ok` / `degraded`) y **503** (`starting` / `down`) MUST parsearse como JSON `Health` (no son `problem+json`). Un fallo de red, abort, cuerpo no JSON o JSON sin `components` MUST producir `status: "unknown"`, `ai`/`voice`/`vision` en `false`, `textSearch` en `true`, MUST NOT lanzar y MUST NOT mostrar el aviso "Búsqueda en modo reducido". Un fallo de red MUST mostrar el aviso del requirement «Aviso sin conexión con el Nodo Maestro»; un cuerpo inválido o 503 parseable MUST NOT mostrar ese aviso.
 
-Tras cada snapshot (y tras un cambio de *hash*, porque el *outlet* se reemplaza), MUST aplicar el snapshot al indicador `[data-health]` y al `vx-omnibox` visible si existe.
+Tras cada snapshot (y tras un cambio de *hash*, porque el *outlet* se reemplaza), MUST aplicar el snapshot al indicador `[data-health]`, al banner `[data-offline-banner]` y al `vx-omnibox` visible si existe.
 
 MUST NOT llamar a `/search`, `/api/v1/*`, ni mutar OpenAPI. MUST NOT pintar toasts de `problem+json` (T-01-07).
 
@@ -1366,6 +1399,7 @@ MUST NOT llamar a `/search`, `/api/v1/*`, ni mutar OpenAPI. MUST NOT pintar toas
 - **AND** `status` queda `"unknown"`
 - **AND** `ai` y `voice` son `false` y `textSearch` es `true`
 - **AND** el modo **Texto** sigue operable
+- **AND** `[data-offline-banner]` está visible con el texto `Sin conexión con el Nodo Maestro`
 
 #### Scenario: 503 starting se parsea como Health (unhappy)
 
@@ -1374,6 +1408,7 @@ MUST NOT llamar a `/search`, `/api/v1/*`, ni mutar OpenAPI. MUST NOT pintar toas
 - **AND** `capabilities.ai` es `false`
 - **AND** el indicador muestra arranque en español
 - **AND** no se lanza excepción
+- **AND** `[data-offline-banner]` no está visible
 
 #### Scenario: cuerpo inválido no tira (unhappy)
 
@@ -1387,6 +1422,7 @@ MUST NOT llamar a `/search`, `/api/v1/*`, ni mutar OpenAPI. MUST NOT pintar toas
 - **WHEN** el snapshot tiene `components.meilisearch.status` `"down"` (agregado `degraded`)
 - **THEN** no hay texto visible "Búsqueda en modo reducido"
 - **AND** el modo **Texto** sigue operable
+- **AND** `[data-offline-banner]` no está visible
 
 ### Requirement: Indicador de estado en el encabezado
 
@@ -1469,9 +1505,9 @@ El documento MUST declarar:
 
 `index.html` MUST incluir `<link rel="manifest" href="/manifest.webmanifest">`. Ese `href` MUST ser exactamente `/manifest.webmanifest` (ruta de *app shell* de T-00-19, `Cache-Control: no-cache`). MUST NOT versionarlo bajo `/static/{{VERSION}}/`. MUST incluir `<meta name="theme-color" content="#0A0A0A">`.
 
-Los `src` de `icons` MUST usar el placeholder literal `{{VERSION}}` (el Gateway lo sustituye al servir el *manifest*). MUST NOT registrar un Service Worker: `index.html` y `js/app.js` MUST NOT contener `navigator.serviceWorker.register` ni `serviceWorker.register`. Este change MUST NOT crear `vectra-web/sw.js` (T-01-14).
+Los `src` de `icons` MUST usar el placeholder literal `{{VERSION}}` (el Gateway lo sustituye al servir el *manifest*). El registro del Service Worker lo define el requirement «Service Worker del app shell» (T-01-14). MUST NOT invocar Lighthouse CLI ni agregar npm.
 
-Los criterios Lighthouse de *manifest* (nombre, `display` standalone, colores, íconos 192/512 *maskable*, *link*) son el **Listo cuando** automatizado de este ticket. El sello «instalable» completo de Lighthouse exige además el Service Worker de T-01-14. MUST NOT invocar Lighthouse CLI ni agregar npm.
+Los criterios Lighthouse de *manifest* (nombre, `display` standalone, colores, íconos 192/512 *maskable*, *link*) más el Service Worker de este change cierran el sello «instalable». La suite automatiza esos criterios sin Lighthouse CLI.
 
 #### Scenario: el manifest declara Vectra standalone y colores (happy, Listo cuando)
 
@@ -1510,9 +1546,11 @@ Los criterios Lighthouse de *manifest* (nombre, `display` standalone, colores, �
 
 #### Scenario: no registra Service Worker (unhappy, No hace)
 
+T-01-13 prohibía el SW; T-01-14 lo exige (mismo escenario, THEN invertido). El detalle está en el requirement «Service Worker del app shell».
+
 - **WHEN** se leen `vectra-web/index.html` y `vectra-web/js/app.js`
-- **THEN** no aparece `serviceWorker.register`
-- **AND** no existe `vectra-web/sw.js`
+- **THEN** `js/app.js` contiene `serviceWorker.register`
+- **AND** existe `vectra-web/sw.js`
 
 ### Requirement: Íconos PNG 192/512 y maskable
 
@@ -1559,3 +1597,134 @@ Cada entrada MUST tener `src` `/static/{{VERSION}}/icons/<archivo>` coincidente 
 - **WHEN** un PNG declarado como `192x192` o `512x512` tiene otro ancho o alto en IHDR
 - **THEN** el test termina con código distinto de 0
 - **AND** el mensaje nombra el archivo y las dimensiones obtenidas
+
+### Requirement: Service Worker del app shell
+
+MUST existir `vectra-web/sw.js` como script clásico (MUST NOT ser ES Module). MUST NOT exigir `package.json` ni un *bundler*. El documento MUST contener el placeholder literal `{{VERSION}}` en el nombre de caché y en las URLs versionadas del precache (el Gateway lo sustituye al servir `GET /sw.js`).
+
+El nombre de caché MUST ser `vectra-shell-{{VERSION}}`. En `install`, el worker MUST precachear al menos:
+
+- `/`
+- `/index.html`
+- `/manifest.webmanifest`
+- `/static/{{VERSION}}/css/tokens.css`
+- `/static/{{VERSION}}/css/base.css`
+- `/static/{{VERSION}}/js/app.js`
+- `/static/{{VERSION}}/js/router.js`
+- `/static/{{VERSION}}/js/api.js`
+- `/static/{{VERSION}}/js/errors.js`
+- `/static/{{VERSION}}/js/keyboard-list.js`
+- `/static/{{VERSION}}/js/health.js`
+- `/static/{{VERSION}}/js/components/index.js`
+- `/static/{{VERSION}}/js/components/shared.js`
+- `/static/{{VERSION}}/js/components/overlay.js`
+- `/static/{{VERSION}}/js/components/vx-button.js`
+- `/static/{{VERSION}}/js/components/vx-field.js`
+- `/static/{{VERSION}}/js/components/vx-chip.js`
+- `/static/{{VERSION}}/js/components/vx-modal.js`
+- `/static/{{VERSION}}/js/components/vx-side-panel.js`
+- `/static/{{VERSION}}/js/components/vx-toast.js`
+- `/static/{{VERSION}}/js/components/vx-product-card.js`
+- `/static/{{VERSION}}/js/components/vx-omnibox.js`
+- `/static/{{VERSION}}/icons/icon-192.png`
+- `/static/{{VERSION}}/icons/icon-512.png`
+- `/static/{{VERSION}}/icons/icon-192-maskable.png`
+- `/static/{{VERSION}}/icons/icon-512-maskable.png`
+
+La lista de precache MUST NOT incluir paths bajo `/api/`, `/health`, `/media/` ni `dev/components.html`.
+
+En `fetch`, el worker MUST aplicar:
+
+| Request | Estrategia |
+|---|---|
+| `mode` `navigate` | red primero; si `fetch` falla, responder con la entrada cacheada de `/` o `/index.html` |
+| pathname `/health` o que empieza por `/api/` | solo red; MUST NOT escribir la respuesta en caché |
+| pathname que empieza por `/media/` | solo red; MUST NOT escribir la respuesta en caché |
+
+MUST NOT llamar `skipWaiting` ni `clients.claim` (T-01-15).
+
+`js/app.js` MUST registrar el worker con `navigator.serviceWorker.register("/sw.js")` cuando `navigator.serviceWorker` existe. Si no existe, MUST NOT lanzar. MUST NOT registrar desde un script inline en `index.html`.
+
+#### Scenario: sw.js declara precache versionado del app shell (happy)
+
+- **WHEN** se lee `vectra-web/sw.js`
+- **THEN** el nombre de caché contiene `vectra-shell-{{VERSION}}`
+- **AND** el precache incluye `/`, `/index.html`, `/manifest.webmanifest`, `css/tokens.css`, `js/app.js` y al menos un ícono PNG bajo `/static/{{VERSION}}/`
+- **AND** ninguna URL de precache contiene `/api/`, `/health` ni `/media/`
+
+#### Scenario: navegación online usa la red (happy)
+
+- **WHEN** el worker está instalado con el *app shell* en caché
+- **AND** llega un `fetch` con `mode` `navigate` y `fetch` resuelve un HTML de red
+- **THEN** la respuesta es ese HTML de red
+
+#### Scenario: navegación sin red sirve el shell cacheado (happy, Listo cuando)
+
+- **WHEN** el worker está instalado con `/` o `/index.html` en caché
+- **AND** llega un `fetch` con `mode` `navigate` y `fetch` falla
+- **THEN** la respuesta es el HTML cacheado del *app shell*
+
+#### Scenario: app.js registra el Service Worker (happy)
+
+- **WHEN** se lee `vectra-web/js/app.js`
+- **THEN** aparece `serviceWorker.register` con argumento `"/sw.js"`
+- **AND** existe `vectra-web/sw.js`
+
+#### Scenario: /health y /api no tienen fallback de caché (unhappy, No hace)
+
+- **WHEN** llega un `fetch` a `/health` o a `/api/v1/search` y `fetch` falla
+- **THEN** la respuesta no proviene de Cache Storage
+- **AND** no se escribe esa URL en la caché del *app shell*
+
+#### Scenario: precache con /api o /media falla (unhappy)
+
+- **WHEN** la lista de precache incluye un path bajo `/api/` o `/media/`
+- **THEN** el test del Service Worker termina con código distinto de 0
+- **AND** el mensaje nombra `/api/` o `/media/`
+
+#### Scenario: sin serviceWorker no tira (unhappy)
+
+- **WHEN** `navigator.serviceWorker` no está definido
+- **AND** arranca `app.js` (o la función de registro)
+- **THEN** no se lanza excepción
+
+#### Scenario: falta sw.js (unhappy)
+
+- **WHEN** falta `vectra-web/sw.js`
+- **AND** se ejecuta `./scripts/check-vectra-web.sh`
+- **THEN** el comando termina con código distinto de 0
+- **AND** el mensaje nombra `sw.js`
+
+### Requirement: Aviso sin conexión con el Nodo Maestro
+
+Cuando el *router* pinta `data-view="operator"` o `data-view="admin"`, el encabezado MUST incluir un elemento con atributo `data-offline-banner`. Ese elemento MUST tener `aria-live="assertive"` (o un descendiente live region). El texto visible MUST ser exactamente `Sin conexión con el Nodo Maestro`. MUST NOT indicar el aviso solo con color. MUST NOT usar *tokens* nuevos (clases con `--vx-*` existentes). La vista `not-found` MAY omitir el banner.
+
+Tras cada snapshot de `/health` (y tras un cambio de *hash*), si el `GET /health` falló por red (`TypeError` / fallo de `fetch`), el banner MUST estar visible. Si `/health` responde 200 o 503 con cuerpo parseable, el banner MUST estar oculto (`hidden` o equivalente no visible). Un snapshot `degraded` (p. ej. Meilisearch down) MUST NOT mostrar este aviso ni "Búsqueda en modo reducido".
+
+`status` del *poller* MUST seguir siendo `"unknown"` ante fallo de red. El indicador `[data-health]` y el mapa `errors.js` (`network`) MUST NOT cambiar de copy en este change.
+
+#### Scenario: operador y admin tienen data-offline-banner (happy)
+
+- **WHEN** se pinta `#/` o `#/admin/productos`
+- **THEN** existe `[data-offline-banner]` dentro del encabezado de esa vista
+- **AND** tiene (él o un descendiente) `aria-live="assertive"`
+- **AND** el texto visible es `Sin conexión con el Nodo Maestro`
+
+#### Scenario: fallo de red muestra el aviso PA-04 (happy, Listo cuando)
+
+- **WHEN** `GET /health` falla por red (`TypeError`)
+- **THEN** `[data-offline-banner]` está visible
+- **AND** su texto es `Sin conexión con el Nodo Maestro`
+- **AND** `status` del snapshot sigue `"unknown"`
+- **AND** el modo **Texto** sigue operable
+
+#### Scenario: nodo alcanzable oculta el aviso (happy)
+
+- **WHEN** `GET /health` responde 200 `ok` o 503 `starting`
+- **THEN** `[data-offline-banner]` no está visible
+
+#### Scenario: degradado no muestra el aviso PA-04 (unhappy)
+
+- **WHEN** el snapshot tiene `status: "degraded"` y `components.meilisearch.status` `"down"`
+- **THEN** `[data-offline-banner]` no está visible
+- **AND** no hay texto visible "Búsqueda en modo reducido"

@@ -278,6 +278,11 @@ describe("health", () => {
     const omnibox = customElements._create("vx-omnibox");
     document.body.appendChild(omnibox);
     await omnibox.connectedCallback();
+    const banner = document.createElement("p");
+    banner.setAttribute("data-offline-banner", "");
+    banner.setAttribute("hidden", "");
+    banner.textContent = "Sin conexión con el Nodo Maestro";
+    document.body.appendChild(banner);
 
     /** @type {{ status?: string; capabilities?: { textSearch?: boolean } }} */
     let lastDetail = {};
@@ -301,6 +306,8 @@ describe("health", () => {
     assert.equal(lastDetail.capabilities?.textSearch, true);
     assert.equal(omnibox.hasAttribute("ai-unavailable"), true);
     assert.equal(omniboxModeButton(omnibox, "text")?.disabled, false);
+    assert.equal(banner.hasAttribute("hidden"), false);
+    assert.match(banner.textContent ?? "", /Sin conexión con el Nodo Maestro/);
   });
 
   test("health_503_starting_parses_snapshot", async () => {
@@ -321,6 +328,10 @@ describe("health", () => {
     });
     await waitTick();
     assert.match(indicator.textContent ?? "", /arrancando/i);
+    const banner = document.querySelector("[data-offline-banner]");
+    if (banner) {
+      assert.equal(banner.hasAttribute("hidden"), true);
+    }
   });
 
   test("health_invalid_body_does_not_throw", async () => {
@@ -358,5 +369,82 @@ describe("health", () => {
       document.body.textContent ?? "",
       /Búsqueda en modo reducido/i,
     );
+    const banner = document.querySelector("[data-offline-banner]");
+    if (banner) {
+      assert.equal(banner.hasAttribute("hidden"), true);
+    }
+  });
+});
+
+describe("health_network_failure_shows_offline_banner", () => {
+  test("Listo cuando T-01-14", async () => {
+    installDomGlobals();
+    const healthMod = await import(
+      new URL("../../../vectra-web/js/health.js", import.meta.url).href
+    );
+    const banner = document.createElement("p");
+    banner.setAttribute("data-offline-banner", "");
+    banner.setAttribute("hidden", "");
+    banner.textContent = "Sin conexión con el Nodo Maestro";
+    document.body.appendChild(banner);
+    healthMod.startHealth({
+      fetch: async () => {
+        throw new TypeError("Failed to fetch");
+      },
+      window: stubWindow(),
+      document,
+      setInterval: () => 1,
+      clearInterval: () => {},
+    });
+    await waitTick();
+    assert.equal(banner.hasAttribute("hidden"), false);
+  });
+});
+
+describe("health_reachable_hides_offline_banner", () => {
+  test("200 ok oculta el banner", async () => {
+    installDomGlobals();
+    const healthMod = await import(
+      new URL("../../../vectra-web/js/health.js", import.meta.url).href
+    );
+    const banner = document.createElement("p");
+    banner.setAttribute("data-offline-banner", "");
+    banner.removeAttribute("hidden");
+    document.body.appendChild(banner);
+    healthMod.startHealth({
+      fetch: async () => jsonResponse(healthJson()),
+      window: stubWindow(),
+      document,
+      setInterval: () => 1,
+      clearInterval: () => {},
+    });
+    await waitTick();
+    assert.equal(banner.hasAttribute("hidden"), true);
+  });
+});
+
+describe("health_degraded_does_not_show_offline_banner", () => {
+  test("degraded sin banner PA-04", async () => {
+    installDomGlobals();
+    const healthMod = await import(
+      new URL("../../../vectra-web/js/health.js", import.meta.url).href
+    );
+    const banner = document.createElement("p");
+    banner.setAttribute("data-offline-banner", "");
+    banner.setAttribute("hidden", "");
+    document.body.appendChild(banner);
+    const body = healthJson({
+      status: "degraded",
+      components: { meilisearch: { status: "down" }, llm: { status: "up" } },
+    });
+    healthMod.startHealth({
+      fetch: async () => jsonResponse(body),
+      window: stubWindow(),
+      document,
+      setInterval: () => 1,
+      clearInterval: () => {},
+    });
+    await waitTick();
+    assert.equal(banner.hasAttribute("hidden"), true);
   });
 });

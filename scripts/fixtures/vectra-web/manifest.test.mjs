@@ -175,13 +175,11 @@ describe("manifest_wrong_icon_dimensions_fail", () => {
   });
 });
 
-describe("manifest_does_not_register_service_worker", () => {
-  test("No hace T-01-13", () => {
-    assert.ok(fs.existsSync(INDEX_PATH));
-    const index = fs.readFileSync(INDEX_PATH, "utf8");
+describe("manifest_registers_service_worker_with_sw_js", () => {
+  test("T-01-14 exige SW", () => {
+    assert.ok(fs.existsSync(APP_JS));
     const app = fs.readFileSync(APP_JS, "utf8");
-    assert.ok(!index.includes("serviceWorker.register"));
-    assert.ok(!app.includes("serviceWorker.register"));
-    assert.equal(fs.existsSync(path.join(WEB, "sw.js")), false);
+    assert.ok(app.includes("serviceWorker.register"));
+    assert.equal(fs.existsSync(path.join(WEB, "sw.js")), true);
   });
 });

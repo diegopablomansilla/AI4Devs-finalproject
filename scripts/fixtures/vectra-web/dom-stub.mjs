@@ -375,6 +375,9 @@ class DocumentStub extends EventTargetStub {
     if (sel === "[data-health]") {
       return node.hasAttribute("data-health");
     }
+    if (sel === "[data-offline-banner]") {
+      return node.hasAttribute("data-offline-banner");
+    }
     if (sel === "vx-omnibox") {
       return node.localName === "vx-omnibox";
     }
