@@ -126,7 +126,21 @@ pub async fn get_manifest(State(state): State<AppState>) -> Response {
     if !path.is_file() {
         return not_found("/manifest.webmanifest");
     }
-    file_response(&path, CACHE_NO_STORE)
+    let text = match std::fs::read_to_string(&path) {
+        Ok(s) => s,
+        Err(_) => return not_found("/manifest.webmanifest"),
+    };
+    let body = text.replace(PLACEHOLDER_VERSION, &state.version());
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static("application/manifest+json"),
+    );
+    headers.insert(
+        header::CACHE_CONTROL,
+        HeaderValue::from_static(CACHE_NO_STORE),
+    );
+    (StatusCode::OK, headers, body).into_response()
 }
 
 pub async fn get_versioned_static(
