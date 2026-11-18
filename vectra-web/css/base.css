@@ -470,6 +470,15 @@ textarea:focus-visible {
   color: var(--vx-color-text);
 }
 
+.vx-product-stock-panel {
+  margin-top: var(--vx-space-2);
+}
+
+.vx-product-stock-result {
+  margin: 0 0 var(--vx-space-md);
+  color: var(--vx-color-text);
+}
+
 .vx-product-conflict-status {
   margin: 0 0 var(--vx-space-md);
   color: var(--vx-color-warning, var(--vx-color-text));

@@ -611,6 +611,7 @@ export function readProductCreate(root, form) {
  * @param {Record<string, string>} fieldErrors
  * @param {string[]} [changedFieldKeys]
  * @param {string[]} [conflictLabels]
+ * @param {{ activeTab?: "datos" | "stock", stockFieldErrors?: Record<string, string>, lastResultingStock?: string | null }} [sheetUi]
  */
 export function renderEditProductSheet(
   product,
@@ -620,7 +621,11 @@ export function renderEditProductSheet(
   fieldErrors = {},
   changedFieldKeys = [],
   conflictLabels = [],
+  sheetUi = {},
 ) {
+  const activeTab = sheetUi.activeTab ?? "datos";
+  const stockFieldErrors = sheetUi.stockFieldErrors ?? {};
+  const lastResultingStock = sheetUi.lastResultingStock ?? null;
   const activeCats = activeLookupItems(categories);
   const activeBrands = activeLookupItems(brands);
   const categoryId = product.category?.id ?? "";
@@ -647,15 +652,10 @@ export function renderEditProductSheet(
   const shelf = loc.shelf == null ? "" : String(loc.shelf);
   const position = loc.position == null ? "" : String(loc.position);
 
-  return `<div class="vx-product-sheet">
-  <h1 class="vx-product-sheet-title">Editar producto</h1>
-  ${conflictStatus}
-  <div class="vx-product-tabs" role="tablist" aria-label="Ficha de producto">
-    <button type="button" class="vx-product-tab" role="tab" aria-selected="true" data-tab="datos">Datos</button>
-    <button type="button" class="vx-product-tab" role="tab" aria-selected="false" aria-disabled="true" data-tab="stock">Stock</button>
-    <button type="button" class="vx-product-tab" role="tab" aria-selected="false" aria-disabled="true" data-tab="relaciones">Relaciones</button>
-  </div>
-  <form data-form="edit-product" class="vx-product-sheet-form" data-product-version="${escapeHtml(String(product.version))}">
+  const datosSelected = activeTab === "datos";
+  const stockSelected = activeTab === "stock";
+
+  const datosForm = `<form data-form="edit-product" class="vx-product-sheet-form" data-product-version="${escapeHtml(String(product.version))}">
     <p class="vx-product-stock-readonly">Stock actual: ${escapeHtml(String(product.stock ?? ""))}</p>
     ${vxField("sku", "SKU", fieldErrors, { required: true, value: product.sku })}
     ${vxField("name", "Nombre", fieldErrors, { required: true, value: product.name })}
@@ -691,8 +691,89 @@ ${unitOptions}
       <button type="submit">Guardar</button>
       <button type="button" data-action="cancel-sheet">Cancelar</button>
     </div>
-  </form>
+  </form>`;
+
+  const bodyPanel =
+    activeTab === "stock"
+      ? renderStockPanel(product.stock, stockFieldErrors, lastResultingStock)
+      : datosForm;
+
+  return `<div class="vx-product-sheet">
+  <h1 class="vx-product-sheet-title">Editar producto</h1>
+  ${conflictStatus}
+  <div class="vx-product-tabs" role="tablist" aria-label="Ficha de producto">
+    <button type="button" class="vx-product-tab" role="tab" aria-selected="${datosSelected ? "true" : "false"}" data-tab="datos">Datos</button>
+    <button type="button" class="vx-product-tab" role="tab" aria-selected="${stockSelected ? "true" : "false"}" data-tab="stock">Stock</button>
+    <button type="button" class="vx-product-tab" role="tab" aria-selected="false" aria-disabled="true" data-tab="relaciones">Relaciones</button>
+  </div>
+  ${bodyPanel}
 </div>`;
+}
+
+/**
+ * @param {string | number | null | undefined} stock
+ * @param {Record<string, string>} [fieldErrors]
+ * @param {string | null} [lastResultingStock]
+ */
+export function renderStockPanel(stock, fieldErrors = {}, lastResultingStock = null) {
+  const resultHtml =
+    lastResultingStock != null && String(lastResultingStock).length > 0
+      ? `<p class="vx-product-stock-result" role="status">Stock resultante: ${escapeHtml(String(lastResultingStock))}</p>`
+      : "";
+
+  return `<form data-form="stock-movement" class="vx-product-stock-panel vx-product-sheet-form">
+    <p class="vx-product-stock-readonly">Stock actual: ${escapeHtml(String(stock ?? ""))}</p>
+    ${resultHtml}
+    <label class="vx-product-sheet-select">Tipo
+      <select name="type" data-sheet-field="type">
+        <option value="inbound">Ingreso</option>
+        <option value="adjustment">Ajuste</option>
+      </select>
+    </label>
+    ${vxField("quantity", "Cantidad", fieldErrors, { required: true })}
+    ${vxField("reason", "Motivo", fieldErrors)}
+    <div class="vx-product-sheet-actions">
+      <button type="submit">Registrar movimiento</button>
+      <button type="button" data-action="cancel-sheet">Cancelar</button>
+    </div>
+  </form>`;
+}
+
+/**
+ * @param {ParentNode & { querySelector?: typeof Document.prototype.querySelector }} root
+ * @param {Element | { querySelector?: Function }} form
+ * @returns {Record<string, string> | null | { error: string }}
+ */
+export function readStockMovement(root, form) {
+  const query = (sel) =>
+    form?.querySelector?.(sel) ?? root?.querySelector?.(sel) ?? null;
+
+  const fieldValue = (name) => {
+    const field = query(`vx-field[name="${name}"]`);
+    const raw = field?.getAttribute?.("value") ?? "";
+    return String(raw).trim();
+  };
+
+  const typeSelect = query('select[name="type"]');
+  const type = String(
+    typeSelect?.value ?? typeSelect?.getAttribute?.("value") ?? "inbound",
+  );
+  const quantity = fieldValue("quantity");
+  if (quantity.length === 0) {
+    return null;
+  }
+
+  const reason = fieldValue("reason");
+  if (type === "adjustment" && reason.length === 0) {
+    return { error: "reason" };
+  }
+
+  /** @type {Record<string, string>} */
+  const body = { type, quantity };
+  if (type === "adjustment") {
+    body.reason = reason;
+  }
+  return body;
 }
 
 /**

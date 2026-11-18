@@ -8,6 +8,7 @@ import {
   mergePatchCodes,
   readProductCreate,
   readProductUpdate,
+  readStockMovement,
   renderCreateProductSheet,
   renderEditProductSheet,
 } from "./product-sheet.js";
@@ -219,6 +220,12 @@ export async function mountProducts(el, { request, showError = () => {} }) {
   let attributeDefs = [];
   /** @type {Array<{ definitionId: string, value: unknown }>} */
   let lastPostedAttributes = [];
+  /** @type {"datos" | "stock"} */
+  let sheetTab = "datos";
+  /** @type {Record<string, string>} */
+  let stockFieldErrors = {};
+  /** @type {string | null} */
+  let lastResultingStock = null;
 
   const paint = () => {
     if (mode === "create") {
@@ -241,6 +248,11 @@ export async function mountProducts(el, { request, showError = () => {} }) {
         fieldErrors,
         changedFieldKeys,
         conflictLabels,
+        {
+          activeTab: sheetTab,
+          stockFieldErrors,
+          lastResultingStock,
+        },
       );
       return;
     }
@@ -327,6 +339,21 @@ export async function mountProducts(el, { request, showError = () => {} }) {
 
   el.addEventListener("click", (ev) => {
     const target = ev.target;
+    const tabEl =
+      target?.closest?.('[role="tab"][data-tab]') ??
+      (target?.getAttribute?.("data-tab") ? target : null);
+    if (tabEl && mode === "edit") {
+      if (tabEl.getAttribute?.("aria-disabled") === "true") {
+        return;
+      }
+      const tab = tabEl.getAttribute?.("data-tab");
+      if (tab === "datos" || tab === "stock") {
+        sheetTab = tab;
+        paint();
+      }
+      return;
+    }
+
     const actionEl = target?.closest?.("[data-action]") ?? target;
     const action = actionEl?.getAttribute?.("data-action");
     if (!action) {
@@ -335,6 +362,9 @@ export async function mountProducts(el, { request, showError = () => {} }) {
 
     if (action === "create") {
       mode = "create";
+      sheetTab = "datos";
+      stockFieldErrors = {};
+      lastResultingStock = null;
       fieldErrors = {};
       lastPostedAttributes = [];
       void (async () => {
@@ -356,6 +386,9 @@ export async function mountProducts(el, { request, showError = () => {} }) {
       editSnapshot = null;
       conflictLabels = [];
       changedFieldKeys = [];
+      sheetTab = "datos";
+      stockFieldErrors = {};
+      lastResultingStock = null;
       fieldErrors = {};
       lastPostedAttributes = [];
       paint();
@@ -375,6 +408,9 @@ export async function mountProducts(el, { request, showError = () => {} }) {
     if (action === "edit") {
       mode = "edit";
       editProductId = productId;
+      sheetTab = "datos";
+      stockFieldErrors = {};
+      lastResultingStock = null;
       fieldErrors = {};
       conflictLabels = [];
       changedFieldKeys = [];
@@ -430,6 +466,19 @@ export async function mountProducts(el, { request, showError = () => {} }) {
     }
   });
 
+  const applyStockFieldErrors = (err) => {
+    stockFieldErrors = {};
+    const list = Array.isArray(err?.errors) ? err.errors : [];
+    for (const item of list) {
+      const field = item?.field;
+      if (field === "quantity" || field === "reason") {
+        stockFieldErrors[field] = String(item.message ?? "");
+      }
+    }
+    paint();
+    showError(err);
+  };
+
   const applyFieldErrors = (err, postedAttributes) => {
     fieldErrors = {};
     const activeDefs = attributeDefs.filter((d) => d.active !== false);
@@ -459,10 +508,68 @@ export async function mountProducts(el, { request, showError = () => {} }) {
   el.addEventListener("submit", (ev) => {
     const form = ev.target;
     const formKind = form?.getAttribute?.("data-form");
-    if (formKind !== "create-product" && formKind !== "edit-product") {
+    if (
+      formKind !== "create-product" &&
+      formKind !== "edit-product" &&
+      formKind !== "stock-movement"
+    ) {
       return;
     }
     ev.preventDefault?.();
+
+    if (formKind === "stock-movement") {
+      if (!editProductId || !editSnapshot) {
+        return;
+      }
+      const parsed = readStockMovement(el, form);
+      if (parsed == null) {
+        return;
+      }
+      if ("error" in parsed && parsed.error === "reason") {
+        const localErr = {
+          code: "invalid_input",
+          status: 400,
+          title: "invalid_input",
+          errors: [{ field: "reason", message: "El motivo es obligatorio" }],
+        };
+        stockFieldErrors = { reason: "El motivo es obligatorio" };
+        paint();
+        showError(localErr);
+        return;
+      }
+      const stockBefore = String(editSnapshot.stock ?? "");
+      void (async () => {
+        try {
+          const movement = await request(
+            "POST",
+            `/api/v1/products/${editProductId}/stock-movements`,
+            { body: parsed },
+          );
+          const resulting = String(movement?.resultingStock ?? "");
+          editSnapshot = { ...editSnapshot, stock: resulting };
+          lastResultingStock = resulting;
+          stockFieldErrors = {};
+          sheetTab = "stock";
+          paint();
+        } catch (err) {
+          if (err?.code === "negative_stock") {
+            editSnapshot = { ...editSnapshot, stock: stockBefore };
+            stockFieldErrors = {};
+            paint();
+            showError(err);
+            return;
+          }
+          if (err?.code === "invalid_input") {
+            applyStockFieldErrors(err);
+            return;
+          }
+          stockFieldErrors = {};
+          paint();
+          showError(err);
+        }
+      })();
+      return;
+    }
 
     if (formKind === "create-product") {
       const body = readProductCreate(el, form);
@@ -529,6 +636,9 @@ export async function mountProducts(el, { request, showError = () => {} }) {
         editSnapshot = null;
         conflictLabels = [];
         changedFieldKeys = [];
+        sheetTab = "datos";
+        stockFieldErrors = {};
+        lastResultingStock = null;
         fieldErrors = {};
         lastPostedAttributes = [];
         await reloadFirstPage();
