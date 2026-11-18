@@ -7,6 +7,7 @@ pub mod error;
 pub mod health;
 pub mod id;
 pub mod marca;
+pub mod movimiento_stock;
 pub mod outbox;
 pub mod producto;
 pub mod timestamp;
@@ -30,6 +31,9 @@ pub use health::{
 };
 pub use id::{Id, InvalidId};
 pub use marca::{BrandRepo, Marca, MarcaDraft, NewMarca, UpdateMarca};
+pub use movimiento_stock::{
+    MovimientoStock, MovimientoStockDraft, NewMovimientoStock, StockLedger, TipoMovimiento, Venta,
+};
 pub use outbox::{OutboxEntity, OutboxEvent, OutboxEventError, OutboxOp};
 pub use producto::{
     AtributoValor, Codigo, NewProducto, ProductRepo, Producto, ProductoDraft, Sku, TipoCodigo,
