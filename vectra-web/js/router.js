@@ -195,9 +195,25 @@ ${navLinks}
 }
 
 /**
- * @param {{ window: Window, document: Document, outlet: HTMLElement, storage?: Storage }} opts
+ * @param {{
+ *   window: Window,
+ *   document: Document,
+ *   outlet: HTMLElement,
+ *   storage?: Storage,
+ *   request?: (method: string, path: string, options?: object) => Promise<unknown>,
+ *   showError?: (err: unknown) => void,
+ *   mountCategories?: (el: Element, deps: object) => Promise<void>,
+ * }} opts
  */
-export function startRouter({ window, document, outlet, storage }) {
+export function startRouter({
+  window,
+  document,
+  outlet,
+  storage,
+  request,
+  showError,
+  mountCategories,
+}) {
   const resolvedStorage =
     storage ??
     (typeof window.localStorage !== "undefined" ? window.localStorage : null);
@@ -209,6 +225,20 @@ export function startRouter({ window, document, outlet, storage }) {
     if (route.view === "admin" && typeof outlet.querySelector === "function") {
       const field = outlet.querySelector('vx-field[name="terminal"]');
       bindTerminalName(field, resolvedStorage);
+      const section = route.section ?? "";
+      if (
+        section === "categorias" &&
+        typeof request === "function" &&
+        typeof mountCategories === "function"
+      ) {
+        const region = outlet.querySelector('[data-region="admin-content"]');
+        if (region) {
+          void mountCategories(region, {
+            request,
+            showError: showError ?? (() => {}),
+          });
+        }
+      }
     }
   };
 
