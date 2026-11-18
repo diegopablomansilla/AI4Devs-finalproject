@@ -447,6 +447,8 @@ DEFINE FIELD creado_en        ON movimiento_stock TYPE datetime DEFAULT time::no
 DEFINE INDEX idx_mov_producto ON movimiento_stock FIELDS producto, creado_en;
 ```
 
+> **MVP (T-02-15):** hasta existir la tabla `venta` (T-08-01), la migración define `venta` como `option<record>` genérico en lugar de `option<record<venta>>`. T-08-01 ajusta el tipo cuando incorpora ventas.
+
 | Tipo | Signo de `cantidad` | Origen |
 |---|---|---|
 | `inicial` | `> 0` | Carga del dataset semilla o alta con stock existente. |
