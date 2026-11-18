@@ -2,9 +2,9 @@
 
 ## Purpose
 
-Abre SurrealDB embebido con RocksDB en el crate `storage`, selecciona el namespace `vectra` y la base `comercio`, aplica migraciones `.surql` embebidas con registro y checksum SHA-256 (incl. `categoria`, `marca`, `atributo_def`, `producto`), expone un harness de tests (`storage::testing`) con motor en memoria o RocksDB temporal, ofrece transacciones atómicas dato + outbox con aviso post-commit, e implementa adaptadores de repositorio de catálogo.
+Abre SurrealDB embebido con RocksDB en el crate `storage`, selecciona el namespace `vectra` y la base `comercio`, aplica migraciones `.surql` embebidas con registro y checksum SHA-256 (incl. `categoria`, `marca`, `atributo_def`, `producto`, `movimiento_stock`), expone un harness de tests (`storage::testing`) con motor en memoria o RocksDB temporal, ofrece transacciones atómicas dato + outbox con aviso post-commit, e implementa adaptadores de repositorio de catálogo.
 
-Ticket padre: T-00-08, T-00-09, T-09-02, T-03-01, T-03-02, T-02-01, T-02-03, T-02-08, T-02-11, T-02-14. HU: HU-00-02, HU-09-01, HU-03-01, HU-02-01, HU-02-02, HU-02-03, HU-02-04.
+Ticket padre: T-00-08, T-00-09, T-09-02, T-03-01, T-03-02, T-02-01, T-02-03, T-02-08, T-02-11, T-02-14, T-02-15. HU: HU-00-02, HU-09-01, HU-03-01, HU-02-01, HU-02-02, HU-02-03, HU-02-04, HU-02-07.
 
 ## Requirements
 
@@ -772,3 +772,54 @@ MUST NOT sembrar filas de catálogo. MUST NOT implementar entidad de dominio, va
 - **WHEN** tras migrar se intenta insertar un `producto` con `sku` de longitud 0
 - **THEN** la operación falla
 - **AND** `producto` permanece sin esa fila
+
+### Requirement: Migración movimiento_stock
+
+El crate `storage` MUST incluir la migración embebida `0006_movimiento_stock.surql`, aplicada por `Db::migrate()` después de `0005_producto.surql`. El SQL MUST definir la tabla `SCHEMAFULL` `movimiento_stock` conforme a [4.5.1](../../../docs/4-modelo.md#451-movimiento_stock), usando `DEFINE … IF NOT EXISTS` ([4.10](../../../docs/4-modelo.md#410-operación-del-esquema)).
+
+`movimiento_stock` MUST declarar, todos `READONLY`: `producto` (`record<producto>`); `tipo` (`string` con `ASSERT $value IN ['inicial', 'ingreso', 'ajuste', 'venta']`); `cantidad` (`decimal` con `ASSERT $value != 0`); `stock_resultante` (`decimal` con `ASSERT $value >= 0`); `motivo` (`option<string>`); `venta` (`option<record>` genérico, **sin** `record<venta>` hasta T-08-01); `terminal` (`option<string>`); `creado_en` (`datetime` con `DEFAULT time::now()`). MUST habilitar `CHANGEFEED 3d` (ledger). MUST definir el índice `idx_mov_producto` sobre `(producto, creado_en)`. `idx_mov_producto` MUST NOT ser `UNIQUE`.
+
+MUST NOT sembrar filas de ledger. MUST NOT implementar entidad de dominio, reglas de signo por `tipo`, `motivo` obligatorio en `ajuste`, puerto `StockLedger`, HTTP ni casos de uso (T-02-17 / T-02-24 / T-02-25). Tras `storage::testing::test_db()`, `record_count("movimiento_stock")` MUST ser 0.
+
+#### Scenario: Migración aplica esquema movimiento_stock (happy)
+
+- **WHEN** se abre una base vacía y se llama `Db::migrate` (o `storage::testing::test_db`)
+- **THEN** `list_migrations()` incluye `version` 6 con checksum SHA-256 de `0006_movimiento_stock.surql`
+- **AND** `record_count("movimiento_stock")` es 0
+
+#### Scenario: Re-arranque no duplica el registro de migración (happy)
+
+- **WHEN** `migrate` se ejecuta dos veces sobre la misma instancia
+- **THEN** la segunda ejecución termina sin error
+- **AND** sigue habiendo un solo registro de `migracion` para `version` 6
+
+#### Scenario: Alta mínima de movimiento ingreso (happy)
+
+- **WHEN** tras migrar existe un `producto` y se inserta un `movimiento_stock` con `tipo` `"ingreso"`, `cantidad` `20`, `stock_resultante` `20` y ese `producto`
+- **THEN** la inserción termina sin error
+- **AND** `record_count("movimiento_stock")` es 1
+- **AND** `motivo`, `venta` y `terminal` quedan ausentes
+
+#### Scenario: UPDATE sobre un movimiento falla (unhappy, Listo cuando)
+
+- **WHEN** tras migrar existe un `movimiento_stock` y se intenta `UPDATE` de un campo (p. ej. `motivo`)
+- **THEN** la operación falla
+- **AND** el movimiento conserva los valores originales
+
+#### Scenario: tipo fuera del enum rechazado (unhappy)
+
+- **WHEN** tras migrar se intenta insertar un `movimiento_stock` con `tipo` `"transferencia"`
+- **THEN** la operación falla
+- **AND** `movimiento_stock` permanece sin esa fila
+
+#### Scenario: cantidad cero rechazada (unhappy)
+
+- **WHEN** tras migrar se intenta insertar un `movimiento_stock` con `cantidad` `0`
+- **THEN** la operación falla
+- **AND** `movimiento_stock` permanece sin esa fila
+
+#### Scenario: stock_resultante negativo rechazado (unhappy)
+
+- **WHEN** tras migrar se intenta insertar un `movimiento_stock` con `stock_resultante` menor que `0`
+- **THEN** la operación falla
+- **AND** `movimiento_stock` permanece sin esa fila
