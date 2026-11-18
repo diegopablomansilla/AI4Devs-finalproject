@@ -9,5 +9,8 @@ pub mod stock;
 pub use atributo_def::{AttributeDefGateway, AttributeDefService, EmptyAttributeUsage};
 pub use categoria::{CategoryGateway, CategoryOccupancy, CategoryService, ProductionOccupancy};
 pub use marca::{BrandGateway, BrandService};
-pub use producto::{PatchProducto, ProductGateway, ProductService};
+pub use producto::{
+    PatchProducto, ProductGateway, ProductService, product_id_after,
+    product_matches_categoria_branch,
+};
 pub use stock::{StockGateway, StockService};

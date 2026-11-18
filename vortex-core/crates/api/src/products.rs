@@ -6,19 +6,20 @@ use std::str::FromStr as _;
 use std::sync::Arc;
 
 use axum::Json;
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use catalog::{PatchProducto, ProductGateway};
 use domain::{
-    AtributoValor, Codigo, Decimal, FichaProducto, Id, Marca, NewProducto, TipoCodigo,
-    UnidadMedida, ValorAtributo,
+    AtributoValor, Categoria, Codigo, Decimal, FichaProducto, FiltroProducto, Id, Marca,
+    NewProducto, ResumenProducto, TipoCodigo, UnidadMedida, ValorAtributo,
 };
 use serde::{Deserialize, Serialize};
 
 use crate::AppJson;
 use crate::AppState;
 use crate::error::ApiError;
+use crate::{decode_cursor, encode_cursor, paginate, resolve_limit};
 
 const TERMINAL_HEADER: &str = "x-vectra-terminal";
 const TERMINAL_MAX_LEN: usize = 64;
@@ -163,6 +164,115 @@ struct ProductResponse {
 
 fn parse_product_id(raw: &str, instance: &str) -> Result<Id<domain::Producto>, ApiError> {
     Id::from_str(raw).map_err(|_| ApiError::invalid_product_id(instance.to_owned()))
+}
+
+fn parse_optional_category_id(
+    raw: &Option<String>,
+    instance: &str,
+) -> Result<Option<Id<Categoria>>, ApiError> {
+    match raw {
+        None => Ok(None),
+        Some(s) => Id::from_str(s)
+            .map(Some)
+            .map_err(|_| ApiError::invalid_category_id(instance.to_owned())),
+    }
+}
+
+fn parse_optional_brand_id(
+    raw: &Option<String>,
+    instance: &str,
+) -> Result<Option<Id<Marca>>, ApiError> {
+    match raw {
+        None => Ok(None),
+        Some(s) => Id::from_str(s)
+            .map(Some)
+            .map_err(|_| ApiError::invalid_brand_id(instance.to_owned())),
+    }
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct ListProductsQuery {
+    #[serde(rename = "categoryId")]
+    category_id: Option<String>,
+    #[serde(rename = "brandId")]
+    brand_id: Option<String>,
+    active: Option<bool>,
+    cursor: Option<String>,
+    limit: Option<u32>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ProductSummaryResponse {
+    id: Id<domain::Producto>,
+    sku: String,
+    name: String,
+    product_type: String,
+    brand: Option<String>,
+    category_path: Vec<String>,
+    price: Decimal,
+    stock: Decimal,
+    active: bool,
+    #[serde(rename = "imageUrl")]
+    image_url: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ProductSummaryPageResponse {
+    items: Vec<ProductSummaryResponse>,
+    next_cursor: Option<String>,
+}
+
+fn product_summary_response(row: ResumenProducto) -> ProductSummaryResponse {
+    ProductSummaryResponse {
+        id: row.id,
+        sku: row.sku,
+        name: row.nombre,
+        product_type: row.tipo,
+        brand: row.marca_nombre,
+        category_path: row.categoria_ruta,
+        price: row.precio,
+        stock: row.stock,
+        active: row.activo,
+        image_url: None,
+    }
+}
+
+pub async fn list_products(
+    State(state): State<AppState>,
+    Query(query): Query<ListProductsQuery>,
+) -> Result<impl IntoResponse, ApiError> {
+    const INSTANCE: &str = "/api/v1/products";
+    let gateway = require_gateway(&state, INSTANCE)?;
+    let category_id = parse_optional_category_id(&query.category_id, INSTANCE)?;
+    let brand_id = parse_optional_brand_id(&query.brand_id, INSTANCE)?;
+    let after = decode_cursor::<domain::Producto>(query.cursor.as_deref())
+        .map_err(|e| ApiError::from_domain(e, INSTANCE))?;
+    let limit = resolve_limit(query.limit).map_err(|e| ApiError::from_domain(e, INSTANCE))?;
+    let filtro = FiltroProducto {
+        categoria: category_id,
+        marca: brand_id,
+        activo: query.active.unwrap_or(true),
+    };
+    let take = limit.saturating_add(1);
+    let rows = gateway
+        .list(filtro, after, take)
+        .await
+        .map_err(|e| ApiError::from_domain(e, INSTANCE))?;
+    let page = paginate(rows, limit, |row| encode_cursor(&row.id));
+    let items = page
+        .items
+        .into_iter()
+        .map(product_summary_response)
+        .collect();
+    Ok((
+        StatusCode::OK,
+        Json(ProductSummaryPageResponse {
+            items,
+            next_cursor: page.next_cursor,
+        }),
+    ))
 }
 
 fn require_gateway(state: &AppState, instance: &str) -> Result<Arc<dyn ProductGateway>, ApiError> {

@@ -4,9 +4,9 @@ use std::sync::Arc;
 
 use domain::{
     AtributoDef, AtributoValor, AttributeDefRepo, BrandRepo, Categoria, CategoryRepo, Codigo,
-    ConflictCode, DomainCode, DomainError, Id, Marca, NewAtributoDef, NewCategoria, NewMarca,
-    NewProducto, ProductRepo, Producto, TipoAtributo, TipoCodigo, UnidadMedida, UpdateProducto,
-    ValorAtributo,
+    ConflictCode, DomainCode, DomainError, FiltroProducto, Id, Marca, NewAtributoDef, NewCategoria,
+    NewMarca, NewProducto, ProductRepo, Producto, TipoAtributo, TipoCodigo, UnidadMedida,
+    UpdateProducto, ValorAtributo,
 };
 
 use storage::testing::test_db;
@@ -828,4 +828,252 @@ async fn storage_set_activo_unknown_id_is_not_found() {
         .await
         .expect_err("not found");
     assert_eq!(err.code(), DomainCode::NotFound);
+}
+
+async fn seed_branch_catalog(
+    db: Arc<storage::Db>,
+) -> (Id<Categoria>, Id<Categoria>, Id<Marca>, Id<Categoria>) {
+    let fijaciones = CategoriaRepo::new(Arc::clone(&db))
+        .create(NewCategoria {
+            nombre: "Fijaciones".into(),
+            slug: None,
+            padre: None,
+        })
+        .await
+        .expect("fijaciones");
+    let pernos = CategoriaRepo::new(Arc::clone(&db))
+        .create(NewCategoria {
+            nombre: "Pernos".into(),
+            slug: None,
+            padre: Some(fijaciones.id.clone()),
+        })
+        .await
+        .expect("pernos");
+    let other = CategoriaRepo::new(Arc::clone(&db))
+        .create(NewCategoria {
+            nombre: "Tornillería".into(),
+            slug: None,
+            padre: None,
+        })
+        .await
+        .expect("other");
+    let marca = MarcaRepo::new(Arc::clone(&db))
+        .create(NewMarca {
+            nombre: "Fixser".into(),
+            slug: None,
+        })
+        .await
+        .expect("marca");
+    (fijaciones.id, pernos.id, marca.id, other.id)
+}
+
+fn new_product_at(
+    categoria: Id<Categoria>,
+    marca: Option<Id<Marca>>,
+    sku: &str,
+    stock: &str,
+) -> NewProducto {
+    NewProducto {
+        sku: sku.into(),
+        nombre: format!("Producto {sku}"),
+        tipo: "Perno".into(),
+        descripcion: None,
+        marca,
+        categoria,
+        atributos: vec![],
+        codigos: vec![],
+        unidad_medida: UnidadMedida::Unidad,
+        precio: "10".parse().expect("precio"),
+        ubicacion: None,
+        stock_inicial: stock.parse().expect("stock"),
+        terminal: None,
+    }
+}
+
+#[tokio::test]
+async fn storage_list_branch_includes_descendants() {
+    let db = Arc::new(test_db().await);
+    let (fijaciones, pernos, marca, other) = seed_branch_catalog(Arc::clone(&db)).await;
+    let repo = product_repo(Arc::clone(&db));
+    repo.create(new_product_at(
+        fijaciones.clone(),
+        Some(marca.clone()),
+        "SKU-FIJ",
+        "0",
+    ))
+    .await
+    .expect("fijaciones");
+    repo.create(new_product_at(pernos, Some(marca.clone()), "SKU-PER", "0"))
+        .await
+        .expect("pernos");
+    repo.create(new_product_at(other, Some(marca), "SKU-OTH", "0"))
+        .await
+        .expect("other");
+    let filtro = FiltroProducto {
+        categoria: Some(fijaciones),
+        marca: None,
+        activo: true,
+    };
+    let rows = repo.list(filtro, None, 50).await.expect("list");
+    assert_eq!(rows.len(), 2);
+    assert!(
+        rows.iter()
+            .all(|r| r.categoria_ruta.first().map(|s| s.as_str()) == Some("Fijaciones"))
+    );
+    let skus: Vec<_> = rows.iter().map(|r| r.sku.as_str()).collect();
+    assert!(skus.contains(&"SKU-FIJ"));
+    assert!(skus.contains(&"SKU-PER"));
+    assert!(!skus.contains(&"SKU-OTH"));
+}
+
+#[tokio::test]
+async fn storage_list_inactive_only() {
+    let db = Arc::new(test_db().await);
+    let (_, pernos, marca, _) = seed_branch_catalog(Arc::clone(&db)).await;
+    let repo = product_repo(Arc::clone(&db));
+    let active = repo
+        .create(new_product_at(
+            pernos.clone(),
+            Some(marca.clone()),
+            "SKU-A",
+            "0",
+        ))
+        .await
+        .expect("active");
+    let inactive = repo
+        .create(new_product_at(pernos, Some(marca), "SKU-B", "0"))
+        .await
+        .expect("inactive");
+    let inactive_id = inactive.id.clone();
+    repo.set_activo(inactive_id.clone(), false)
+        .await
+        .expect("deactivate");
+    let filtro = FiltroProducto {
+        categoria: None,
+        marca: None,
+        activo: false,
+    };
+    let rows = repo.list(filtro, None, 50).await.expect("list");
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].id, inactive_id);
+    assert!(!rows[0].activo);
+    assert_ne!(rows[0].id, active.id);
+}
+
+#[tokio::test]
+async fn storage_list_filters_by_brand() {
+    let db = Arc::new(test_db().await);
+    let (_, pernos, fixser, _) = seed_branch_catalog(Arc::clone(&db)).await;
+    let other = MarcaRepo::new(Arc::clone(&db))
+        .create(NewMarca {
+            nombre: "Otra".into(),
+            slug: None,
+        })
+        .await
+        .expect("other marca");
+    let repo = product_repo(Arc::clone(&db));
+    repo.create(new_product_at(
+        pernos.clone(),
+        Some(fixser.clone()),
+        "SKU-A",
+        "0",
+    ))
+    .await
+    .expect("a");
+    repo.create(new_product_at(pernos, Some(other.id), "SKU-B", "0"))
+        .await
+        .expect("b");
+    let filtro = FiltroProducto {
+        categoria: None,
+        marca: Some(fixser),
+        activo: true,
+    };
+    let rows = repo.list(filtro, None, 50).await.expect("list");
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].sku, "SKU-A");
+    assert_eq!(rows[0].marca_nombre.as_deref(), Some("Fixser"));
+}
+
+#[tokio::test]
+async fn storage_list_after_excludes_prior_ids() {
+    let db = Arc::new(test_db().await);
+    let (_, pernos, marca, _) = seed_branch_catalog(Arc::clone(&db)).await;
+    let repo = product_repo(Arc::clone(&db));
+    let a = repo
+        .create(new_product_at(
+            pernos.clone(),
+            Some(marca.clone()),
+            "SKU-A",
+            "0",
+        ))
+        .await
+        .expect("a");
+    let b = repo
+        .create(new_product_at(
+            pernos.clone(),
+            Some(marca.clone()),
+            "SKU-B",
+            "0",
+        ))
+        .await
+        .expect("b");
+    let c = repo
+        .create(new_product_at(pernos, Some(marca), "SKU-C", "0"))
+        .await
+        .expect("c");
+    let filtro = FiltroProducto {
+        categoria: None,
+        marca: None,
+        activo: true,
+    };
+    let page1 = repo.list(filtro.clone(), None, 2).await.expect("page1");
+    assert_eq!(page1.len(), 2);
+    assert_eq!(page1[0].id, a.id);
+    assert_eq!(page1[1].id, b.id);
+    let page2 = repo.list(filtro, Some(b.id), 2).await.expect("page2");
+    assert_eq!(page2.len(), 1);
+    assert_eq!(page2[0].id, c.id);
+}
+
+#[tokio::test]
+async fn storage_list_unknown_category_is_empty() {
+    let db = Arc::new(test_db().await);
+    let (_, pernos, marca, _) = seed_branch_catalog(Arc::clone(&db)).await;
+    let repo = product_repo(Arc::clone(&db));
+    repo.create(new_product_at(pernos, Some(marca), "SKU-A", "0"))
+        .await
+        .expect("create");
+    let filtro = FiltroProducto {
+        categoria: Some(Id::generate()),
+        marca: None,
+        activo: true,
+    };
+    let rows = repo.list(filtro, None, 50).await.expect("list");
+    assert!(rows.is_empty());
+}
+
+#[tokio::test]
+async fn storage_list_does_not_write_outbox() {
+    let db = Arc::new(test_db().await);
+    let (_, pernos, marca, _) = seed_branch_catalog(Arc::clone(&db)).await;
+    let repo = product_repo(Arc::clone(&db));
+    repo.create(new_product_at(pernos, Some(marca), "SKU-A", "0"))
+        .await
+        .expect("create");
+    let before_outbox = db.record_count("outbox").await.expect("outbox");
+    let before_products = db.record_count("producto").await.expect("producto");
+    let filtro = FiltroProducto {
+        categoria: None,
+        marca: None,
+        activo: true,
+    };
+    let _ = repo.list(filtro, None, 50).await.expect("list");
+    assert_eq!(
+        db.record_count("outbox").await.expect("outbox"),
+        before_outbox
+    );
+    assert_eq!(
+        db.record_count("producto").await.expect("producto"),
+        before_products
+    );
 }

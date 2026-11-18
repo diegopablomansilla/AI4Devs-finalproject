@@ -1,8 +1,8 @@
 mod support;
 
 use api::{AppState, build_router};
-use domain::{CategoryRepo, Id};
-use support::fake_catalog::{perno_create_json, test_product_gateway};
+use domain::{CategoryRepo, Id, NewCategoria};
+use support::fake_catalog::{perno_create_json, product_create_json, test_product_gateway};
 use support::openapi::assert_conforms;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
@@ -601,14 +601,349 @@ async fn post_product_without_service_returns_503() {
     );
 }
 
+async fn post_product_raw(addr: std::net::SocketAddr, body: &str) -> (u16, serde_json::Value) {
+    let (s, _, resp, _) = http_send(addr, "POST", "/api/v1/products", Some(body), &[]).await;
+    (s, json_body(&resp))
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn get_products_list_is_not_summary_page() {
-    let (addr, handle, _, _) = setup_gateway().await;
+async fn get_products_branch_filter_includes_descendants() {
+    let (addr, handle, seeds, _) = setup_gateway().await;
+    let other = seeds
+        .categories
+        .create(NewCategoria {
+            nombre: "Tornillería".into(),
+            slug: None,
+            padre: None,
+        })
+        .await
+        .expect("other cat");
+    let (s1, _) = post_product_raw(
+        addr,
+        &product_create_json(&seeds, "SKU-FIJ", "En Fijaciones", &seeds.fijaciones_id),
+    )
+    .await;
+    assert_eq!(s1, 201);
+    let (s2, _) = post_product_raw(
+        addr,
+        &product_create_json(&seeds, "SKU-PER", "En Pernos", &seeds.category_id),
+    )
+    .await;
+    assert_eq!(s2, 201);
+    let (s3, _) = post_product_raw(
+        addr,
+        &product_create_json(&seeds, "SKU-OTH", "Fuera", &other.id),
+    )
+    .await;
+    assert_eq!(s3, 201);
+    let path = format!("/api/v1/products?categoryId={}", seeds.fijaciones_id);
+    let (s, ct, body, _) = http_send(addr, "GET", &path, None, &[]).await;
+    handle.abort();
+    let json = json_body(&body);
+    assert_eq!(s, 200);
+    assert_eq!(ct, "application/json");
+    let items = json["items"].as_array().expect("items");
+    assert_eq!(items.len(), 2);
+    assert!(items.iter().all(|i| i["categoryPath"][0] == "Fijaciones"));
+    let skus: Vec<_> = items.iter().filter_map(|i| i["sku"].as_str()).collect();
+    assert!(skus.contains(&"SKU-FIJ"));
+    assert!(skus.contains(&"SKU-PER"));
+    assert!(!skus.contains(&"SKU-OTH"));
+    assert_conforms("GET", "/api/v1/products", 200, "application/json", &json);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn get_products_active_false_returns_inactive_only() {
+    let (addr, handle, seeds, _) = setup_gateway().await;
+    let (s1, j1) = post_product_raw(addr, &perno_create_json(&seeds)).await;
+    assert_eq!(s1, 201);
+    let active_id = j1["id"].as_str().expect("id");
+    let (s2, j2) = post_product_raw(
+        addr,
+        &product_create_json(&seeds, "SKU-INACT", "Inactivo", &seeds.category_id),
+    )
+    .await;
+    assert_eq!(s2, 201);
+    let inactive_id = j2["id"].as_str().expect("id");
+    let del_path = format!("/api/v1/products/{inactive_id}");
+    let (s_del, _, _, _) = http_send(addr, "DELETE", &del_path, None, &[]).await;
+    assert_eq!(s_del, 204);
+    let (s, ct, body, _) = http_send(addr, "GET", "/api/v1/products?active=false", None, &[]).await;
+    handle.abort();
+    let json = json_body(&body);
+    assert_eq!(s, 200);
+    assert_eq!(ct, "application/json");
+    let items = json["items"].as_array().expect("items");
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0]["id"], inactive_id);
+    assert_eq!(items[0]["active"], false);
+    assert_ne!(items[0]["id"].as_str(), Some(active_id));
+    assert_conforms("GET", "/api/v1/products", 200, "application/json", &json);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn get_products_default_excludes_inactive() {
+    let (addr, handle, seeds, _) = setup_gateway().await;
+    let (s1, j1) = post_product_raw(addr, &perno_create_json(&seeds)).await;
+    assert_eq!(s1, 201);
+    let active_id = j1["id"].as_str().expect("id");
+    let (s2, j2) = post_product_raw(
+        addr,
+        &product_create_json(&seeds, "SKU-INACT", "Inactivo", &seeds.category_id),
+    )
+    .await;
+    assert_eq!(s2, 201);
+    let inactive_id = j2["id"].as_str().expect("id");
+    let del_path = format!("/api/v1/products/{inactive_id}");
+    let (s_del, _, _, _) = http_send(addr, "DELETE", &del_path, None, &[]).await;
+    assert_eq!(s_del, 204);
     let (s, _, body, _) = http_send(addr, "GET", "/api/v1/products", None, &[]).await;
     handle.abort();
     let json = json_body(&body);
-    assert_ne!(s, 200);
-    assert!(json.get("items").and_then(|v| v.as_array()).is_none() || s != 200);
+    assert_eq!(s, 200);
+    let items = json["items"].as_array().expect("items");
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0]["id"], active_id);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn get_products_filters_by_brand() {
+    let (addr, handle, seeds, _) = setup_gateway().await;
+    let (s1, _) = post_product_raw(addr, &perno_create_json(&seeds)).await;
+    assert_eq!(s1, 201);
+    let path = format!("/api/v1/products?brandId={}", seeds.brand_id);
+    let (s, _, body, _) = http_send(addr, "GET", &path, None, &[]).await;
+    handle.abort();
+    let json = json_body(&body);
+    assert_eq!(s, 200);
+    let items = json["items"].as_array().expect("items");
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0]["brand"], "Fixser");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn get_products_paginates_by_cursor() {
+    let (addr, handle, seeds, _) = setup_gateway().await;
+    let (s1, j1) = post_product_raw(
+        addr,
+        &product_create_json(&seeds, "SKU-A", "A", &seeds.category_id),
+    )
+    .await;
+    assert_eq!(s1, 201);
+    let id_a = j1["id"].as_str().expect("a").to_string();
+    let (s2, j2) = post_product_raw(
+        addr,
+        &product_create_json(&seeds, "SKU-B", "B", &seeds.category_id),
+    )
+    .await;
+    assert_eq!(s2, 201);
+    let id_b = j2["id"].as_str().expect("b").to_string();
+    let (s3, j3) = post_product_raw(
+        addr,
+        &product_create_json(&seeds, "SKU-C", "C", &seeds.category_id),
+    )
+    .await;
+    assert_eq!(s3, 201);
+    let id_c = j3["id"].as_str().expect("c").to_string();
+    let (s, _, body, _) = http_send(addr, "GET", "/api/v1/products?limit=2", None, &[]).await;
+    let json = json_body(&body);
+    assert_eq!(s, 200);
+    let items = json["items"].as_array().expect("items");
+    assert_eq!(items.len(), 2);
+    let id0 = items[0]["id"].as_str().expect("id0");
+    let id1 = items[1]["id"].as_str().expect("id1");
+    assert!(id0 < id1, "items must be ordered by id ascending");
+    let cursor = json["nextCursor"].as_str().expect("cursor");
+    let path = format!("/api/v1/products?limit=2&cursor={cursor}");
+    let (s2, _, body2, _) = http_send(addr, "GET", &path, None, &[]).await;
+    handle.abort();
+    let json2 = json_body(&body2);
+    assert_eq!(s2, 200);
+    let page2 = json2["items"].as_array().expect("items");
+    assert_eq!(page2.len(), 1);
+    assert!(json2["nextCursor"].is_null());
+    let mut seen: std::collections::HashSet<_> = [id0, id1, page2[0]["id"].as_str().unwrap()]
+        .into_iter()
+        .map(str::to_owned)
+        .collect();
+    assert_eq!(seen.len(), 3);
+    for id in [id_a, id_b, id_c] {
+        assert!(seen.remove(&id));
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn get_products_empty_page() {
+    let (addr, handle, _, _) = setup_gateway().await;
+    let (s, ct, body, _) = http_send(addr, "GET", "/api/v1/products", None, &[]).await;
+    handle.abort();
+    let json = json_body(&body);
+    assert_eq!(s, 200);
+    assert_eq!(ct, "application/json");
+    assert_eq!(json["items"], serde_json::json!([]));
+    assert!(json["nextCursor"].is_null());
+    assert_conforms("GET", "/api/v1/products", 200, "application/json", &json);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn get_products_summary_has_english_dto() {
+    let (addr, handle, seeds, _) = setup_gateway().await;
+    let (s, _) = post_product_raw(addr, &perno_create_json(&seeds)).await;
+    assert_eq!(s, 201);
+    let (s, _, body, _) = http_send(addr, "GET", "/api/v1/products", None, &[]).await;
+    handle.abort();
+    let json = json_body(&body);
+    assert_eq!(s, 200);
+    let item = &json["items"][0];
+    assert!(item.get("name").is_some());
+    assert!(item.get("productType").is_some());
+    assert!(item["price"].is_string());
+    assert!(item["stock"].is_string());
+    assert!(item.get("active").is_some());
+    assert!(item["imageUrl"].is_null());
+    assert!(item.get("nombre").is_none());
+    assert!(item.get("tipo").is_none());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn get_products_invalid_cursor_returns_400() {
+    let (addr, handle, _, _) = setup_gateway().await;
+    let (s, ct, body, _) = http_send(addr, "GET", "/api/v1/products?cursor=%%%", None, &[]).await;
+    handle.abort();
+    let json = json_body(&body);
+    assert_eq!(s, 400);
+    assert_eq!(ct, "application/problem+json");
+    assert_eq!(json["code"], "invalid_input");
+    let fields: Vec<_> = json["errors"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|e| e["field"].as_str())
+        .collect();
+    assert!(fields.contains(&"cursor"));
+    assert_conforms(
+        "GET",
+        "/api/v1/products",
+        400,
+        "application/problem+json",
+        &json,
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn get_products_limit_zero_returns_400() {
+    let (addr, handle, _, _) = setup_gateway().await;
+    let (s, _, body, _) = http_send(addr, "GET", "/api/v1/products?limit=0", None, &[]).await;
+    handle.abort();
+    let json = json_body(&body);
+    assert_eq!(s, 400);
+    assert_eq!(json["code"], "invalid_input");
+    let fields: Vec<_> = json["errors"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|e| e["field"].as_str())
+        .collect();
+    assert!(fields.contains(&"limit"));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn get_products_limit_101_returns_400() {
+    let (addr, handle, _, _) = setup_gateway().await;
+    let (s, _, body, _) = http_send(addr, "GET", "/api/v1/products?limit=101", None, &[]).await;
+    handle.abort();
+    let json = json_body(&body);
+    assert_eq!(s, 400);
+    let fields: Vec<_> = json["errors"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|e| e["field"].as_str())
+        .collect();
+    assert!(fields.contains(&"limit"));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn get_products_invalid_category_id_returns_400() {
+    let (addr, handle, _, _) = setup_gateway().await;
+    let (s, _, body, _) = http_send(
+        addr,
+        "GET",
+        "/api/v1/products?categoryId=not-a-ulid",
+        None,
+        &[],
+    )
+    .await;
+    handle.abort();
+    let json = json_body(&body);
+    assert_eq!(s, 400);
+    let fields: Vec<_> = json["errors"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|e| e["field"].as_str())
+        .collect();
+    assert!(fields.contains(&"categoryId"));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn get_products_invalid_brand_id_returns_400() {
+    let (addr, handle, _, _) = setup_gateway().await;
+    let (s, _, body, _) = http_send(
+        addr,
+        "GET",
+        "/api/v1/products?brandId=not-a-ulid",
+        None,
+        &[],
+    )
+    .await;
+    handle.abort();
+    let json = json_body(&body);
+    assert_eq!(s, 400);
+    let fields: Vec<_> = json["errors"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|e| e["field"].as_str())
+        .collect();
+    assert!(fields.contains(&"brandId"));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn get_products_q_does_not_text_search() {
+    let (addr, handle, seeds, _) = setup_gateway().await;
+    let (s1, _) = post_product_raw(
+        addr,
+        &product_create_json(&seeds, "SKU-X", "Tuerca", &seeds.category_id),
+    )
+    .await;
+    assert_eq!(s1, 201);
+    let (s2, _, body, _) = http_send(addr, "GET", "/api/v1/products", None, &[]).await;
+    let base = json_body(&body);
+    let (s3, _, body_q, _) = http_send(addr, "GET", "/api/v1/products?q=perno", None, &[]).await;
+    handle.abort();
+    assert_eq!(s2, 200);
+    assert_eq!(s3, 200);
+    assert_eq!(base["items"], json_body(&body_q)["items"]);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn get_products_without_service_returns_503() {
+    let state = AppState::new();
+    let (addr, handle) = serve(state).await;
+    let (s, ct, body, _) = http_send(addr, "GET", "/api/v1/products", None, &[]).await;
+    handle.abort();
+    let json = json_body(&body);
+    assert_eq!(s, 503);
+    assert_eq!(ct, "application/problem+json");
+    assert_eq!(json["code"], "unavailable");
+    assert_conforms(
+        "GET",
+        "/api/v1/products",
+        503,
+        "application/problem+json",
+        &json,
+    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

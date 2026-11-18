@@ -540,6 +540,37 @@ fn vortex_serve_get_attribute_definitions_returns_items() {
 }
 
 #[test]
+fn vortex_serve_get_products_empty_returns_200() {
+    let bind = ephemeral_bind();
+    let dir = temp_dir();
+    let path = write_config(&dir, &bind);
+    let mut child = spawn_serve_production(&path);
+    let addr: SocketAddr = bind.parse().expect("bind addr");
+    let start = Instant::now();
+    let mut ok = false;
+    while start.elapsed() < BOOT_WAIT {
+        if let Some((status, ctype, _, body)) = http_get_headers(addr, "/api/v1/products") {
+            if status == 200 && ctype == "application/json" {
+                let json: serde_json::Value = serde_json::from_str(&body).expect("products json");
+                assert!(json.get("items").and_then(|v| v.as_array()).is_some());
+                assert_ne!(
+                    json.get("code").and_then(|c| c.as_str()),
+                    Some("unavailable")
+                );
+                ok = true;
+                break;
+            }
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    terminate_child(&mut child);
+    assert!(
+        ok,
+        "GET /api/v1/products must return 200 JSON ProductSummaryPage, not 503"
+    );
+}
+
+#[test]
 fn vortex_serve_get_categories_returns_items() {
     let bind = ephemeral_bind();
     let dir = temp_dir();

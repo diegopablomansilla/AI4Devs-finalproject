@@ -868,7 +868,7 @@ El resultado de éxito MUST ser la `FichaProducto` rehidratada con el `activo` p
 
 ### Requirement: Adaptador ProductRepo
 
-El crate `storage` MUST implementar el puerto `ProductRepo` (`create`, `get`, `update`, `set_activo`) contra las tablas `producto` y `movimiento_stock` ya migradas (T-02-14, T-02-15) usando `storage::Tx` (T-03-02). Los `id` MUST ser ULID de 26 caracteres **sin** prefijo de tabla (`producto:`). Los errores MUST ser `DomainError`. MUST NOT mapear a HTTP ni a `problem+json`. MUST NOT reindexar Meilisearch (T-03-07). MUST NOT declarar listado (T-02-27). MUST NOT reemplazar el movimiento `inicial` de `create` por `StockLedger::append` (el alta sigue inline; el adaptador `StockLedger` es un tipo aparte). MUST NOT comprobar que categoría o marca existan y estén activas más allá de lo que el esquema `record<…>` ya exige (T-02-20). MUST NOT validar valores de atributo contra definiciones cargadas por el caso de uso (T-02-16 / T-02-20). MUST NOT hidratar ni persistir imágenes (T-02-30).
+El crate `storage` MUST implementar el puerto `ProductRepo` (`create`, `get`, `update`, `set_activo`, `list`) contra las tablas `producto` y `movimiento_stock` ya migradas (T-02-14, T-02-15) usando `storage::Tx` (T-03-02). Los `id` MUST ser ULID de 26 caracteres **sin** prefijo de tabla (`producto:`). Los errores MUST ser `DomainError`. MUST NOT mapear a HTTP ni a `problem+json`. MUST NOT reindexar Meilisearch (T-03-07). MUST NOT reemplazar el movimiento `inicial` de `create` por `StockLedger::append` (el alta sigue inline; el adaptador `StockLedger` es un tipo aparte). MUST NOT comprobar que categoría o marca existan y estén activas más allá de lo que el esquema `record<…>` ya exige (T-02-20). MUST NOT validar valores de atributo contra definiciones cargadas por el caso de uso (T-02-16 / T-02-20). MUST NOT hidratar ni persistir imágenes (T-02-30).
 
 `create` MUST persistir los campos de `NewProducto` en una sola transacción:
 
@@ -899,6 +899,8 @@ Si `stock_inicial < 0`, `create` MUST fallar con `DomainError` `code` `invalid_i
 Si el `id` no existe, `update` MUST fallar con `DomainError` `code` `not_found` y MUST NOT emitir outbox. Si el `UPDATE` no afecta filas (versión desactualizada), MUST fallar con `DomainError::Conflict` y `code` `version_conflict`, MUST NOT cambiar la fila ni emitir outbox. Una violación del índice único `sku` MUST fallar con `DomainError::Conflict` y `code` `duplicate_sku`. `sku` o `nombre` vacíos MUST ser `invalid_input`.
 
 `set_activo` MUST seguir el requirement «ProductRepo set_activo conserva historial».
+
+`list` MUST seguir el requirement «ProductRepo list admin con filtros».
 
 #### Scenario: Alta con stock inicial 50 (happy, HU-02-04, Listo cuando)
 
@@ -1145,3 +1147,50 @@ El crate `storage` MUST implementar el puerto `AttributeUsage` (`valores`) contr
 - **THEN** la operación termina sin error
 - **AND** la fila persistida tiene `clave` `"medida_mm"`
 - **AND** el error no es `attribute_in_use`
+
+### Requirement: ProductRepo list admin con filtros
+
+El adaptador `ProductRepo` en `storage` MUST implementar `list(filtro, after, take)` contra la tabla `producto` ya migrada. MUST NOT mapear a HTTP. MUST NOT reindexar Meilisearch (T-03-07). MUST NOT escribir ni emitir outbox. MUST NOT hidratar imágenes.
+
+La consulta MUST ordenar por `id` ascendente y MUST devolver a lo sumo `take` filas. Si `after` está presente, MUST aplicar `id` estrictamente mayor que ese ULID. El filtro de rama MUST ser el de [4.4.1](../../../../../docs/4-modelo.md#441-categoria--árbol): `categoria = $c OR categoria.ancestros CONTAINS $c`. `activo` MUST filtrar `producto.activo`. `marca` presente MUST filtrar `producto.marca`. Cada ítem MUST ser un `ResumenProducto` con `marca_nombre` (nombre de la marca hidratada, o ausente) y `categoria_ruta` (`ruta` de la categoría). MUST NOT devolver `FichaProducto` completa (sin atributos ni códigos). Una categoría o marca que no matchea MUST ser lista vacía, no `not_found`.
+
+#### Scenario: Filtro por rama incluye descendientes (happy, HU-02-10, Listo cuando)
+
+- **WHEN** existe `"Fijaciones"` con hija `"Pernos"` persistidas
+- **AND** hay un producto en cada una y un tercero fuera de la rama
+- **AND** se llama `list` con `categoria` = id de `"Fijaciones"`, `activo` verdadero, `after` ausente y `take` suficiente
+- **THEN** el resultado incluye los dos de la rama
+- **AND** no incluye el de fuera
+- **AND** cada ítem de la rama tiene `categoria_ruta` que empieza por `"Fijaciones"`
+
+#### Scenario: Filtro por inactivos (happy, HU-02-10, Listo cuando)
+
+- **WHEN** existe un producto activo y otro con `activo` falso
+- **AND** se llama `list` con `activo` falso
+- **THEN** el resultado incluye solo el inactivo
+
+#### Scenario: Filtro por marca (happy)
+
+- **WHEN** existen productos de dos marcas
+- **AND** se llama `list` con `marca` de la primera y `activo` verdadero
+- **THEN** el resultado incluye solo los de esa marca
+- **AND** `marca_nombre` es el nombre persistido de esa marca
+
+#### Scenario: after excluye ids previos (happy)
+
+- **WHEN** existen tres productos activos A, B, C ordenados por `id`
+- **AND** se llama `list` con `take` 2 y `after` = id de B
+- **THEN** el resultado es C
+- **AND** no incluye A ni B
+
+#### Scenario: categoría inexistente es lista vacía (happy)
+
+- **WHEN** se llama `list` con `categoria` igual a un ULID que no existe en `categoria`
+- **THEN** el resultado es una lista vacía
+- **AND** no es `not_found`
+
+#### Scenario: list no escribe (unhappy)
+
+- **WHEN** se llama `list` sobre un catálogo con productos
+- **THEN** no se inserta evento en `outbox`
+- **AND** no cambia `producto.stock` ni `activo`

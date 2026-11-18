@@ -429,6 +429,28 @@ pub struct UpdateProducto {
     pub ubicacion: Option<Ubicacion>,
 }
 
+/// Admin list filters (Spanish field names; HTTP maps query params in T-02-27).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FiltroProducto {
+    pub categoria: Option<Id<Categoria>>,
+    pub marca: Option<Id<Marca>>,
+    pub activo: bool,
+}
+
+/// Lightweight product row for admin lists (no ficha / attributes).
+#[derive(Debug, Clone, PartialEq)]
+pub struct ResumenProducto {
+    pub id: Id<Producto>,
+    pub sku: String,
+    pub nombre: String,
+    pub tipo: String,
+    pub precio: Decimal,
+    pub stock: Decimal,
+    pub activo: bool,
+    pub marca_nombre: Option<String>,
+    pub categoria_ruta: Vec<String>,
+}
+
 /// Input for `ProductRepo::create`.
 #[derive(Debug, Clone, PartialEq)]
 pub struct NewProducto {
@@ -468,6 +490,13 @@ pub trait ProductRepo {
         id: Id<Producto>,
         activo: bool,
     ) -> impl Future<Output = Result<FichaProducto, DomainError>> + Send;
+
+    fn list(
+        &self,
+        filtro: FiltroProducto,
+        after: Option<Id<Producto>>,
+        take: u32,
+    ) -> impl Future<Output = Result<Vec<ResumenProducto>, DomainError>> + Send;
 }
 
 fn field_invalid_input(field: &str, message: &str) -> DomainError {
@@ -942,6 +971,61 @@ mod tests {
         ) -> impl Future<Output = Result<FichaProducto, DomainError>> + Send {
             async { Err(DomainError::not_found()) }
         }
+
+        fn list(
+            &self,
+            _filtro: FiltroProducto,
+            _after: Option<Id<Producto>>,
+            _take: u32,
+        ) -> impl Future<Output = Result<Vec<ResumenProducto>, DomainError>> + Send {
+            async { Ok(vec![]) }
+        }
+    }
+
+    #[test]
+    fn domain_filtro_producto_has_categoria_marca_activo() {
+        let cat = Id::<Categoria>::generate();
+        let filtro = FiltroProducto {
+            categoria: Some(cat.clone()),
+            marca: None,
+            activo: true,
+        };
+        assert_eq!(filtro.categoria, Some(cat));
+        assert!(filtro.marca.is_none());
+        assert!(filtro.activo);
+    }
+
+    #[test]
+    fn domain_resumen_producto_exposes_marca_nombre_and_ruta() {
+        let resumen = ResumenProducto {
+            id: Id::generate(),
+            sku: "SKU-1".into(),
+            nombre: "Perno".into(),
+            tipo: "Perno".into(),
+            precio: "10".parse().expect("precio"),
+            stock: "0".parse().expect("stock"),
+            activo: true,
+            marca_nombre: Some("Fixser".into()),
+            categoria_ruta: vec!["Fijaciones".into(), "Pernos".into()],
+        };
+        assert_eq!(resumen.marca_nombre.as_deref(), Some("Fixser"));
+        assert_eq!(resumen.categoria_ruta, ["Fijaciones", "Pernos"]);
+    }
+
+    #[test]
+    fn domain_product_repo_declares_list() {
+        fn assert_list<R: ProductRepo>(r: &R) {
+            let _f = r.list(
+                FiltroProducto {
+                    categoria: None,
+                    marca: None,
+                    activo: true,
+                },
+                None,
+                50,
+            );
+        }
+        assert_list(&DummyProductRepo);
     }
 
     #[test]
@@ -987,6 +1071,15 @@ mod tests {
                 ubicacion: None,
             });
             let _f4 = r.set_activo(Id::generate(), true);
+            let _f5 = r.list(
+                FiltroProducto {
+                    categoria: None,
+                    marca: None,
+                    activo: true,
+                },
+                None,
+                10,
+            );
         }
         assert_repo(&DummyProductRepo);
     }

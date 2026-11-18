@@ -38,8 +38,8 @@ pub use movimiento_stock::{
 };
 pub use outbox::{OutboxEntity, OutboxEvent, OutboxEventError, OutboxOp};
 pub use producto::{
-    AtributoFicha, AtributoValor, Codigo, FichaProducto, NewProducto, ProductRepo, Producto,
-    ProductoDraft, Sku, TipoCodigo, Ubicacion, UnidadMedida, UpdateProducto, ValorAtributo,
-    valor_compatible_con,
+    AtributoFicha, AtributoValor, Codigo, FichaProducto, FiltroProducto, NewProducto, ProductRepo,
+    Producto, ProductoDraft, ResumenProducto, Sku, TipoCodigo, Ubicacion, UnidadMedida,
+    UpdateProducto, ValorAtributo, valor_compatible_con,
 };
 pub use timestamp::{InvalidTimestamp, Timestamp};
