@@ -185,6 +185,50 @@ impl ApiError {
     }
 
     #[must_use]
+    pub fn invalid_product_id(instance: String) -> Self {
+        Self::invalid_input_with_fields(
+            vec![FieldProblem {
+                field: "productId".into(),
+                message: "must be a valid ULID".into(),
+            }],
+            Some("Invalid product id".into()),
+            Some(instance),
+            "invalid_input",
+        )
+    }
+
+    #[must_use]
+    pub fn invalid_terminal_header(instance: String) -> Self {
+        Self::invalid_input_with_fields(
+            vec![FieldProblem {
+                field: "X-Vectra-Terminal".into(),
+                message: "must be at most 64 characters".into(),
+            }],
+            Some("Revise the request headers.".into()),
+            Some(instance),
+            "invalid_input",
+        )
+    }
+
+    #[must_use]
+    pub fn patch_product_active(instance: String) -> Self {
+        Self::invalid_input_with_fields(
+            vec![FieldProblem {
+                field: "active".into(),
+                message: "product active flag cannot be updated via PATCH".into(),
+            }],
+            Some("Revise the request body.".into()),
+            Some(instance),
+            "invalid_input",
+        )
+    }
+
+    #[must_use]
+    pub fn from_domain_product(err: DomainError, instance: impl Into<String>) -> Self {
+        Self::from(remap_domain_product_errors(err)).with_instance(instance.into())
+    }
+
+    #[must_use]
     pub fn invalid_query_q(instance: String) -> Self {
         Self::invalid_input_with_fields(
             vec![FieldProblem {
@@ -375,8 +419,38 @@ fn remap_api_field(field: &str) -> String {
         "unidad" => "unit".into(),
         "buscable" => "searchable".into(),
         "orden" => "order".into(),
+        "descripcion" => "description".into(),
+        "categoria" => "categoryId".into(),
+        "marca" => "brandId".into(),
+        "unidad_medida" => "unitOfMeasure".into(),
+        "precio" => "price".into(),
+        "ubicacion" => "location".into(),
+        "stock_inicial" => "initialStock".into(),
         other => other.to_string(),
     }
+}
+
+fn remap_domain_product_errors(err: DomainError) -> DomainError {
+    match err {
+        DomainError::InvalidInput { code, errors } => {
+            let errors = errors
+                .into_iter()
+                .map(|FieldError { field, message }| FieldError {
+                    field: remap_product_api_field(&field),
+                    message,
+                })
+                .collect();
+            DomainError::InvalidInput { code, errors }
+        }
+        other => other,
+    }
+}
+
+fn remap_product_api_field(field: &str) -> String {
+    if field == "tipo" {
+        return "productType".into();
+    }
+    remap_api_field(field)
 }
 
 fn serde_field_path(err: &axum::extract::rejection::JsonDataError) -> Option<String> {

@@ -7,8 +7,10 @@ use std::sync::Arc;
 
 use api::{AppState, build_router};
 use axum::serve;
-use catalog::{AttributeDefService, BrandService, CategoryService, ProductionOccupancy};
-use storage::{AtributoDefRepo, CategoriaRepo, DB_DIR_NAME, Db, MarcaRepo};
+use catalog::{
+    AttributeDefService, BrandService, CategoryService, ProductService, ProductionOccupancy,
+};
+use storage::{AtributoDefRepo, CategoriaRepo, DB_DIR_NAME, Db, MarcaRepo, ProductoRepo};
 use supervisor::{ComponentId, ComponentStatus, HealthRegistry};
 use tokio::net::TcpListener;
 
@@ -119,6 +121,12 @@ async fn serve_config(config: Config, _logging_guard: LoggingGuard) -> i32 {
     let attribute_def_gateway: Arc<dyn catalog::AttributeDefGateway> = Arc::new(
         AttributeDefService::new(AtributoDefRepo::new(Arc::clone(&db))),
     );
+    let product_gateway: Arc<dyn catalog::ProductGateway> = Arc::new(ProductService::new(
+        ProductoRepo::new(Arc::clone(&db)),
+        CategoriaRepo::new(Arc::clone(&db)),
+        MarcaRepo::new(Arc::clone(&db)),
+        AtributoDefRepo::new(Arc::clone(&db)),
+    ));
 
     let bind = match config.server.bind.parse::<std::net::SocketAddr>() {
         Ok(addr) => addr,
@@ -149,7 +157,8 @@ async fn serve_config(config: Config, _logging_guard: LoggingGuard) -> i32 {
         .with_version(env!("CARGO_PKG_VERSION"))
         .with_categories(category_gateway)
         .with_brands(brand_gateway)
-        .with_attribute_defs(attribute_def_gateway);
+        .with_attribute_defs(attribute_def_gateway)
+        .with_products(product_gateway);
     let router = build_router(state);
     if let Err(e) = serve(listener, router)
         .with_graceful_shutdown(shutdown_signal())

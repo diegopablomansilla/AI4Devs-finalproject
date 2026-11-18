@@ -144,12 +144,16 @@ async fn create_impl(db: Arc<Db>, input: NewProducto) -> Result<Producto, Domain
     if has_stock {
         let mov_id = Id::<MovimientoStock>::generate().to_string();
         let stock_lit = sql_decimal(input.stock_inicial);
+        let terminal_sql = match &input.terminal {
+            Some(t) => format!(", terminal: {}", sql_string(t)),
+            None => String::new(),
+        };
         let mov_sql = format!(
             "CREATE type::thing('movimiento_stock', '{mov_id}') CONTENT {{ \
              producto: {producto_thing}, \
              tipo: 'inicial', \
              cantidad: {stock_lit}, \
-             stock_resultante: {stock_lit} \
+             stock_resultante: {stock_lit}{terminal_sql} \
              }};"
         );
         tx.run(mov_sql);

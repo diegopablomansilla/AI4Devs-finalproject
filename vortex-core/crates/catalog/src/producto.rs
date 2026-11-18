@@ -611,7 +611,7 @@ mod tests {
         ConflictCode, DomainCode, FieldError, NewAtributoDef, NewCategoria, NewMarca, TipoAtributo,
         Ubicacion, ValorAtributo,
     };
-    use std::sync::Arc;
+    use std::sync::{Arc, Mutex};
 
     struct Seeds {
         categoria_id: Id<Categoria>,
@@ -797,6 +797,7 @@ mod tests {
                 posicion: Some("12".into()),
             }),
             stock_inicial: "50".parse().expect("stock"),
+            terminal: None,
         }
     }
 
@@ -1032,5 +1033,100 @@ mod tests {
             .await
             .expect("create");
         assert_eq!(ficha.producto.sku.as_str(), "PER-M8X40-ZN");
+    }
+
+    struct RecordingProductRepo<C, B, A> {
+        inner: InMemoryProductRepo<C, B, A>,
+        last_create: Arc<Mutex<Option<NewProducto>>>,
+    }
+
+    impl<C, B, A> RecordingProductRepo<C, B, A> {
+        fn new(inner: InMemoryProductRepo<C, B, A>) -> Self {
+            Self {
+                inner,
+                last_create: Arc::new(Mutex::new(None)),
+            }
+        }
+
+        fn last_create(&self) -> Option<NewProducto> {
+            self.last_create.lock().expect("lock").clone()
+        }
+    }
+
+    impl<C, B, A> ProductRepo for RecordingProductRepo<C, B, A>
+    where
+        C: CategoryRepo + Send + Sync,
+        B: BrandRepo + Send + Sync,
+        A: AttributeDefRepo + Send + Sync,
+    {
+        fn create(
+            &self,
+            input: NewProducto,
+        ) -> impl Future<Output = Result<Producto, DomainError>> + Send {
+            let inner = &self.inner;
+            let last = Arc::clone(&self.last_create);
+            async move {
+                *last.lock().expect("lock") = Some(input.clone());
+                inner.create(input).await
+            }
+        }
+
+        fn get(
+            &self,
+            id: Id<domain::Producto>,
+        ) -> impl Future<Output = Result<FichaProducto, DomainError>> + Send {
+            self.inner.get(id)
+        }
+
+        fn update(
+            &self,
+            input: UpdateProducto,
+        ) -> impl Future<Output = Result<FichaProducto, DomainError>> + Send {
+            self.inner.update(input)
+        }
+    }
+
+    #[tokio::test]
+    async fn catalog_create_forwards_terminal_to_repo() {
+        let categories = Arc::new(InMemoryCategoryRepo::new());
+        let categoria = categories
+            .create(NewCategoria {
+                nombre: "Fijaciones".into(),
+                slug: None,
+                padre: None,
+            })
+            .await
+            .expect("categoria");
+        let brands = Arc::new(InMemoryBrandRepo::new());
+        let attrs = Arc::new(InMemoryAttributeDefRepo::new());
+        let cat_shared = SharedCategoryRepo(Arc::clone(&categories));
+        let brand_shared = SharedBrandRepo(Arc::clone(&brands));
+        let attr_shared = SharedAttributeDefRepo(Arc::clone(&attrs));
+        let products = RecordingProductRepo::new(InMemoryProductRepo::new(
+            cat_shared.clone(),
+            brand_shared.clone(),
+            attr_shared.clone(),
+        ));
+        let service = ProductService::new(products, cat_shared, brand_shared, attr_shared);
+        let input = NewProducto {
+            sku: "SKU-TERM".into(),
+            nombre: "Producto".into(),
+            tipo: "Perno".into(),
+            descripcion: None,
+            marca: None,
+            categoria: categoria.id,
+            atributos: vec![],
+            codigos: vec![],
+            unidad_medida: UnidadMedida::Unidad,
+            precio: "1".parse().expect("precio"),
+            ubicacion: None,
+            stock_inicial: "0".parse().expect("stock"),
+            terminal: Some("caja-1".into()),
+        };
+        service.create(input).await.expect("create");
+        assert_eq!(
+            service.products.last_create().and_then(|n| n.terminal),
+            Some("caja-1".into())
+        );
     }
 }

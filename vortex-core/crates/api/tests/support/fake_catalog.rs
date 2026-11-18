@@ -5,13 +5,14 @@ use std::sync::{Arc, Mutex};
 
 use catalog::{
     AttributeDefGateway, AttributeDefService, BrandGateway, BrandService, CategoryGateway,
-    CategoryService, ProductionOccupancy,
+    CategoryService, PatchProducto, ProductGateway, ProductService, ProductionOccupancy,
 };
 use domain::{
-    AtributoDef, AtributoDefDraft, AttributeDefRepo, BrandRepo, Categoria, CategoriaDraft,
-    CategoryRepo, ConflictCode, DomainError, Id, InvalidInputCode, MAX_DEPTH, Marca, MarcaDraft,
-    NewAtributoDef, NewCategoria, NewMarca, Slug, Timestamp, UpdateAtributoDef, UpdateCategoria,
-    UpdateMarca, reject_cycle,
+    AtributoDef, AtributoDefDraft, AtributoFicha, AttributeDefRepo, BrandRepo, Categoria,
+    CategoriaDraft, CategoryRepo, ConflictCode, DomainError, FichaProducto, Id, InvalidInputCode,
+    MAX_DEPTH, Marca, MarcaDraft, NewAtributoDef, NewCategoria, NewMarca, NewProducto, ProductRepo,
+    Producto, Sku, Slug, Timestamp, TipoAtributo, UpdateAtributoDef, UpdateCategoria, UpdateMarca,
+    UpdateProducto, reject_cycle,
 };
 
 const TS: &str = "2026-09-24T21:33:00Z";
@@ -20,14 +21,15 @@ fn ts() -> Timestamp {
     TS.parse().expect("timestamp")
 }
 
+#[derive(Clone)]
 pub struct FakeCategoryRepo {
-    inner: Mutex<HashMap<String, Categoria>>,
+    inner: Arc<Mutex<HashMap<String, Categoria>>>,
 }
 
 impl FakeCategoryRepo {
     pub fn new() -> Self {
         Self {
-            inner: Mutex::new(HashMap::new()),
+            inner: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -258,14 +260,15 @@ pub fn test_category_gateway() -> Arc<dyn CategoryGateway> {
     ))
 }
 
+#[derive(Clone)]
 pub struct FakeBrandRepo {
-    inner: Mutex<HashMap<String, Marca>>,
+    inner: Arc<Mutex<HashMap<String, Marca>>>,
 }
 
 impl FakeBrandRepo {
     pub fn new() -> Self {
         Self {
-            inner: Mutex::new(HashMap::new()),
+            inner: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -400,14 +403,15 @@ pub fn test_brand_gateway() -> Arc<dyn BrandGateway> {
     Arc::new(BrandService::new(FakeBrandRepo::new()))
 }
 
+#[derive(Clone)]
 pub struct FakeAttributeDefRepo {
-    inner: Mutex<HashMap<String, AtributoDef>>,
+    inner: Arc<Mutex<HashMap<String, AtributoDef>>>,
 }
 
 impl FakeAttributeDefRepo {
     pub fn new() -> Self {
         Self {
-            inner: Mutex::new(HashMap::new()),
+            inner: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -548,4 +552,332 @@ impl AttributeDefRepo for FakeAttributeDefRepo {
 
 pub fn test_attribute_def_gateway() -> Arc<dyn AttributeDefGateway> {
     Arc::new(AttributeDefService::new(FakeAttributeDefRepo::new()))
+}
+
+#[derive(Clone)]
+pub struct FakeProductRepo {
+    inner: Arc<Mutex<HashMap<String, Producto>>>,
+    categories: FakeCategoryRepo,
+    brands: FakeBrandRepo,
+    attrs: FakeAttributeDefRepo,
+}
+
+impl FakeProductRepo {
+    pub fn new(
+        categories: FakeCategoryRepo,
+        brands: FakeBrandRepo,
+        attrs: FakeAttributeDefRepo,
+    ) -> Self {
+        Self {
+            inner: Arc::new(Mutex::new(HashMap::new())),
+            categories,
+            brands,
+            attrs,
+        }
+    }
+
+    fn sku_taken(
+        map: &HashMap<String, Producto>,
+        sku: &str,
+        except: Option<&Id<Producto>>,
+    ) -> bool {
+        map.values().any(|p| {
+            if except.is_some_and(|e| e == &p.id) {
+                return false;
+            }
+            p.sku.as_str() == sku
+        })
+    }
+
+    async fn hydrate_ficha(&self, producto: Producto) -> Result<FichaProducto, DomainError> {
+        let categoria = self.categories.get(producto.categoria.clone()).await?;
+        let marca = match producto.marca {
+            None => None,
+            Some(ref id) => Some(self.brands.get(id.clone()).await?),
+        };
+        let mut ficha_attrs = Vec::with_capacity(producto.atributos.len());
+        for attr in &producto.atributos {
+            let def = self.attrs.get(attr.def.clone()).await?;
+            ficha_attrs.push(AtributoFicha {
+                def: attr.def.clone(),
+                clave: def.clave,
+                etiqueta: def.etiqueta,
+                unidad: def.unidad,
+                valor: attr.valor.clone(),
+            });
+        }
+        Ok(FichaProducto {
+            producto,
+            marca,
+            categoria,
+            atributos: ficha_attrs,
+        })
+    }
+}
+
+impl ProductRepo for FakeProductRepo {
+    fn create(
+        &self,
+        input: NewProducto,
+    ) -> impl std::future::Future<Output = Result<Producto, DomainError>> + Send {
+        async move {
+            let sku = Sku::try_new(&input.sku)?;
+            let map = self.inner.lock().expect("lock");
+            if Self::sku_taken(&map, sku.as_str(), None) {
+                return Err(DomainError::conflict(ConflictCode::DuplicateSku));
+            }
+            drop(map);
+            let id = Id::<Producto>::generate();
+            let producto = Producto {
+                id: id.clone(),
+                sku,
+                nombre: input.nombre.trim().to_string(),
+                tipo: input.tipo.trim().to_string(),
+                descripcion: input.descripcion,
+                marca: input.marca,
+                categoria: input.categoria,
+                atributos: input.atributos,
+                codigos: input.codigos,
+                unidad_medida: input.unidad_medida,
+                precio: input.precio,
+                ubicacion: input.ubicacion,
+                stock: input.stock_inicial,
+                activo: true,
+                version: 1,
+                creado_en: ts(),
+                actualizado_en: ts(),
+            };
+            self.inner
+                .lock()
+                .expect("lock")
+                .insert(id.to_string(), producto.clone());
+            Ok(producto)
+        }
+    }
+
+    fn get(
+        &self,
+        id: Id<Producto>,
+    ) -> impl std::future::Future<Output = Result<FichaProducto, DomainError>> + Send {
+        async move {
+            let producto = self
+                .inner
+                .lock()
+                .expect("lock")
+                .get(&id.to_string())
+                .cloned()
+                .ok_or(DomainError::not_found())?;
+            self.hydrate_ficha(producto).await
+        }
+    }
+
+    fn update(
+        &self,
+        input: UpdateProducto,
+    ) -> impl std::future::Future<Output = Result<FichaProducto, DomainError>> + Send {
+        async move {
+            let sku = Sku::try_new(&input.sku)?;
+            let current = {
+                let map = self.inner.lock().expect("lock");
+                map.get(&input.id.to_string()).cloned()
+            };
+            let Some(current) = current else {
+                return Err(DomainError::not_found());
+            };
+            if current.version != input.version {
+                return Err(DomainError::conflict(ConflictCode::VersionConflict));
+            }
+            {
+                let map = self.inner.lock().expect("lock");
+                if Self::sku_taken(&map, sku.as_str(), Some(&input.id)) {
+                    return Err(DomainError::conflict(ConflictCode::DuplicateSku));
+                }
+            }
+            let built = Producto {
+                id: input.id.clone(),
+                sku,
+                nombre: input.nombre.trim().to_string(),
+                tipo: input.tipo.trim().to_string(),
+                descripcion: input.descripcion.clone(),
+                marca: input.marca.clone(),
+                categoria: input.categoria.clone(),
+                atributos: input.atributos.clone(),
+                codigos: input.codigos.clone(),
+                unidad_medida: input.unidad_medida,
+                precio: input.precio,
+                ubicacion: input.ubicacion.clone(),
+                stock: current.stock,
+                activo: current.activo,
+                version: input.version + 1,
+                creado_en: current.creado_en,
+                actualizado_en: ts(),
+            };
+            self.inner
+                .lock()
+                .expect("lock")
+                .insert(input.id.to_string(), built.clone());
+            self.hydrate_ficha(built).await
+        }
+    }
+}
+
+pub struct ProductTestSeeds {
+    pub category_id: Id<Categoria>,
+    pub brand_id: Id<Marca>,
+    pub medida_id: Id<AtributoDef>,
+    pub largo_id: Id<AtributoDef>,
+    pub grado_id: Id<AtributoDef>,
+    pub categories: FakeCategoryRepo,
+}
+
+struct RecordingProductGateway {
+    inner: ProductService<FakeProductRepo, FakeCategoryRepo, FakeBrandRepo, FakeAttributeDefRepo>,
+    last_create: Arc<Mutex<Option<NewProducto>>>,
+}
+
+impl ProductGateway for RecordingProductGateway {
+    fn create(
+        &self,
+        input: NewProducto,
+    ) -> std::pin::Pin<
+        Box<dyn std::future::Future<Output = Result<FichaProducto, DomainError>> + Send + '_>,
+    > {
+        let last = Arc::clone(&self.last_create);
+        let input_clone = input.clone();
+        Box::pin(async move {
+            *last.lock().expect("lock") = Some(input_clone);
+            self.inner.create(input).await
+        })
+    }
+
+    fn get(
+        &self,
+        id: Id<Producto>,
+    ) -> std::pin::Pin<
+        Box<dyn std::future::Future<Output = Result<FichaProducto, DomainError>> + Send + '_>,
+    > {
+        Box::pin(self.inner.get(id))
+    }
+
+    fn update(
+        &self,
+        patch: PatchProducto,
+    ) -> std::pin::Pin<
+        Box<dyn std::future::Future<Output = Result<FichaProducto, DomainError>> + Send + '_>,
+    > {
+        Box::pin(self.inner.update(patch))
+    }
+}
+
+pub async fn test_product_gateway() -> (
+    Arc<dyn ProductGateway>,
+    Arc<Mutex<Option<NewProducto>>>,
+    ProductTestSeeds,
+) {
+    let categories = FakeCategoryRepo::new();
+    let fijaciones = categories
+        .create(NewCategoria {
+            nombre: "Fijaciones".into(),
+            slug: None,
+            padre: None,
+        })
+        .await
+        .expect("fijaciones");
+    let pernos = categories
+        .create(NewCategoria {
+            nombre: "Pernos".into(),
+            slug: None,
+            padre: Some(fijaciones.id),
+        })
+        .await
+        .expect("pernos");
+    let brands = FakeBrandRepo::new();
+    let marca = brands
+        .create(NewMarca {
+            nombre: "Fixser".into(),
+            slug: None,
+        })
+        .await
+        .expect("marca");
+    let attrs = FakeAttributeDefRepo::new();
+    let medida = attrs
+        .create(NewAtributoDef {
+            clave: "medida".into(),
+            etiqueta: "Medida".into(),
+            tipo: TipoAtributo::Texto,
+            unidad: Some("mm".into()),
+            opciones: None,
+            facetable: false,
+            buscable: true,
+            orden: 0,
+        })
+        .await
+        .expect("medida");
+    let largo = attrs
+        .create(NewAtributoDef {
+            clave: "largo".into(),
+            etiqueta: "Largo".into(),
+            tipo: TipoAtributo::Numero,
+            unidad: Some("mm".into()),
+            opciones: None,
+            facetable: false,
+            buscable: true,
+            orden: 1,
+        })
+        .await
+        .expect("largo");
+    let grado = attrs
+        .create(NewAtributoDef {
+            clave: "grado".into(),
+            etiqueta: "Grado".into(),
+            tipo: TipoAtributo::Enum,
+            unidad: None,
+            opciones: Some(vec!["2".into(), "5".into(), "8".into()]),
+            facetable: true,
+            buscable: true,
+            orden: 2,
+        })
+        .await
+        .expect("grado");
+
+    let categories_for_seeds = categories.clone();
+    let product_repo = FakeProductRepo::new(categories.clone(), brands.clone(), attrs.clone());
+    let service = ProductService::new(product_repo, categories, brands, attrs);
+    let last_create = Arc::new(Mutex::new(None));
+    let gateway = Arc::new(RecordingProductGateway {
+        inner: service,
+        last_create: Arc::clone(&last_create),
+    });
+    let seeds = ProductTestSeeds {
+        category_id: pernos.id,
+        brand_id: marca.id,
+        medida_id: medida.id,
+        largo_id: largo.id,
+        grado_id: grado.id,
+        categories: categories_for_seeds,
+    };
+    (gateway, last_create, seeds)
+}
+
+pub fn perno_create_json(seeds: &ProductTestSeeds) -> String {
+    format!(
+        r#"{{
+            "sku": "PER-M8X40-ZN",
+            "name": "Perno hexagonal M8 x 40 zincado",
+            "productType": "Perno",
+            "brandId": "{}",
+            "categoryId": "{}",
+            "attributes": [
+                {{ "definitionId": "{}", "value": "M8" }},
+                {{ "definitionId": "{}", "value": 40 }},
+                {{ "definitionId": "{}", "value": "5" }}
+            ],
+            "codes": [{{ "type": "manufacturer", "value": "HX-0840Z" }}],
+            "unitOfMeasure": "unit",
+            "price": "120.50",
+            "location": {{ "aisle": "3", "shelf": "B", "position": "12" }},
+            "initialStock": "50"
+        }}"#,
+        seeds.brand_id, seeds.category_id, seeds.medida_id, seeds.largo_id, seeds.grado_id
+    )
 }
