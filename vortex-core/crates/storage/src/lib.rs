@@ -4,6 +4,7 @@ mod atributo_def;
 mod categoria;
 mod marca;
 mod migrate;
+mod producto;
 pub mod testing;
 mod tx;
 
@@ -15,6 +16,7 @@ pub use migrate::{
     MIGRATION_0004_SQL, MIGRATION_0005_SQL, MIGRATION_0006_SQL, MigrateError, Migration,
     MigrationRecord, checksum_hex,
 };
+pub use producto::ProductoRepo;
 pub use tx::{OutboxNotifier, Tx};
 
 use std::path::{Path, PathBuf};
