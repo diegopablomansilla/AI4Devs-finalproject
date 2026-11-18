@@ -3,11 +3,15 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
-use catalog::{BrandGateway, BrandService, CategoryGateway, CategoryService, ProductionOccupancy};
+use catalog::{
+    AttributeDefGateway, AttributeDefService, BrandGateway, BrandService, CategoryGateway,
+    CategoryService, ProductionOccupancy,
+};
 use domain::{
-    BrandRepo, Categoria, CategoriaDraft, CategoryRepo, ConflictCode, DomainError, Id,
-    InvalidInputCode, MAX_DEPTH, Marca, MarcaDraft, NewCategoria, NewMarca, Slug, Timestamp,
-    UpdateCategoria, UpdateMarca, reject_cycle,
+    AtributoDef, AtributoDefDraft, AttributeDefRepo, BrandRepo, Categoria, CategoriaDraft,
+    CategoryRepo, ConflictCode, DomainError, Id, InvalidInputCode, MAX_DEPTH, Marca, MarcaDraft,
+    NewAtributoDef, NewCategoria, NewMarca, Slug, Timestamp, UpdateAtributoDef, UpdateCategoria,
+    UpdateMarca, reject_cycle,
 };
 
 const TS: &str = "2026-09-24T21:33:00Z";
@@ -394,4 +398,154 @@ impl BrandRepo for FakeBrandRepo {
 
 pub fn test_brand_gateway() -> Arc<dyn BrandGateway> {
     Arc::new(BrandService::new(FakeBrandRepo::new()))
+}
+
+pub struct FakeAttributeDefRepo {
+    inner: Mutex<HashMap<String, AtributoDef>>,
+}
+
+impl FakeAttributeDefRepo {
+    pub fn new() -> Self {
+        Self {
+            inner: Mutex::new(HashMap::new()),
+        }
+    }
+
+    fn clave_taken(
+        map: &HashMap<String, AtributoDef>,
+        clave: &str,
+        except: Option<&Id<AtributoDef>>,
+    ) -> bool {
+        map.values().any(|d| {
+            if except.is_some_and(|e| e == &d.id) {
+                return false;
+            }
+            d.clave == clave
+        })
+    }
+}
+
+impl AttributeDefRepo for FakeAttributeDefRepo {
+    fn create(
+        &self,
+        input: NewAtributoDef,
+    ) -> impl std::future::Future<Output = Result<AtributoDef, DomainError>> + Send {
+        async move {
+            input.validate()?;
+            let map = self.inner.lock().expect("lock");
+            if Self::clave_taken(&map, &input.clave, None) {
+                return Err(DomainError::conflict(ConflictCode::Conflict));
+            }
+            drop(map);
+            let id = Id::<AtributoDef>::generate();
+            let def = AtributoDef::try_new(AtributoDefDraft {
+                id: id.clone(),
+                clave: input.clave,
+                etiqueta: input.etiqueta,
+                tipo: input.tipo,
+                unidad: input.unidad,
+                opciones: input.opciones,
+                facetable: input.facetable,
+                buscable: input.buscable,
+                orden: input.orden,
+                activo: true,
+                creado_en: ts(),
+                actualizado_en: ts(),
+            })?;
+            self.inner
+                .lock()
+                .expect("lock")
+                .insert(id.to_string(), def.clone());
+            Ok(def)
+        }
+    }
+
+    fn get(
+        &self,
+        id: Id<AtributoDef>,
+    ) -> impl std::future::Future<Output = Result<AtributoDef, DomainError>> + Send {
+        async move {
+            self.inner
+                .lock()
+                .expect("lock")
+                .get(&id.to_string())
+                .cloned()
+                .ok_or(DomainError::not_found())
+        }
+    }
+
+    fn list_all(
+        &self,
+    ) -> impl std::future::Future<Output = Result<Vec<AtributoDef>, DomainError>> + Send {
+        async move { Ok(self.inner.lock().expect("lock").values().cloned().collect()) }
+    }
+
+    fn update(
+        &self,
+        input: UpdateAtributoDef,
+    ) -> impl std::future::Future<Output = Result<AtributoDef, DomainError>> + Send {
+        async move {
+            input.validate()?;
+            let current = self.get(input.id.clone()).await?;
+            {
+                let map = self.inner.lock().expect("lock");
+                if Self::clave_taken(&map, &input.clave, Some(&input.id)) {
+                    return Err(DomainError::conflict(ConflictCode::Conflict));
+                }
+            }
+            let def = AtributoDef::try_new(AtributoDefDraft {
+                id: input.id.clone(),
+                clave: input.clave,
+                etiqueta: input.etiqueta,
+                tipo: input.tipo,
+                unidad: input.unidad,
+                opciones: input.opciones,
+                facetable: input.facetable,
+                buscable: input.buscable,
+                orden: input.orden,
+                activo: current.activo,
+                creado_en: current.creado_en,
+                actualizado_en: current.actualizado_en,
+            })?;
+            self.inner
+                .lock()
+                .expect("lock")
+                .insert(input.id.to_string(), def.clone());
+            Ok(def)
+        }
+    }
+
+    fn set_activo(
+        &self,
+        id: Id<AtributoDef>,
+        activo: bool,
+    ) -> impl std::future::Future<Output = Result<AtributoDef, DomainError>> + Send {
+        async move {
+            let mut map = self.inner.lock().expect("lock");
+            let current = map
+                .get(&id.to_string())
+                .cloned()
+                .ok_or(DomainError::not_found())?;
+            let def = AtributoDef::try_new(AtributoDefDraft {
+                id: current.id.clone(),
+                clave: current.clave.clone(),
+                etiqueta: current.etiqueta.clone(),
+                tipo: current.tipo,
+                unidad: current.unidad.clone(),
+                opciones: current.opciones.clone(),
+                facetable: current.facetable,
+                buscable: current.buscable,
+                orden: current.orden,
+                activo,
+                creado_en: current.creado_en,
+                actualizado_en: current.actualizado_en,
+            })?;
+            map.insert(id.to_string(), def.clone());
+            Ok(def)
+        }
+    }
+}
+
+pub fn test_attribute_def_gateway() -> Arc<dyn AttributeDefGateway> {
+    Arc::new(AttributeDefService::new(FakeAttributeDefRepo::new()))
 }
