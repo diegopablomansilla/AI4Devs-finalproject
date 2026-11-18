@@ -413,6 +413,9 @@ fn remap_api_field(field: &str) -> String {
         "precio" => "price".into(),
         "ubicacion" => "location".into(),
         "stock_inicial" => "initialStock".into(),
+        "cantidad" => "quantity".into(),
+        "motivo" => "reason".into(),
+        "producto" => "productId".into(),
         other => other.to_string(),
     }
 }

@@ -10,6 +10,7 @@ mod health;
 mod metrics;
 mod products;
 mod static_files;
+mod stock;
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -21,7 +22,7 @@ use axum::{
     response::IntoResponse,
     routing::{get, patch, post},
 };
-use catalog::{AttributeDefGateway, BrandGateway, CategoryGateway, ProductGateway};
+use catalog::{AttributeDefGateway, BrandGateway, CategoryGateway, ProductGateway, StockGateway};
 use domain::HealthReport;
 
 pub use app_json::AppJson;
@@ -47,6 +48,7 @@ struct AppStateInner {
     brands: Option<Arc<dyn BrandGateway>>,
     attribute_defs: Option<Arc<dyn AttributeDefGateway>>,
     products: Option<Arc<dyn ProductGateway>>,
+    stock: Option<Arc<dyn StockGateway>>,
 }
 
 impl AppState {
@@ -69,6 +71,7 @@ impl AppState {
                 brands: None,
                 attribute_defs: None,
                 products: None,
+                stock: None,
             }),
         }
     }
@@ -145,6 +148,16 @@ impl AppState {
     pub(crate) fn products(&self) -> Option<Arc<dyn ProductGateway>> {
         self.inner.products.clone()
     }
+
+    #[must_use]
+    pub fn with_stock(mut self, stock: Arc<dyn StockGateway>) -> Self {
+        Arc::make_mut(&mut self.inner).stock = Some(stock);
+        self
+    }
+
+    pub(crate) fn stock(&self) -> Option<Arc<dyn StockGateway>> {
+        self.inner.stock.clone()
+    }
 }
 
 impl Default for AppState {
@@ -218,6 +231,10 @@ pub fn router_shell(state: AppState) -> Router {
             get(products::get_product)
                 .patch(products::patch_product)
                 .delete(products::delete_product),
+        )
+        .route(
+            "/api/v1/products/{product_id}/stock-movements",
+            post(stock::post_stock_movement),
         )
         .fallback(fallback_not_found)
         .layer(middleware::from_fn(metrics::record_http_duration))

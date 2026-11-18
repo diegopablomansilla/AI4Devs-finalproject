@@ -104,6 +104,41 @@ fn http_get_headers(addr: SocketAddr, path: &str) -> Option<(u16, String, String
     Some((status, ctype, cache, body))
 }
 
+fn http_post_json(addr: SocketAddr, path: &str, body: &str) -> Option<(u16, String, String)> {
+    use std::io::{Read, Write};
+    let mut stream = std::net::TcpStream::connect(addr).ok()?;
+    stream.set_read_timeout(Some(Duration::from_secs(2))).ok()?;
+    let host = format!("{}:{}", addr.ip(), addr.port());
+    let request = format!(
+        "POST {path} HTTP/1.1\r\nHost: {host}\r\nConnection: close\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{body}",
+        body.len()
+    );
+    stream.write_all(request.as_bytes()).ok()?;
+    let mut buf = vec![0u8; 65536];
+    let n = stream.read(&mut buf).ok()?;
+    let response = String::from_utf8_lossy(&buf[..n]);
+    let status_line = response.lines().next()?;
+    let status: u16 = status_line.split_whitespace().nth(1)?.parse().ok()?;
+    let mut ctype = String::new();
+    let mut body_start = 0usize;
+    for (i, _) in response.match_indices("\r\n\r\n") {
+        body_start = i + 4;
+        break;
+    }
+    for line in response.lines() {
+        if line.is_empty() {
+            break;
+        }
+        if let Some((name, value)) = line.split_once(':') {
+            if name.trim().eq_ignore_ascii_case("content-type") {
+                ctype = value.trim().split(';').next().unwrap_or("").to_string();
+            }
+        }
+    }
+    let resp_body = String::from_utf8_lossy(&buf[body_start..n]).into_owned();
+    Some((status, ctype, resp_body))
+}
+
 fn http_delete_headers(addr: SocketAddr, path: &str) -> Option<(u16, String, String, String)> {
     use std::io::{Read, Write};
     let mut stream = std::net::TcpStream::connect(addr).ok()?;
@@ -562,6 +597,37 @@ fn vortex_serve_get_unknown_product_returns_404() {
     assert!(
         ok,
         "GET unknown product must return 404 not_found (service injected), not 503"
+    );
+}
+
+#[test]
+fn vortex_serve_post_stock_unknown_product_returns_404() {
+    let bind = ephemeral_bind();
+    let dir = temp_dir();
+    let path = write_config(&dir, &bind);
+    let mut child = spawn_serve_production(&path);
+    let addr: SocketAddr = bind.parse().expect("bind addr");
+    let unknown = "01J9ZK4Q6Y3M2V8W0XAB1CD2EF";
+    let stock_path = format!("/api/v1/products/{unknown}/stock-movements");
+    let payload = r#"{"type":"inbound","quantity":"1"}"#;
+    let start = Instant::now();
+    let mut ok = false;
+    while start.elapsed() < BOOT_WAIT {
+        if let Some((status, ctype, body)) = http_post_json(addr, &stock_path, payload) {
+            if status == 404 && ctype == "application/problem+json" {
+                let json: serde_json::Value = serde_json::from_str(&body).expect("problem json");
+                if json.get("code").and_then(|c| c.as_str()) == Some("not_found") {
+                    ok = true;
+                    break;
+                }
+            }
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    terminate_child(&mut child);
+    assert!(
+        ok,
+        "POST stock-movements for unknown product must return 404 not_found (stock service injected), not 503"
     );
 }
 

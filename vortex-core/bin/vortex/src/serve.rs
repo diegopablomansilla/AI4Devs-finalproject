@@ -131,6 +131,9 @@ async fn serve_config(config: Config, _logging_guard: LoggingGuard) -> i32 {
         MarcaRepo::new(Arc::clone(&db)),
         AtributoDefRepo::new(Arc::clone(&db)),
     ));
+    let stock_gateway: Arc<dyn catalog::StockGateway> = Arc::new(catalog::StockService::new(
+        storage::MovimientoStockRepo::new(Arc::clone(&db)),
+    ));
 
     let bind = match config.server.bind.parse::<std::net::SocketAddr>() {
         Ok(addr) => addr,
@@ -162,7 +165,8 @@ async fn serve_config(config: Config, _logging_guard: LoggingGuard) -> i32 {
         .with_categories(category_gateway)
         .with_brands(brand_gateway)
         .with_attribute_defs(attribute_def_gateway)
-        .with_products(product_gateway);
+        .with_products(product_gateway)
+        .with_stock(stock_gateway);
     let router = build_router(state);
     if let Err(e) = serve(listener, router)
         .with_graceful_shutdown(shutdown_signal())
