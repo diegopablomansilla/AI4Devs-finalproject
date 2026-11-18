@@ -317,7 +317,20 @@ describe("products_empty_list_does_not_post", () => {
     const el = createMountEl();
     await mountProducts(el, { request, showError: () => {} });
     assert.equal(calls.filter((c) => c.method === "POST").length, 0);
-    assert.doesNotMatch(el.html, /data-action="create"/);
+  });
+});
+
+describe("products_empty_list_offers_create", () => {
+  test("ofrece Nuevo producto", async () => {
+    const { request } = createCallTracker([
+      { items: [] },
+      { items: [] },
+      { items: [], nextCursor: null },
+    ]);
+    const el = createMountEl();
+    await mountProducts(el, { request, showError: () => {} });
+    assert.match(el.html, /data-action="create"/);
+    assert.match(el.html, /Nuevo producto/);
   });
 });
 
