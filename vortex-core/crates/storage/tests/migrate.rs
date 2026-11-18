@@ -3,7 +3,8 @@
 use std::path::PathBuf;
 
 use storage::{
-    Db, MIGRATION_0000_SQL, MIGRATION_0001_SQL, MIGRATION_0002_SQL, Migration, checksum_hex,
+    Db, MIGRATION_0000_SQL, MIGRATION_0001_SQL, MIGRATION_0002_SQL, MIGRATION_0003_SQL, Migration,
+    checksum_hex,
 };
 
 fn unique_db_dir(prefix: &str) -> PathBuf {
@@ -23,7 +24,7 @@ async fn migrate_first_install_records_0000() {
     db.migrate().await.expect("first migrate");
 
     let rows = db.list_migrations().await.expect("list migrations");
-    assert_eq!(rows.len(), 3, "expected migrations 0000, 0001 and 0002");
+    assert_eq!(rows.len(), 4, "expected migrations 0000 through 0003");
     let row0 = rows.iter().find(|r| r.version == 0).expect("version 0");
     assert_eq!(row0.nombre, "migracion");
     assert_eq!(row0.checksum, checksum_hex(MIGRATION_0000_SQL));
@@ -33,6 +34,9 @@ async fn migrate_first_install_records_0000() {
     let row2 = rows.iter().find(|r| r.version == 2).expect("version 2");
     assert_eq!(row2.nombre, "categoria");
     assert_eq!(row2.checksum, checksum_hex(MIGRATION_0002_SQL));
+    let row3 = rows.iter().find(|r| r.version == 3).expect("version 3");
+    assert_eq!(row3.nombre, "marca");
+    assert_eq!(row3.checksum, checksum_hex(MIGRATION_0003_SQL));
 
     drop(db);
     let _ = std::fs::remove_dir_all(&path);
@@ -46,10 +50,11 @@ async fn migrate_rerun_is_noop() {
     db.migrate().await.expect("second migrate");
 
     let rows = db.list_migrations().await.expect("list migrations");
-    assert_eq!(rows.len(), 3);
+    assert_eq!(rows.len(), 4);
     assert!(rows.iter().any(|r| r.version == 0));
     assert!(rows.iter().any(|r| r.version == 1));
     assert!(rows.iter().any(|r| r.version == 2));
+    assert!(rows.iter().any(|r| r.version == 3));
 
     drop(db);
     let _ = std::fs::remove_dir_all(&path);

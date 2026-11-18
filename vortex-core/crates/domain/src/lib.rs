@@ -5,6 +5,7 @@ pub mod decimal;
 pub mod error;
 pub mod health;
 pub mod id;
+pub mod marca;
 pub mod outbox;
 pub mod timestamp;
 
@@ -22,5 +23,6 @@ pub use health::{
     HealthSnapshot, aggregate,
 };
 pub use id::{Id, InvalidId};
+pub use marca::{BrandRepo, Marca, MarcaDraft, NewMarca, UpdateMarca};
 pub use outbox::{OutboxEntity, OutboxEvent, OutboxEventError, OutboxOp};
 pub use timestamp::{InvalidTimestamp, Timestamp};
