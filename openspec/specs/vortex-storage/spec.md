@@ -2,9 +2,9 @@
 
 ## Purpose
 
-Abre SurrealDB embebido con RocksDB en el crate `storage`, selecciona el namespace `vectra` y la base `comercio`, aplica migraciones `.surql` embebidas con registro y checksum SHA-256 (incl. `categoria`, `marca`, `atributo_def`, `producto`, `movimiento_stock`), expone un harness de tests (`storage::testing`) con motor en memoria o RocksDB temporal, ofrece transacciones atómicas dato + outbox con aviso post-commit, e implementa adaptadores de repositorio de catálogo (incl. `ProductRepo` con alta, stock inicial y baja lógica).
+Abre SurrealDB embebido con RocksDB en el crate `storage`, selecciona el namespace `vectra` y la base `comercio`, aplica migraciones `.surql` embebidas con registro y checksum SHA-256 (incl. `categoria`, `marca`, `atributo_def`, `producto`, `movimiento_stock`), expone un harness de tests (`storage::testing`) con motor en memoria o RocksDB temporal, ofrece transacciones atómicas dato + outbox con aviso post-commit, e implementa adaptadores de repositorio de catálogo (incl. `ProductRepo` con alta, stock inicial y baja lógica) y el adaptador `StockLedger` (append transaccional).
 
-Ticket padre: T-00-08, T-00-09, T-09-02, T-03-01, T-03-02, T-02-01, T-02-03, T-02-08, T-02-11, T-02-14, T-02-15, T-02-18. HU: HU-00-02, HU-09-01, HU-03-01, HU-02-01, HU-02-02, HU-02-03, HU-02-04, HU-02-07.
+Ticket padre: T-00-08, T-00-09, T-09-02, T-03-01, T-03-02, T-02-01, T-02-03, T-02-08, T-02-11, T-02-14, T-02-15, T-02-18, T-02-24. HU: HU-00-02, HU-09-01, HU-03-01, HU-02-01, HU-02-02, HU-02-03, HU-02-04, HU-02-07.
 
 ## Requirements
 
@@ -868,7 +868,7 @@ El resultado de éxito MUST ser la `FichaProducto` rehidratada con el `activo` p
 
 ### Requirement: Adaptador ProductRepo
 
-El crate `storage` MUST implementar el puerto `ProductRepo` (`create`, `get`, `update`, `set_activo`) contra las tablas `producto` y `movimiento_stock` ya migradas (T-02-14, T-02-15) usando `storage::Tx` (T-03-02). Los `id` MUST ser ULID de 26 caracteres **sin** prefijo de tabla (`producto:`). Los errores MUST ser `DomainError`. MUST NOT mapear a HTTP ni a `problem+json`. MUST NOT reindexar Meilisearch (T-03-07). MUST NOT declarar listado (T-02-27). MUST NOT implementar `StockLedger::append` para `ingreso`/`ajuste`/`venta` (T-02-24). MUST NOT comprobar que categoría o marca existan y estén activas más allá de lo que el esquema `record<…>` ya exige (T-02-20). MUST NOT validar valores de atributo contra definiciones cargadas por el caso de uso (T-02-16 / T-02-20). MUST NOT hidratar ni persistir imágenes (T-02-30).
+El crate `storage` MUST implementar el puerto `ProductRepo` (`create`, `get`, `update`, `set_activo`) contra las tablas `producto` y `movimiento_stock` ya migradas (T-02-14, T-02-15) usando `storage::Tx` (T-03-02). Los `id` MUST ser ULID de 26 caracteres **sin** prefijo de tabla (`producto:`). Los errores MUST ser `DomainError`. MUST NOT mapear a HTTP ni a `problem+json`. MUST NOT reindexar Meilisearch (T-03-07). MUST NOT declarar listado (T-02-27). MUST NOT reemplazar el movimiento `inicial` de `create` por `StockLedger::append` (el alta sigue inline; el adaptador `StockLedger` es un tipo aparte). MUST NOT comprobar que categoría o marca existan y estén activas más allá de lo que el esquema `record<…>` ya exige (T-02-20). MUST NOT validar valores de atributo contra definiciones cargadas por el caso de uso (T-02-16 / T-02-20). MUST NOT hidratar ni persistir imágenes (T-02-30).
 
 `create` MUST persistir los campos de `NewProducto` en una sola transacción:
 
@@ -1013,6 +1013,105 @@ Si el `id` no existe, `update` MUST fallar con `DomainError` `code` `not_found` 
 - **AND** el error es `DomainError::Conflict` con `code` `duplicate_sku`
 - **AND** el SKU del segundo producto no cambia
 - **AND** no se inserta un evento de outbox para esa edición
+
+### Requirement: Adaptador StockLedger.append transaccional
+
+El crate `storage` MUST implementar el puerto `StockLedger` (`append`, `list_by_producto`) contra las tablas `movimiento_stock` y `producto` ya migradas (T-02-15, T-02-14) usando `storage::Tx` (T-03-02). Los `id` MUST ser ULID de 26 caracteres **sin** prefijo de tabla (`movimiento_stock:`, `producto:`). Los errores MUST ser `DomainError`. MUST NOT mapear a HTTP ni a `problem+json`. MUST NOT reindexar Meilisearch (T-03-07). MUST NOT declarar `update` ni `delete` de un movimiento (HU-02-07 inmutabilidad). MUST NOT confirmar una venta (`CREATE venta`, `contador:venta`, varias líneas) — T-08-03. MUST NOT paginar `list_by_producto` con cursor (T-00-21 / T-02-26). MUST NOT reemplazar el movimiento `inicial` de `ProductRepo::create` (sigue inline).
+
+`append` MUST persistir un `NewMovimientoStock` en **una** transacción conforme a [4.5.2](../../../docs/4-modelo.md#452-registro-de-un-movimiento-transacción):
+
+1. Validar signo de `cantidad`, `motivo` obligatorio en `ajuste` y regla de `venta` **antes** de abrir `Tx` (mismas reglas que `MovimientoStock::try_new`). Una violación MUST ser `invalid_input` y MUST NOT insertar movimiento, MUST NOT cambiar `producto.stock` ni emitir outbox.
+2. Si el `producto` no existe, MUST fallar con `not_found` y MUST NOT escribir.
+3. Dentro de la `Tx`, el motor MUST calcular `$nuevo = producto.stock + cantidad`. MUST NOT calcular el stock resultante en un read-modify-write fuera de la transacción.
+4. Si `$nuevo < 0`, MUST ejecutar `THROW "stock_negativo"`. El mapper de `Tx` MUST exponer `DomainError` con `code` `negative_stock`. Tras el fallo, `producto.stock` MUST quedar igual que antes, MUST NOT existir el movimiento nuevo y MUST NOT existir el evento de outbox de ese `append`.
+5. Si `$nuevo >= 0`: `CREATE movimiento_stock` con `tipo`, `cantidad`, `stock_resultante` = `$nuevo`, `motivo`, `venta` y `terminal` del input; `UPDATE` del producto con `stock` = `$nuevo`. MUST NOT incrementar `producto.version`. MUST NOT escribir otros campos de ficha.
+6. MUST emitir en la **misma** transacción un `OutboxEvent` con `entidad` `producto`, `operacion` `upsert`, `registro` igual al `id` del producto y `motivo` `"stock"`.
+7. El resultado de éxito MUST ser el `MovimientoStock` persistido (`id` sin prefijo, `stock_resultante` = `$nuevo`, `terminal` igual al input).
+
+`append` MUST aceptar `tipo` `ingreso` y `ajuste` (HU-02-07). MAY persistir `inicial` o `venta` si pasan las reglas de dominio; MUST NOT crear la tabla ni la fila `venta`. Un producto inactivo MUST poder recibir movimientos (el ledger es independiente de `activo`).
+
+`list_by_producto` MUST devolver los movimientos de ese producto ordenados de más reciente a más antiguo (`creado_en` descendente), o una lista vacía si no hay filas. MUST NOT fallar solo porque el producto no tenga movimientos.
+
+#### Scenario: Ingreso incrementa stock y guarda terminal (happy, HU-02-07)
+
+- **WHEN** un producto tiene `stock` `"10"` y `version` 1
+- **AND** se llama `append` con `tipo` `ingreso`, `cantidad` `"20"` y `terminal` `"caja-1"`
+- **THEN** la operación termina sin error
+- **AND** `producto.stock` es `"30"`
+- **AND** `producto.version` sigue siendo 1
+- **AND** el movimiento tiene `tipo` `ingreso`, `cantidad` `"20"`, `stock_resultante` `"30"` y `terminal` `"caja-1"`
+- **AND** el `id` del movimiento no contiene `:`
+- **AND** existe un evento en `outbox` con `entidad` `producto`, `operacion` `upsert` y `motivo` `"stock"`
+
+#### Scenario: Ajuste negativo con motivo deja stock en cero (happy, HU-02-07)
+
+- **WHEN** un producto tiene `stock` `"5"`
+- **AND** se llama `append` con `tipo` `ajuste`, `cantidad` `"-5"` y `motivo` `"Conteo físico"`
+- **THEN** la operación termina sin error
+- **AND** `producto.stock` es `"0"`
+- **AND** el movimiento tiene `stock_resultante` `"0"` y el `motivo` indicado
+- **AND** `producto.version` no cambia
+
+#### Scenario: Dos ingresos concurrentes ambos aplicados (happy, Listo cuando)
+
+- **WHEN** un producto tiene `stock` `"5"`
+- **AND** dos `append` de `tipo` `ingreso` y `cantidad` `"10"` se ejecutan de forma concurrente
+- **THEN** ambas operaciones terminan sin error
+- **AND** `producto.stock` es `"25"`
+- **AND** existen dos movimientos `ingreso` de cantidad `"10"` para ese producto
+- **AND** hay dos eventos de outbox con `motivo` `"stock"` correspondientes a esos append
+- **AND** `producto.version` no cambia
+
+#### Scenario: Ajuste −8 sobre stock 5 es negative_stock (unhappy, HU-02-07, Listo cuando)
+
+- **WHEN** un producto tiene `stock` `"5"` y un movimiento `inicial` previo
+- **AND** se llama `append` con `tipo` `ajuste`, `cantidad` `"-8"` y `motivo` `"Conteo físico"`
+- **THEN** la operación falla
+- **AND** el error es `DomainError` con `code` `negative_stock`
+- **AND** `producto.stock` sigue siendo `"5"`
+- **AND** no se inserta un movimiento nuevo
+- **AND** no se inserta un evento de outbox para ese `append`
+- **AND** `producto.version` no cambia
+
+#### Scenario: Ajuste sin motivo es invalid_input (unhappy, HU-02-07)
+
+- **WHEN** un producto tiene `stock` `"5"`
+- **AND** se llama `append` con `tipo` `ajuste`, `cantidad` `"-1"` y `motivo` ausente
+- **THEN** la operación falla
+- **AND** el error es `DomainError` con `code` `invalid_input`
+- **AND** el `FieldError.field` es `motivo`
+- **AND** `producto.stock` sigue siendo `"5"`
+- **AND** no se inserta un movimiento nuevo ni un evento de outbox
+
+#### Scenario: append de producto inexistente (unhappy)
+
+- **WHEN** se llama `append` con un `producto` que no existe
+- **THEN** la operación falla
+- **AND** el error es `DomainError` con `code` `not_found`
+- **AND** no se inserta fila en `movimiento_stock` ni en `outbox`
+
+#### Scenario: ingreso con cantidad negativa (unhappy)
+
+- **WHEN** un producto existe
+- **AND** se llama `append` con `tipo` `ingreso` y `cantidad` `"-1"`
+- **THEN** la operación falla
+- **AND** el error es `DomainError` con `code` `invalid_input`
+- **AND** el `FieldError.field` es `cantidad`
+- **AND** el stock y el ledger no cambian
+
+#### Scenario: list_by_producto ordena del más reciente al más antiguo (happy)
+
+- **WHEN** un producto tiene un movimiento `inicial` y después un `ingreso`
+- **AND** se llama `list_by_producto` con su `id`
+- **THEN** la operación termina sin error
+- **AND** el primer elemento es el `ingreso`
+- **AND** el segundo es el `inicial`
+
+#### Scenario: El adaptador no expone update ni delete (unhappy, HU-02-07 inmutabilidad)
+
+- **WHEN** se inspecciona el adaptador de `StockLedger` en `storage`
+- **THEN** no expone `update` ni `delete` de un movimiento
+- **AND** un error se corrige con un nuevo `append` de tipo `ajuste`
 
 ### Requirement: Adaptador AttributeUsage
 

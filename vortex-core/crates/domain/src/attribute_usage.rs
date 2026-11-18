@@ -20,10 +20,7 @@ mod tests {
     struct NoopUsage;
 
     impl AttributeUsage for NoopUsage {
-        async fn valores(
-            &self,
-            _id: Id<AtributoDef>,
-        ) -> Result<Vec<ValorAtributo>, DomainError> {
+        async fn valores(&self, _id: Id<AtributoDef>) -> Result<Vec<ValorAtributo>, DomainError> {
             Ok(Vec::new())
         }
     }

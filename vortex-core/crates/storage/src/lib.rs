@@ -5,6 +5,7 @@ mod attribute_usage;
 mod categoria;
 mod marca;
 mod migrate;
+mod movimiento_stock;
 mod producto;
 pub mod testing;
 mod tx;
@@ -18,6 +19,7 @@ pub use migrate::{
     MIGRATION_0004_SQL, MIGRATION_0005_SQL, MIGRATION_0006_SQL, MigrateError, Migration,
     MigrationRecord, checksum_hex,
 };
+pub use movimiento_stock::MovimientoStockRepo;
 pub use producto::ProductoRepo;
 pub use tx::{OutboxNotifier, Tx};
 
