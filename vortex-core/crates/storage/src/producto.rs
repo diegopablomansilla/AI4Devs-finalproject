@@ -83,7 +83,7 @@ enum SurrealDecimal {
 
 #[derive(Debug, Deserialize)]
 #[serde(untagged)]
-enum SurrealValor {
+pub(crate) enum SurrealValor {
     Text(String),
     Number(f64),
     Bool(bool),
@@ -570,7 +570,7 @@ fn map_atributos(attrs: &[AtributoValorRecord]) -> Result<Vec<AtributoValor>, Do
         .collect()
 }
 
-fn surreal_valor_to_domain(v: &SurrealValor) -> Result<ValorAtributo, DomainError> {
+pub(crate) fn surreal_valor_to_domain(v: &SurrealValor) -> Result<ValorAtributo, DomainError> {
     Ok(match v {
         SurrealValor::Text(s) => ValorAtributo::Texto(s.clone()),
         SurrealValor::Number(n) => ValorAtributo::Numero(decimal_from_f64(*n)?),
@@ -607,7 +607,7 @@ async fn query_product_records(db: &Db, stmt: &str) -> Result<Vec<ProductoRecord
     Ok(rows)
 }
 
-fn record_id_to_domain_id<T>(rid: &RecordId) -> Result<Id<T>, DomainError> {
+pub(crate) fn record_id_to_domain_id<T>(rid: &RecordId) -> Result<Id<T>, DomainError> {
     let key: RecordIdKey = rid.key().clone();
     let s: String = key
         .try_into()

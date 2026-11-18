@@ -348,40 +348,47 @@ fn validate_atributos(
     Ok(())
 }
 
+/// Whether `valor` is valid for a definition with `tipo` and `opciones` (T-02-23 occupancy).
+pub fn valor_compatible_con(
+    tipo: TipoAtributo,
+    opciones: &Option<Vec<String>>,
+    valor: &ValorAtributo,
+) -> bool {
+    match tipo {
+        TipoAtributo::Texto => matches!(valor, ValorAtributo::Texto(_)),
+        TipoAtributo::Numero => matches!(valor, ValorAtributo::Numero(_)),
+        TipoAtributo::Booleano => matches!(valor, ValorAtributo::Booleano(_)),
+        TipoAtributo::Enum => match valor {
+            ValorAtributo::Texto(s) => {
+                let trimmed = s.trim();
+                opciones
+                    .as_ref()
+                    .is_some_and(|opts| opts.iter().any(|o| o.trim() == trimmed))
+            }
+            _ => false,
+        },
+    }
+}
+
 fn validate_valor_for_def(
     n: usize,
     def: &AtributoDef,
     valor: &ValorAtributo,
 ) -> Result<(), DomainError> {
     let field = format!("attributes[{n}].value");
-    match def.tipo {
-        TipoAtributo::Texto => match valor {
-            ValorAtributo::Texto(_) => Ok(()),
-            _ => Err(field_invalid_input(&field, "expected text value")),
-        },
-        TipoAtributo::Numero => match valor {
-            ValorAtributo::Numero(_) => Ok(()),
-            _ => Err(field_invalid_input(&field, "expected number value")),
-        },
-        TipoAtributo::Booleano => match valor {
-            ValorAtributo::Booleano(_) => Ok(()),
-            _ => Err(field_invalid_input(&field, "expected boolean value")),
-        },
-        TipoAtributo::Enum => match valor {
-            ValorAtributo::Texto(s) => {
-                let trimmed = s.trim();
-                let opts = def.opciones.as_ref().ok_or_else(|| {
-                    field_invalid_input(&field, "enum definition missing options")
-                })?;
-                let ok = opts.iter().any(|o| o.trim() == trimmed);
-                if ok {
-                    Ok(())
-                } else {
-                    Err(field_invalid_input(&field, "value not in enum options"))
-                }
-            }
-            _ => Err(field_invalid_input(&field, "expected enum text value")),
-        },
+    if valor_compatible_con(def.tipo, &def.opciones, valor) {
+        Ok(())
+    } else {
+        let msg = match def.tipo {
+            TipoAtributo::Texto => "expected text value",
+            TipoAtributo::Numero => "expected number value",
+            TipoAtributo::Booleano => "expected boolean value",
+            TipoAtributo::Enum => match valor {
+                ValorAtributo::Texto(_) => "value not in enum options",
+                _ => "expected enum text value",
+            },
+        };
+        Err(field_invalid_input(&field, msg))
     }
 }
 

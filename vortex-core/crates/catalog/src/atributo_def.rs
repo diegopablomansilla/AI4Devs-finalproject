@@ -3,18 +3,36 @@
 use std::future::Future;
 use std::pin::Pin;
 
-use domain::{AtributoDef, AttributeDefRepo, DomainError, Id, NewAtributoDef, UpdateAtributoDef};
+use domain::{
+    AtributoDef, AttributeDefRepo, AttributeUsage, ConflictCode, DomainError, Id, NewAtributoDef,
+    UpdateAtributoDef, valor_compatible_con,
+};
 
-pub struct AttributeDefService<R> {
-    pub repo: R,
+/// No products use any attribute (tests and default until occupancy is wired).
+#[derive(Debug, Default, Clone, Copy)]
+pub struct EmptyAttributeUsage;
+
+impl AttributeUsage for EmptyAttributeUsage {
+    async fn valores(
+        &self,
+        _id: Id<AtributoDef>,
+    ) -> Result<Vec<domain::ValorAtributo>, DomainError> {
+        Ok(Vec::new())
+    }
 }
 
-impl<R> AttributeDefService<R>
+pub struct AttributeDefService<R, U> {
+    pub repo: R,
+    pub usage: U,
+}
+
+impl<R, U> AttributeDefService<R, U>
 where
     R: AttributeDefRepo,
+    U: AttributeUsage,
 {
-    pub fn new(repo: R) -> Self {
-        Self { repo }
+    pub fn new(repo: R, usage: U) -> Self {
+        Self { repo, usage }
     }
 
     pub async fn create(&self, input: NewAtributoDef) -> Result<AtributoDef, DomainError> {
@@ -30,6 +48,24 @@ where
     }
 
     pub async fn update(&self, input: UpdateAtributoDef) -> Result<AtributoDef, DomainError> {
+        input.validate()?;
+        let current = self.repo.get(input.id.clone()).await?;
+        let valores = self.usage.valores(input.id.clone()).await?;
+        if !valores.is_empty() {
+            if input.clave != current.clave {
+                return Err(DomainError::conflict(ConflictCode::AttributeInUse));
+            }
+            let tipo_changed = input.tipo != current.tipo;
+            let opciones_changed = input.opciones != current.opciones;
+            if tipo_changed || opciones_changed {
+                let compatible = valores
+                    .iter()
+                    .all(|v| valor_compatible_con(input.tipo, &input.opciones, v));
+                if !compatible {
+                    return Err(DomainError::conflict(ConflictCode::AttributeInUse));
+                }
+            }
+        }
         self.repo.update(input).await
     }
 
@@ -82,9 +118,10 @@ pub trait AttributeDefGateway: Send + Sync {
     ) -> Pin<Box<dyn Future<Output = Result<AtributoDef, DomainError>> + Send + '_>>;
 }
 
-impl<R> AttributeDefGateway for AttributeDefService<R>
+impl<R, U> AttributeDefGateway for AttributeDefService<R, U>
 where
     R: AttributeDefRepo + Send + Sync,
+    U: AttributeUsage + Send + Sync,
 {
     fn create(
         &self,
@@ -284,16 +321,61 @@ pub mod testing {
             }
         }
     }
+
+    pub struct InMemoryAttributeUsage {
+        inner: Mutex<HashMap<String, Vec<domain::ValorAtributo>>>,
+    }
+
+    impl InMemoryAttributeUsage {
+        pub fn new() -> Self {
+            Self {
+                inner: Mutex::new(HashMap::new()),
+            }
+        }
+
+        pub fn set(&self, id: Id<AtributoDef>, valores: Vec<domain::ValorAtributo>) {
+            self.inner
+                .lock()
+                .expect("lock")
+                .insert(id.to_string(), valores);
+        }
+    }
+
+    impl AttributeUsage for InMemoryAttributeUsage {
+        fn valores(
+            &self,
+            id: Id<AtributoDef>,
+        ) -> impl Future<Output = Result<Vec<domain::ValorAtributo>, DomainError>> + Send {
+            async move {
+                Ok(self
+                    .inner
+                    .lock()
+                    .expect("lock")
+                    .get(&id.to_string())
+                    .cloned()
+                    .unwrap_or_default())
+            }
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::testing::InMemoryAttributeDefRepo;
+    use super::testing::{InMemoryAttributeDefRepo, InMemoryAttributeUsage};
     use super::*;
-    use domain::{ConflictCode, DomainCode, DomainError, TipoAtributo};
+    use domain::{ConflictCode, DomainCode, DomainError, TipoAtributo, ValorAtributo};
 
-    fn svc(repo: InMemoryAttributeDefRepo) -> AttributeDefService<InMemoryAttributeDefRepo> {
-        AttributeDefService::new(repo)
+    fn svc(
+        repo: InMemoryAttributeDefRepo,
+    ) -> AttributeDefService<InMemoryAttributeDefRepo, EmptyAttributeUsage> {
+        AttributeDefService::new(repo, EmptyAttributeUsage)
+    }
+
+    fn svc_with_usage(
+        repo: InMemoryAttributeDefRepo,
+        usage: InMemoryAttributeUsage,
+    ) -> AttributeDefService<InMemoryAttributeDefRepo, InMemoryAttributeUsage> {
+        AttributeDefService::new(repo, usage)
     }
 
     fn new_grado() -> NewAtributoDef {
@@ -397,6 +479,220 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn catalog_update_clave_in_use_is_attribute_in_use() {
+        let repo = InMemoryAttributeDefRepo::new();
+        let usage = InMemoryAttributeUsage::new();
+        let service = svc_with_usage(repo, usage);
+        let medida = service
+            .create(NewAtributoDef {
+                clave: "medida".into(),
+                etiqueta: "Medida".into(),
+                tipo: TipoAtributo::Texto,
+                unidad: None,
+                opciones: None,
+                facetable: false,
+                buscable: true,
+                orden: 0,
+            })
+            .await
+            .expect("medida");
+        service
+            .usage
+            .set(medida.id.clone(), vec![ValorAtributo::Texto("M8".into())]);
+        let current = service.get(medida.id.clone()).await.expect("get");
+        let err = service
+            .update(UpdateAtributoDef {
+                id: current.id.clone(),
+                clave: "medida_mm".into(),
+                etiqueta: current.etiqueta.clone(),
+                tipo: current.tipo,
+                unidad: current.unidad.clone(),
+                opciones: current.opciones.clone(),
+                facetable: current.facetable,
+                buscable: current.buscable,
+                orden: current.orden,
+            })
+            .await
+            .expect_err("clave en uso");
+        assert!(matches!(
+            err,
+            DomainError::Conflict {
+                code: ConflictCode::AttributeInUse
+            }
+        ));
+    }
+
+    #[tokio::test]
+    async fn catalog_update_tipo_incompatible_in_use_is_attribute_in_use() {
+        let repo = InMemoryAttributeDefRepo::new();
+        let usage = InMemoryAttributeUsage::new();
+        let service = svc_with_usage(repo, usage);
+        let medida = service
+            .create(NewAtributoDef {
+                clave: "medida".into(),
+                etiqueta: "Medida".into(),
+                tipo: TipoAtributo::Texto,
+                unidad: None,
+                opciones: None,
+                facetable: false,
+                buscable: true,
+                orden: 0,
+            })
+            .await
+            .expect("medida");
+        service
+            .usage
+            .set(medida.id.clone(), vec![ValorAtributo::Texto("M8".into())]);
+        let current = service.get(medida.id.clone()).await.expect("get");
+        let err = service
+            .update(UpdateAtributoDef {
+                id: current.id.clone(),
+                clave: current.clave.clone(),
+                etiqueta: current.etiqueta.clone(),
+                tipo: TipoAtributo::Numero,
+                unidad: current.unidad.clone(),
+                opciones: None,
+                facetable: current.facetable,
+                buscable: current.buscable,
+                orden: current.orden,
+            })
+            .await
+            .expect_err("tipo incompatible");
+        assert!(matches!(
+            err,
+            DomainError::Conflict {
+                code: ConflictCode::AttributeInUse
+            }
+        ));
+    }
+
+    #[tokio::test]
+    async fn catalog_update_opciones_incompatible_in_use_is_attribute_in_use() {
+        let repo = InMemoryAttributeDefRepo::new();
+        let usage = InMemoryAttributeUsage::new();
+        let service = svc_with_usage(repo, usage);
+        let grado = service.create(new_grado()).await.expect("grado");
+        service
+            .usage
+            .set(grado.id.clone(), vec![ValorAtributo::Texto("5".into())]);
+        let current = service.get(grado.id.clone()).await.expect("get");
+        let err = service
+            .update(UpdateAtributoDef {
+                id: current.id.clone(),
+                clave: current.clave.clone(),
+                etiqueta: current.etiqueta.clone(),
+                tipo: current.tipo,
+                unidad: current.unidad.clone(),
+                opciones: Some(vec!["2".into(), "8".into()]),
+                facetable: current.facetable,
+                buscable: current.buscable,
+                orden: current.orden,
+            })
+            .await
+            .expect_err("opcion incompatible");
+        assert!(matches!(
+            err,
+            DomainError::Conflict {
+                code: ConflictCode::AttributeInUse
+            }
+        ));
+    }
+
+    #[tokio::test]
+    async fn catalog_update_etiqueta_in_use_succeeds() {
+        let repo = InMemoryAttributeDefRepo::new();
+        let usage = InMemoryAttributeUsage::new();
+        let service = svc_with_usage(repo, usage);
+        let medida = service
+            .create(NewAtributoDef {
+                clave: "medida".into(),
+                etiqueta: "Medida".into(),
+                tipo: TipoAtributo::Texto,
+                unidad: None,
+                opciones: None,
+                facetable: false,
+                buscable: true,
+                orden: 0,
+            })
+            .await
+            .expect("medida");
+        service
+            .usage
+            .set(medida.id.clone(), vec![ValorAtributo::Texto("M8".into())]);
+        let current = service.get(medida.id.clone()).await.expect("get");
+        let updated = service
+            .update(UpdateAtributoDef {
+                id: current.id.clone(),
+                clave: current.clave.clone(),
+                etiqueta: "Medida métrica".into(),
+                tipo: current.tipo,
+                unidad: current.unidad.clone(),
+                opciones: current.opciones.clone(),
+                facetable: current.facetable,
+                buscable: current.buscable,
+                orden: current.orden,
+            })
+            .await
+            .expect("etiqueta");
+        assert_eq!(updated.etiqueta, "Medida métrica");
+    }
+
+    #[tokio::test]
+    async fn catalog_update_enum_to_texto_in_use_succeeds() {
+        let repo = InMemoryAttributeDefRepo::new();
+        let usage = InMemoryAttributeUsage::new();
+        let service = svc_with_usage(repo, usage);
+        let grado = service.create(new_grado()).await.expect("grado");
+        service
+            .usage
+            .set(grado.id.clone(), vec![ValorAtributo::Texto("5".into())]);
+        let current = service.get(grado.id.clone()).await.expect("get");
+        let updated = service
+            .update(UpdateAtributoDef {
+                id: current.id.clone(),
+                clave: current.clave.clone(),
+                etiqueta: current.etiqueta.clone(),
+                tipo: TipoAtributo::Texto,
+                unidad: current.unidad.clone(),
+                opciones: None,
+                facetable: current.facetable,
+                buscable: current.buscable,
+                orden: current.orden,
+            })
+            .await
+            .expect("enum a texto");
+        assert_eq!(updated.tipo, TipoAtributo::Texto);
+    }
+
+    #[tokio::test]
+    async fn catalog_deactivate_in_use_succeeds() {
+        let repo = InMemoryAttributeDefRepo::new();
+        let usage = InMemoryAttributeUsage::new();
+        let service = svc_with_usage(repo, usage);
+        let medida = service
+            .create(NewAtributoDef {
+                clave: "medida".into(),
+                etiqueta: "Medida".into(),
+                tipo: TipoAtributo::Texto,
+                unidad: None,
+                opciones: None,
+                facetable: false,
+                buscable: true,
+                orden: 0,
+            })
+            .await
+            .expect("medida");
+        service
+            .usage
+            .set(medida.id.clone(), vec![ValorAtributo::Texto("M8".into())]);
+        let updated = service
+            .deactivate(medida.id.clone())
+            .await
+            .expect("deactivate in use");
+        assert!(!updated.activo);
+    }
+
+    #[tokio::test]
     async fn catalog_deactivate_sets_inactive() {
         let service = svc(InMemoryAttributeDefRepo::new());
         let grado = service.create(new_grado()).await.expect("grado");
@@ -486,8 +782,9 @@ mod tests {
 
     #[tokio::test]
     async fn attribute_def_gateway_is_object_safe() {
-        let gateway: std::sync::Arc<dyn AttributeDefGateway> =
-            std::sync::Arc::new(svc(InMemoryAttributeDefRepo::new()));
+        let gateway: std::sync::Arc<dyn AttributeDefGateway> = std::sync::Arc::new(
+            AttributeDefService::new(InMemoryAttributeDefRepo::new(), EmptyAttributeUsage),
+        );
         let def = gateway.create(new_grado()).await.expect("create");
         assert_eq!(def.clave, "grado");
     }

@@ -1,6 +1,7 @@
 //! Crate `storage`: SurrealDB embebido (apertura RocksDB, T-00-08; migraciones T-00-09; harness T-09-02).
 
 mod atributo_def;
+mod attribute_usage;
 mod categoria;
 mod marca;
 mod migrate;
@@ -9,6 +10,7 @@ pub mod testing;
 mod tx;
 
 pub use atributo_def::AtributoDefRepo;
+pub use attribute_usage::ProductAttributeUsage;
 pub use categoria::CategoriaRepo;
 pub use marca::MarcaRepo;
 pub use migrate::{

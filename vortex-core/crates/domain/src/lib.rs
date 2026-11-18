@@ -1,6 +1,7 @@
 //! Crate `domain` — entities, ports and domain errors.
 
 pub mod atributo_def;
+pub mod attribute_usage;
 pub mod categoria;
 pub mod decimal;
 pub mod error;
@@ -16,6 +17,7 @@ pub use atributo_def::{
     AtributoDef, AtributoDefDraft, AttributeDefRepo, NewAtributoDef, TipoAtributo,
     UpdateAtributoDef,
 };
+pub use attribute_usage::AttributeUsage;
 pub use categoria::{
     Categoria, CategoriaDraft, CategoryRepo, MAX_DEPTH, NewCategoria, Slug, UpdateCategoria,
     category_depth, reject_cycle, would_form_cycle,
@@ -38,5 +40,6 @@ pub use outbox::{OutboxEntity, OutboxEvent, OutboxEventError, OutboxOp};
 pub use producto::{
     AtributoFicha, AtributoValor, Codigo, FichaProducto, NewProducto, ProductRepo, Producto,
     ProductoDraft, Sku, TipoCodigo, Ubicacion, UnidadMedida, UpdateProducto, ValorAtributo,
+    valor_compatible_con,
 };
 pub use timestamp::{InvalidTimestamp, Timestamp};

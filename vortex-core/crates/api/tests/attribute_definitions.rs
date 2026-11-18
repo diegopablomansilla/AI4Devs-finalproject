@@ -1,7 +1,11 @@
 mod support;
 
 use api::{AppState, build_router};
-use support::fake_catalog::test_attribute_def_gateway;
+use domain::{AtributoDef, Id, ValorAtributo};
+use std::str::FromStr as _;
+use support::fake_catalog::{
+    FakeAttributeUsage, test_attribute_def_gateway, test_attribute_def_gateway_with_usage,
+};
 use support::openapi::assert_conforms;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
@@ -359,6 +363,138 @@ async fn get_attribute_defs_without_service_returns_503() {
     assert_eq!(ct, "application/problem+json");
     assert_eq!(json["code"], "unavailable");
     assert_conforms("GET", ATTR_PATH, 503, "application/problem+json", &json);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn patch_attribute_def_key_in_use_returns_409() {
+    let usage = FakeAttributeUsage::new();
+    let state =
+        AppState::new().with_attribute_defs(test_attribute_def_gateway_with_usage(usage.clone()));
+    let (addr, handle) = serve(state).await;
+
+    let (_, _, j) = post_attr(addr, r#"{"key":"medida","label":"Medida","type":"text"}"#).await;
+    let id = j["id"].as_str().unwrap();
+    usage.set(
+        Id::<AtributoDef>::from_str(id).expect("ulid"),
+        vec![ValorAtributo::Texto("M8".into())],
+    );
+    let (s, ct, json) = patch_attr(addr, id, r#"{"key":"medida_mm"}"#).await;
+    handle.abort();
+    assert_eq!(s, 409);
+    assert_eq!(ct, "application/problem+json");
+    assert_eq!(json["code"], "attribute_in_use");
+    assert_conforms(
+        "PATCH",
+        "/api/v1/attribute-definitions/{attributeId}",
+        409,
+        "application/problem+json",
+        &json,
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn patch_attribute_def_type_incompatible_in_use_returns_409() {
+    let usage = FakeAttributeUsage::new();
+    let state =
+        AppState::new().with_attribute_defs(test_attribute_def_gateway_with_usage(usage.clone()));
+    let (addr, handle) = serve(state).await;
+
+    let (_, _, j) = post_attr(addr, r#"{"key":"medida","label":"Medida","type":"text"}"#).await;
+    let id = j["id"].as_str().unwrap();
+    usage.set(
+        Id::<AtributoDef>::from_str(id).expect("ulid"),
+        vec![ValorAtributo::Texto("M8".into())],
+    );
+    let (s, ct, json) = patch_attr(addr, id, r#"{"type":"number"}"#).await;
+    handle.abort();
+    assert_eq!(s, 409);
+    assert_eq!(ct, "application/problem+json");
+    assert_eq!(json["code"], "attribute_in_use");
+    assert_conforms(
+        "PATCH",
+        "/api/v1/attribute-definitions/{attributeId}",
+        409,
+        "application/problem+json",
+        &json,
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn patch_attribute_def_label_in_use_returns_200() {
+    let usage = FakeAttributeUsage::new();
+    let state =
+        AppState::new().with_attribute_defs(test_attribute_def_gateway_with_usage(usage.clone()));
+    let (addr, handle) = serve(state).await;
+
+    let (_, _, j) = post_attr(addr, r#"{"key":"medida","label":"Medida","type":"text"}"#).await;
+    let id = j["id"].as_str().unwrap();
+    usage.set(
+        Id::<AtributoDef>::from_str(id).expect("ulid"),
+        vec![ValorAtributo::Texto("M8".into())],
+    );
+    let (s, ct, json) = patch_attr(addr, id, r#"{"label":"Medida métrica"}"#).await;
+    handle.abort();
+    assert_eq!(s, 200);
+    assert_eq!(json["label"], "Medida métrica");
+    assert_eq!(json["key"], "medida");
+    assert_conforms(
+        "PATCH",
+        "/api/v1/attribute-definitions/{attributeId}",
+        200,
+        "application/json",
+        &json,
+    );
+    let _ = ct;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn patch_attribute_def_options_incompatible_in_use_returns_409() {
+    let usage = FakeAttributeUsage::new();
+    let state =
+        AppState::new().with_attribute_defs(test_attribute_def_gateway_with_usage(usage.clone()));
+    let (addr, handle) = serve(state).await;
+
+    let (_, _, j) = post_attr(
+        addr,
+        r#"{"key":"grado","label":"Grado","type":"enum","options":["2","5","8"]}"#,
+    )
+    .await;
+    let id = j["id"].as_str().unwrap();
+    usage.set(
+        Id::<AtributoDef>::from_str(id).expect("ulid"),
+        vec![ValorAtributo::Texto("5".into())],
+    );
+    let (s, ct, json) = patch_attr(addr, id, r#"{"options":["2","8"]}"#).await;
+    handle.abort();
+    assert_eq!(s, 409);
+    assert_eq!(ct, "application/problem+json");
+    assert_eq!(json["code"], "attribute_in_use");
+    assert_conforms(
+        "PATCH",
+        "/api/v1/attribute-definitions/{attributeId}",
+        409,
+        "application/problem+json",
+        &json,
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn delete_attribute_def_in_use_returns_204() {
+    let usage = FakeAttributeUsage::new();
+    let state =
+        AppState::new().with_attribute_defs(test_attribute_def_gateway_with_usage(usage.clone()));
+    let (addr, handle) = serve(state).await;
+
+    let (_, _, j) = post_attr(addr, r#"{"key":"medida","label":"Medida","type":"text"}"#).await;
+    let id = j["id"].as_str().unwrap();
+    usage.set(
+        Id::<AtributoDef>::from_str(id).expect("ulid"),
+        vec![ValorAtributo::Texto("M8".into())],
+    );
+    let (s, _ct, json) = delete_attr(addr, id).await;
+    handle.abort();
+    assert_eq!(s, 204);
+    assert!(json.is_null());
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
