@@ -462,6 +462,27 @@ textarea:focus-visible {
   cursor: pointer;
 }
 
+.vx-product-stock-readonly {
+  margin: 0 0 var(--vx-space-md);
+  padding: var(--vx-space-sm) var(--vx-space-md);
+  border-radius: var(--vx-radius-md);
+  background-color: var(--vx-color-surface);
+  color: var(--vx-color-text);
+}
+
+.vx-product-conflict-status {
+  margin: 0 0 var(--vx-space-md);
+  color: var(--vx-color-warning, var(--vx-color-text));
+}
+
+.vx-product-field-changed select,
+.vx-product-field-wrap.vx-product-field-changed,
+.vx-product-field-changed {
+  outline: 2px solid var(--vx-color-warning, var(--vx-color-accent));
+  outline-offset: 2px;
+  border-radius: var(--vx-radius-sm);
+}
+
 .vx-product-attrs,
 .vx-product-codes {
   display: flex;

@@ -15,7 +15,13 @@ const errorsUrl = pathToFileURL(
 ).href;
 
 const { mountProducts } = await import(productsUrl);
-const { renderCreateProductSheet, readProductCreate } = await import(sheetUrl);
+const {
+  renderCreateProductSheet,
+  renderEditProductSheet,
+  readProductCreate,
+  readProductUpdate,
+  diffChangedProductFields,
+} = await import(sheetUrl);
 const { createErrorUi } = await import(errorsUrl);
 
 const FIJACIONES = {
@@ -197,6 +203,23 @@ function createSelectStub(name, bag) {
   };
 }
 
+function createEditFormStub(html) {
+  const stub = createProductFormStub(html);
+  const verMatch = html.match(/data-product-version="(\d+)"/);
+  const version = verMatch ? verMatch[1] : "1";
+  const origGet = stub.getAttribute.bind(stub);
+  stub.getAttribute = (name) => {
+    if (name === "data-form") {
+      return "edit-product";
+    }
+    if (name === "data-product-version") {
+      return version;
+    }
+    return origGet(name);
+  };
+  return stub;
+}
+
 function createProductFormStub(html) {
   /** @type {Record<string, string>} */
   const fieldBag = {};
@@ -269,6 +292,36 @@ function createProductFormStub(html) {
 function queryStub(html, selector) {
   const patterns = [
     {
+      re: /^\[data-action="([^"]+)"\]\[data-product-id="([^"]+)"\]$/,
+      run(m) {
+        const action = m[1];
+        const productId = m[2];
+        const needle = `data-action="${action}" data-product-id="${productId}"`;
+        const needleAlt = `data-product-id="${productId}" data-action="${action}"`;
+        if (!html.includes(needle) && !html.includes(needleAlt)) {
+          return null;
+        }
+        const stub = {
+          getAttribute(name) {
+            if (name === "data-action") {
+              return action;
+            }
+            if (name === "data-product-id") {
+              return productId;
+            }
+            return null;
+          },
+          closest(sel) {
+            if (sel === "[data-action]") {
+              return this;
+            }
+            return null;
+          },
+        };
+        return stub;
+      },
+    },
+    {
       re: /^\[data-action="([^"]+)"\]$/,
       run(m) {
         const action = m[1];
@@ -298,6 +351,15 @@ function queryStub(html, selector) {
           return null;
         }
         return createProductFormStub(html);
+      },
+    },
+    {
+      re: /^form\[data-form="edit-product"\]$/,
+      run() {
+        if (!html.includes('data-form="edit-product"')) {
+          return null;
+        }
+        return createEditFormStub(html);
       },
     },
     {
@@ -340,9 +402,41 @@ function queryAllStub(html, selector) {
   return single ? [single] : [];
 }
 
+const PERN_LIST_ROW = {
+  id: "01J9PERNEDIT00000001",
+  sku: PERN_SKU,
+  name: "Perno hexagonal M8 x 40 zincado",
+  productType: "Perno",
+  brand: "Fixser",
+  categoryPath: ["Fijaciones"],
+  price: "120.50",
+  stock: "50",
+  active: true,
+};
+
+const PERN_FICHA = {
+  id: PERN_LIST_ROW.id,
+  sku: PERN_SKU,
+  name: PERN_LIST_ROW.name,
+  productType: "Perno",
+  description: null,
+  brand: { id: FIXSER.id, name: "Fixser" },
+  category: { id: FIJACIONES.id, name: "Fijaciones", path: ["Fijaciones"] },
+  attributes: [],
+  codes: [],
+  unitOfMeasure: "unit",
+  price: "120.50",
+  stock: "50",
+  active: true,
+  version: 3,
+  images: [],
+  createdAt: "2026-01-01T00:00:00Z",
+  updatedAt: "2026-01-01T00:00:00Z",
+};
+
 function apiError(code, errors = []) {
   const status =
-    code === "duplicate_sku"
+    code === "duplicate_sku" || code === "version_conflict"
       ? 409
       : code === "not_found"
         ? 404
@@ -356,6 +450,37 @@ function apiError(code, errors = []) {
     title: code,
     errors,
   };
+}
+
+function fillEditForm(form, categoryId, opts = {}) {
+  fillPernoForm(form, categoryId, { ...opts, initialStock: undefined });
+  delete form.fieldBag.initialStock;
+}
+
+function defaultEditMountResponses(extra = [], attrDefs = { items: [] }) {
+  return [
+    { items: [FIJACIONES] },
+    { items: [FIXSER] },
+    { items: [PERN_LIST_ROW], nextCursor: null },
+    PERN_FICHA,
+    attrDefs,
+    ...extra,
+  ];
+}
+
+async function openEditSheet(el, deps, productId = PERN_LIST_ROW.id) {
+  const request = deps.request ?? deps;
+  const showError = deps.showError ?? (() => {});
+  await mountProducts(el, { request, showError });
+  const editBtn = el.querySelector(
+    `[data-action="edit"][data-product-id="${productId}"]`,
+  );
+  assert.ok(editBtn, "botón Editar");
+  el.dispatchClick(editBtn);
+  for (let i = 0; i < 6; i++) {
+    await new Promise((r) => setTimeout(r, 0));
+  }
+  return el.querySelector('form[data-form="edit-product"]');
 }
 
 function fillPernoForm(form, categoryId, opts = {}) {
@@ -814,5 +939,228 @@ describe("readProductCreate_unit", () => {
     const form = createProductFormStub(html);
     const root = { querySelector: (s) => form.querySelector(s) };
     assert.equal(readProductCreate(root, form), null);
+  });
+});
+
+describe("diff_changed_product_fields_lists_price", () => {
+  test("precio cambiado", () => {
+    const before = { ...PERN_FICHA, price: "120.50", version: 3 };
+    const after = { ...PERN_FICHA, price: "130.00", version: 4 };
+    const { keys, labels } = diffChangedProductFields(before, after);
+    assert.deepEqual(keys, ["price"]);
+    assert.deepEqual(labels, ["Precio"]);
+  });
+});
+
+describe("sheet_edit_stock_is_read_only", () => {
+  test("stock visible sin input editable", () => {
+    const html = renderEditProductSheet(PERN_FICHA, [FIJACIONES], [FIXSER], []);
+    assert.match(html, /Stock actual: 50/);
+    assert.doesNotMatch(html, /name="stock"/);
+    assert.doesNotMatch(html, /name="initialStock"/);
+  });
+});
+
+describe("sheet_edit_opens_hydrated_datos_tab", () => {
+  test("Editar producto y SKU hidratado", async () => {
+    const { request, calls } = createCallTracker(defaultEditMountResponses());
+    const el = createMountEl();
+    await openEditSheet(el, request);
+    assert.match(el.html, /Editar producto/);
+    assert.match(el.html, /data-form="edit-product"/);
+    assert.match(el.html, new RegExp(`value="${PERN_SKU}"`));
+    assert.ok(
+      calls.some(
+        (c) =>
+          c.method === "GET" &&
+          c.path === `/api/v1/products/${PERN_LIST_ROW.id}`,
+      ),
+    );
+    assert.ok(
+      calls.some(
+        (c) => c.method === "GET" && c.path === "/api/v1/attribute-definitions",
+      ),
+    );
+  });
+});
+
+describe("sheet_edit_price_patches_with_version", () => {
+  test("PATCH con version", async () => {
+    const updated = { ...PERN_FICHA, price: "130.00", version: 4 };
+    const { request, calls } = createCallTracker(
+      defaultEditMountResponses([updated, { items: [PERN_LIST_ROW], nextCursor: null }]),
+    );
+    const el = createMountEl();
+    const form = await openEditSheet(el, request);
+    fillEditForm(form, FIJACIONES.id, { price: "130.00" });
+    el.dispatchSubmit(form);
+    await new Promise((r) => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 0));
+
+    const patch = calls.find((c) => c.method === "PATCH");
+    assert.ok(patch);
+    assert.equal(patch.body.version, 3);
+    assert.equal(patch.body.price, "130.00");
+    assert.equal(patch.body.initialStock, undefined);
+    assert.equal(patch.body.stock, undefined);
+    assert.match(el.html, /class="vx-product-table"/);
+  });
+});
+
+describe("sheet_edit_version_conflict_reloads_and_lists_changed_fields", () => {
+  test("409 recarga y role status Precio", async () => {
+    const errors = [];
+    const fichaV4 = {
+      ...PERN_FICHA,
+      version: 4,
+      price: "130.00",
+    };
+    const { request, calls } = createCallTracker(
+      defaultEditMountResponses([
+        { throw: apiError("version_conflict") },
+        fichaV4,
+      ]),
+    );
+    const el = createMountEl();
+    const form = await openEditSheet(el, {
+      request,
+      showError: (e) => errors.push(e.code),
+    });
+    fillEditForm(form, FIJACIONES.id, {
+      name: "Nombre local sin guardar",
+      price: "125.00",
+    });
+    el.dispatchSubmit(form);
+    await new Promise((r) => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 0));
+
+    assert.deepEqual(errors, ["version_conflict"]);
+    assert.ok(
+      calls.filter(
+        (c) =>
+          c.method === "GET" &&
+          c.path === `/api/v1/products/${PERN_LIST_ROW.id}`,
+      ).length >= 2,
+    );
+    assert.match(el.html, /role="status"/);
+    assert.match(el.html, /Precio/);
+    assert.match(el.html, /value="130\.00"/);
+    assert.match(el.html, /data-form="edit-product"/);
+  });
+});
+
+describe("sheet_edit_does_not_merge_local_unsaved_fields", () => {
+  test("nombre del servidor tras conflicto", async () => {
+    const fichaV4 = {
+      ...PERN_FICHA,
+      version: 4,
+      price: "130.00",
+      name: "Perno actualizado por otra terminal",
+    };
+    const { request } = createCallTracker(
+      defaultEditMountResponses([
+        { throw: apiError("version_conflict") },
+        fichaV4,
+      ]),
+    );
+    const el = createMountEl();
+    const form = await openEditSheet(el, { request, showError: () => {} });
+    fillEditForm(form, FIJACIONES.id, { name: "Nombre local B" });
+    el.dispatchSubmit(form);
+    await new Promise((r) => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 0));
+
+    assert.match(
+      el.html,
+      /value="Perno actualizado por otra terminal"/,
+    );
+    assert.doesNotMatch(el.html, /value="Nombre local B"/);
+  });
+});
+
+describe("sheet_edit_invalid_input_sets_field_error", () => {
+  test("error en sku", async () => {
+    const { request } = createCallTracker(
+      defaultEditMountResponses([
+        {
+          throw: apiError("invalid_input", [
+            { field: "sku", message: "inválido" },
+          ]),
+        },
+      ]),
+    );
+    const el = createMountEl();
+    const root = { querySelector: (s) => el.querySelector(s) };
+    const { showError } = createErrorUi({ root });
+    const form = await openEditSheet(el, { request, showError });
+    fillEditForm(form, FIJACIONES.id);
+    el.dispatchSubmit(form);
+    await new Promise((r) => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 0));
+
+    assert.match(
+      el.html,
+      /name="sku"[^>]*error="inválido"|error="inválido"[^>]*name="sku"/,
+    );
+    assert.match(el.html, /data-form="edit-product"/);
+  });
+});
+
+describe("sheet_edit_not_found_shows_not_found", () => {
+  test("GET ficha 404", async () => {
+    const errors = [];
+    const { request } = createCallTracker([
+      { items: [FIJACIONES] },
+      { items: [FIXSER] },
+      { items: [PERN_LIST_ROW], nextCursor: null },
+      { throw: apiError("not_found") },
+    ]);
+    const el = createMountEl();
+    await openEditSheet(el, {
+      request,
+      showError: (e) => errors.push(e.code),
+    });
+    await new Promise((r) => setTimeout(r, 0));
+
+    assert.deepEqual(errors, ["not_found"]);
+    assert.match(el.html, /class="vx-product-table"/);
+  });
+});
+
+describe("sheet_edit_network_shows_network", () => {
+  test("PATCH network", async () => {
+    const errors = [];
+    const { request } = createCallTracker(
+      defaultEditMountResponses([{ throw: apiError("network") }]),
+    );
+    const el = createMountEl();
+    const form = await openEditSheet(el, {
+      request,
+      showError: (e) => errors.push(e.code),
+    });
+    fillEditForm(form, FIJACIONES.id);
+    el.dispatchSubmit(form);
+    await new Promise((r) => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 0));
+
+    assert.deepEqual(errors, ["network"]);
+    assert.match(el.html, /data-form="edit-product"/);
+  });
+});
+
+describe("sheet_edit_empty_required_does_not_patch", () => {
+  test("sin PATCH si falta precio", async () => {
+    const { request, calls } = createCallTracker(defaultEditMountResponses());
+    const el = createMountEl();
+    const form = await openEditSheet(el, request);
+    form.fieldBag.price = "";
+    el.dispatchSubmit(form);
+    await new Promise((r) => setTimeout(r, 0));
+    assert.equal(calls.filter((c) => c.method === "PATCH").length, 0);
   });
 });

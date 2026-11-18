@@ -117,6 +117,156 @@ export function coerceAttributeValue(raw, type) {
   return trimmed;
 }
 
+/** @type {Record<string, string>} */
+const PRODUCT_FIELD_LABELS = {
+  sku: "SKU",
+  name: "Nombre",
+  productType: "Tipo",
+  description: "Descripción",
+  brandId: "Marca",
+  categoryId: "Categoría",
+  unitOfMeasure: "Unidad",
+  price: "Precio",
+  location: "Ubicación",
+  attributes: "Atributos",
+  codes: "Códigos",
+};
+
+/**
+ * @param {unknown} value
+ */
+function formatAttrValue(value) {
+  if (value === true) {
+    return "true";
+  }
+  if (value === false) {
+    return "false";
+  }
+  if (value == null) {
+    return "";
+  }
+  return String(value);
+}
+
+/**
+ * @param {Array<{ definitionId?: string, value?: unknown }> | undefined | null} attrs
+ */
+function sortAttributes(attrs) {
+  if (!Array.isArray(attrs)) {
+    return [];
+  }
+  return [...attrs]
+    .map((a) => ({
+      definitionId: String(a.definitionId ?? ""),
+      value: a.value,
+    }))
+    .sort((a, b) => a.definitionId.localeCompare(b.definitionId));
+}
+
+/**
+ * @param {Array<{ type?: string, value?: string }> | undefined | null} codes
+ */
+function sortCodes(codes) {
+  if (!Array.isArray(codes)) {
+    return [];
+  }
+  return [...codes]
+    .map((c) => ({ type: String(c.type ?? ""), value: String(c.value ?? "") }))
+    .sort((a, b) => a.type.localeCompare(b.type));
+}
+
+/**
+ * @param {Record<string, unknown> | null | undefined} product
+ */
+function normalizeProductComparable(product) {
+  if (!product) {
+    return {};
+  }
+  const loc = product.location;
+  const locationKey =
+    loc && typeof loc === "object"
+      ? JSON.stringify({
+          aisle: /** @type {Record<string, unknown>} */ (loc).aisle ?? null,
+          shelf: /** @type {Record<string, unknown>} */ (loc).shelf ?? null,
+          position: /** @type {Record<string, unknown>} */ (loc).position ?? null,
+        })
+      : JSON.stringify({});
+  const brand = product.brand;
+  const brandId =
+    brand && typeof brand === "object" && "id" in brand
+      ? String(/** @type {{ id: string }} */ (brand).id)
+      : null;
+  const category = product.category;
+  const categoryId =
+    category && typeof category === "object" && "id" in category
+      ? String(/** @type {{ id: string }} */ (category).id)
+      : "";
+  return {
+    sku: String(product.sku ?? ""),
+    name: String(product.name ?? ""),
+    productType: String(product.productType ?? ""),
+    description:
+      product.description == null ? "" : String(product.description),
+    brandId,
+    categoryId,
+    unitOfMeasure: String(product.unitOfMeasure ?? "unit"),
+    price: String(product.price ?? ""),
+    location: locationKey,
+    attributes: JSON.stringify(sortAttributes(
+      /** @type {Array<{ definitionId?: string, value?: unknown }>} */ (
+        product.attributes
+      ),
+    )),
+    codes: JSON.stringify(sortCodes(
+      /** @type {Array<{ type?: string, value?: string }>} */ (product.codes),
+    )),
+  };
+}
+
+/**
+ * @param {Record<string, unknown> | null | undefined} before
+ * @param {Record<string, unknown> | null | undefined} after
+ * @returns {{ keys: string[], labels: string[] }}
+ */
+export function diffChangedProductFields(before, after) {
+  const a = normalizeProductComparable(before);
+  const b = normalizeProductComparable(after);
+  /** @type {string[]} */
+  const keys = [];
+  for (const key of Object.keys(PRODUCT_FIELD_LABELS)) {
+    if (a[key] !== b[key]) {
+      keys.push(key);
+    }
+  }
+  return {
+    keys,
+    labels: keys.map((k) => PRODUCT_FIELD_LABELS[k] ?? k),
+  };
+}
+
+/**
+ * @param {Array<{ definitionId: string, value: unknown, type?: string }>} productAttrs
+ * @param {string} definitionId
+ * @param {string} type
+ */
+function attrValueForDefinition(productAttrs, definitionId, type) {
+  const row = productAttrs.find((a) => a.definitionId === definitionId);
+  if (!row) {
+    return "";
+  }
+  const v = row.value;
+  if (type === "boolean") {
+    if (v === true) {
+      return "true";
+    }
+    if (v === false) {
+      return "false";
+    }
+    return "";
+  }
+  return formatAttrValue(v);
+}
+
 /**
  * @param {{
  *   id: string,
@@ -127,20 +277,33 @@ export function coerceAttributeValue(raw, type) {
  * }} def
  * @param {number} index
  * @param {Record<string, string>} fieldErrors
+ * @param {Array<{ definitionId: string, value: unknown }>} [productAttrs]
+ * @param {Set<string>} [changedKeys]
  */
-function renderAttributeControl(def, index, fieldErrors) {
+function renderAttributeControl(
+  def,
+  index,
+  fieldErrors,
+  productAttrs = [],
+  changedKeys = new Set(),
+) {
   const name = `attributes[${index}].value`;
   const label = attributeLabel(def.label, def.unit);
   const defId = escapeHtml(def.id);
   const type = String(def.type ?? "text");
+  const initial = attrValueForDefinition(productAttrs, def.id, type);
+  const changedClass =
+    changedKeys.has("attributes") ? " vx-product-field-changed" : "";
 
   if (type === "boolean") {
-    return `<div class="vx-product-attr-row" data-attr-definition-id="${defId}" data-attr-type="boolean">
+    const selTrue = initial === "true" ? " selected" : "";
+    const selFalse = initial === "false" ? " selected" : "";
+    return `<div class="vx-product-attr-row${changedClass}" data-attr-definition-id="${defId}" data-attr-type="boolean">
     <label class="vx-product-sheet-select">${escapeHtml(label)}
       <select data-attr-index="${index}" data-attr-type="boolean">
         <option value="">—</option>
-        <option value="true">Sí</option>
-        <option value="false">No</option>
+        <option value="true"${selTrue}>Sí</option>
+        <option value="false"${selFalse}>No</option>
       </select>
     </label>
     ${vxField(name, "", fieldErrors)}
@@ -151,13 +314,14 @@ function renderAttributeControl(def, index, fieldErrors) {
     const opts = Array.isArray(def.options) ? def.options : [];
     const options = ['<option value="">—</option>']
       .concat(
-        opts.map(
-          (o) =>
-            `<option value="${escapeHtml(String(o))}">${escapeHtml(String(o))}</option>`,
-        ),
+        opts.map((o) => {
+          const s = String(o);
+          const selected = initial === s ? " selected" : "";
+          return `<option value="${escapeHtml(s)}"${selected}>${escapeHtml(s)}</option>`;
+        }),
       )
       .join("\n");
-    return `<div class="vx-product-attr-row" data-attr-definition-id="${defId}" data-attr-type="enum">
+    return `<div class="vx-product-attr-row${changedClass}" data-attr-definition-id="${defId}" data-attr-type="enum">
     <label class="vx-product-sheet-select">${escapeHtml(label)}
       <select data-attr-index="${index}" data-attr-type="enum">
 ${options}
@@ -167,16 +331,25 @@ ${options}
     </div>`;
   }
 
-  return `<div class="vx-product-attr-row" data-attr-definition-id="${defId}" data-attr-type="${escapeHtml(type)}">
-    ${vxField(name, label, fieldErrors)}
+  const fieldOpts =
+    initial.length > 0 ? { value: initial } : {};
+  return `<div class="vx-product-attr-row${changedClass}" data-attr-definition-id="${defId}" data-attr-type="${escapeHtml(type)}">
+    ${vxField(name, label, fieldErrors, fieldOpts)}
     </div>`;
 }
 
 /**
  * @param {Array<{ id: string, label: string, type: string, unit?: string | null, options?: string[] | null, active?: boolean }>} attributeDefs
  * @param {Record<string, string>} fieldErrors
+ * @param {Array<{ definitionId: string, value: unknown }>} [productAttrs]
+ * @param {Set<string>} [changedKeys]
  */
-function renderAttributesSection(attributeDefs, fieldErrors) {
+function renderAttributesSection(
+  attributeDefs,
+  fieldErrors,
+  productAttrs = [],
+  changedKeys = new Set(),
+) {
   const active = activeAttributeDefinitions(attributeDefs);
   if (active.length === 0) {
     return `<section class="vx-product-attrs" aria-label="Atributos técnicos">
@@ -184,7 +357,9 @@ function renderAttributesSection(attributeDefs, fieldErrors) {
     </section>`;
   }
   const rows = active
-    .map((def, i) => renderAttributeControl(def, i, fieldErrors))
+    .map((def, i) =>
+      renderAttributeControl(def, i, fieldErrors, productAttrs, changedKeys),
+    )
     .join("\n");
   return `<section class="vx-product-attrs" aria-label="Atributos técnicos">
   <h2 class="vx-product-section-title">Atributos técnicos</h2>
@@ -193,14 +368,42 @@ ${rows}
 }
 
 /**
- * @param {Record<string, string>} fieldErrors
+ * @param {Array<{ type: string, value: string }>} codes
+ * @param {string} type
  */
-function renderCodesSection(fieldErrors) {
-  return `<section class="vx-product-codes" aria-label="Códigos de producto">
+function codeValue(codes, type) {
+  const row = codes.find((c) => c.type === type);
+  return row ? String(row.value ?? "") : "";
+}
+
+/**
+ * @param {Record<string, string>} fieldErrors
+ * @param {Array<{ type: string, value: string }>} [productCodes]
+ * @param {Set<string>} [changedKeys]
+ */
+function renderCodesSection(
+  fieldErrors,
+  productCodes = [],
+  changedKeys = new Set(),
+) {
+  const changedClass = changedKeys.has("codes")
+    ? " vx-product-field-changed"
+    : "";
+  const mfg = codeValue(productCodes, "manufacturer");
+  const oem = codeValue(productCodes, "oem");
+  return `<section class="vx-product-codes${changedClass}" aria-label="Códigos de producto">
   <h2 class="vx-product-section-title">Códigos</h2>
-  ${vxField("codes.manufacturer", "Código de fabricante", fieldErrors)}
-  ${vxField("codes.oem", "Código OEM", fieldErrors)}
+  ${vxField("codes.manufacturer", "Código de fabricante", fieldErrors, mfg.length > 0 ? { value: mfg } : {})}
+  ${vxField("codes.oem", "Código OEM", fieldErrors, oem.length > 0 ? { value: oem } : {})}
   </section>`;
+}
+
+/**
+ * @param {string} fieldKey
+ * @param {Set<string>} changedKeys
+ */
+function fieldChangedClass(fieldKey, changedKeys) {
+  return changedKeys.has(fieldKey) ? " vx-product-field-changed" : "";
 }
 
 /**
@@ -383,5 +586,166 @@ export function readProductCreate(root, form) {
     body.codes = codes;
   }
 
+  return body;
+}
+
+/**
+ * @param {{
+ *   sku: string,
+ *   name: string,
+ *   productType: string,
+ *   description?: string | null,
+ *   brand?: { id: string } | null,
+ *   category: { id: string },
+ *   attributes?: Array<{ definitionId: string, value: unknown }>,
+ *   codes?: Array<{ type: string, value: string }>,
+ *   unitOfMeasure?: string,
+ *   price: string,
+ *   stock: string,
+ *   location?: { aisle?: string | null, shelf?: string | null, position?: string | null } | null,
+ *   version: number,
+ * }} product
+ * @param {Array<{ id: string, name: string, active?: boolean }>} categories
+ * @param {Array<{ id: string, name: string, active?: boolean }>} brands
+ * @param {Array<{ id: string, label: string, type: string, unit?: string | null, options?: string[] | null, active?: boolean }>} attributeDefs
+ * @param {Record<string, string>} fieldErrors
+ * @param {string[]} [changedFieldKeys]
+ * @param {string[]} [conflictLabels]
+ */
+export function renderEditProductSheet(
+  product,
+  categories,
+  brands,
+  attributeDefs = [],
+  fieldErrors = {},
+  changedFieldKeys = [],
+  conflictLabels = [],
+) {
+  const activeCats = activeLookupItems(categories);
+  const activeBrands = activeLookupItems(brands);
+  const categoryId = product.category?.id ?? "";
+  const brandId = product.brand?.id ?? "";
+  const changedKeys = new Set(changedFieldKeys);
+  const productAttrs = Array.isArray(product.attributes) ? product.attributes : [];
+  const productCodes = Array.isArray(product.codes) ? product.codes : [];
+  const loc = product.location ?? {};
+  const unit = String(product.unitOfMeasure ?? "unit");
+
+  const unitOptions = UNIT_OF_MEASURE_OPTIONS.map((opt) => {
+    const selected = opt.value === unit ? " selected" : "";
+    return `<option value="${opt.value}"${selected}>${escapeHtml(opt.label)}</option>`;
+  }).join("\n");
+
+  const conflictStatus =
+    conflictLabels.length > 0
+      ? `<p class="vx-product-conflict-status" role="status">Otra terminal modificó: ${conflictLabels.map(escapeHtml).join(", ")}</p>`
+      : "";
+
+  const desc =
+    product.description == null ? "" : String(product.description);
+  const aisle = loc.aisle == null ? "" : String(loc.aisle);
+  const shelf = loc.shelf == null ? "" : String(loc.shelf);
+  const position = loc.position == null ? "" : String(loc.position);
+
+  return `<div class="vx-product-sheet">
+  <h1 class="vx-product-sheet-title">Editar producto</h1>
+  ${conflictStatus}
+  <div class="vx-product-tabs" role="tablist" aria-label="Ficha de producto">
+    <button type="button" class="vx-product-tab" role="tab" aria-selected="true" data-tab="datos">Datos</button>
+    <button type="button" class="vx-product-tab" role="tab" aria-selected="false" aria-disabled="true" data-tab="stock">Stock</button>
+    <button type="button" class="vx-product-tab" role="tab" aria-selected="false" aria-disabled="true" data-tab="relaciones">Relaciones</button>
+  </div>
+  <form data-form="edit-product" class="vx-product-sheet-form" data-product-version="${escapeHtml(String(product.version))}">
+    <p class="vx-product-stock-readonly">Stock actual: ${escapeHtml(String(product.stock ?? ""))}</p>
+    ${vxField("sku", "SKU", fieldErrors, { required: true, value: product.sku })}
+    ${vxField("name", "Nombre", fieldErrors, { required: true, value: product.name })}
+    ${vxField("productType", "Tipo", fieldErrors, { required: true, value: product.productType })}
+    ${vxField("description", "Descripción", fieldErrors, { value: desc })}
+    <label class="vx-product-sheet-select${fieldChangedClass("categoryId", changedKeys)}">Categoría
+      <select name="categoryId" data-sheet-field="categoryId">
+${renderRequiredSelectOptions(activeCats, "Elegir categoría", categoryId)}
+      </select>
+    </label>
+    ${vxField("categoryId", "", fieldErrors)}
+    <label class="vx-product-sheet-select${fieldChangedClass("brandId", changedKeys)}">Marca
+      <select name="brandId" data-sheet-field="brandId">
+${renderRequiredSelectOptions(activeBrands, "Sin marca", brandId)}
+      </select>
+    </label>
+    ${vxField("brandId", "", fieldErrors)}
+    <label class="vx-product-sheet-select${fieldChangedClass("unitOfMeasure", changedKeys)}">Unidad
+      <select name="unitOfMeasure" data-sheet-field="unitOfMeasure">
+${unitOptions}
+      </select>
+    </label>
+    ${vxField("unitOfMeasure", "", fieldErrors)}
+    <div class="vx-product-field-wrap${fieldChangedClass("price", changedKeys)}">
+    ${vxField("price", "Precio", fieldErrors, { required: true, value: product.price })}
+    </div>
+    ${vxField("location.aisle", "Pasillo", fieldErrors, { value: aisle })}
+    ${vxField("location.shelf", "Estante", fieldErrors, { value: shelf })}
+    ${vxField("location.position", "Posición", fieldErrors, { value: position })}
+    ${renderAttributesSection(attributeDefs, fieldErrors, productAttrs, changedKeys)}
+    ${renderCodesSection(fieldErrors, productCodes, changedKeys)}
+    <div class="vx-product-sheet-actions">
+      <button type="submit">Guardar</button>
+      <button type="button" data-action="cancel-sheet">Cancelar</button>
+    </div>
+  </form>
+</div>`;
+}
+
+/**
+ * @param {Array<{ definitionId: string, value: unknown }> | undefined} formAttributes
+ * @param {Record<string, unknown>} snapshot
+ * @param {Array<{ id: string, active?: boolean }>} attributeDefs
+ */
+export function mergePatchAttributes(formAttributes, snapshot, attributeDefs) {
+  const activeIds = new Set(
+    activeAttributeDefinitions(attributeDefs).map((d) => d.id),
+  );
+  const snapAttrs = Array.isArray(snapshot.attributes) ? snapshot.attributes : [];
+  const preserved = snapAttrs
+    .filter((a) => !activeIds.has(a.definitionId))
+    .map((a) => ({ definitionId: a.definitionId, value: a.value }));
+  const fromForm = Array.isArray(formAttributes) ? formAttributes : [];
+  if (fromForm.length === 0 && preserved.length === 0) {
+    return undefined;
+  }
+  return [...fromForm, ...preserved];
+}
+
+/**
+ * @param {Array<{ type: string, value: string }> | undefined} formCodes
+ * @param {Record<string, unknown>} snapshot
+ */
+export function mergePatchCodes(formCodes, snapshot) {
+  const paintedTypes = new Set(["manufacturer", "oem"]);
+  const snapCodes = Array.isArray(snapshot.codes) ? snapshot.codes : [];
+  const preserved = snapCodes.filter((c) => !paintedTypes.has(c.type));
+  const fromForm = Array.isArray(formCodes) ? formCodes : [];
+  if (fromForm.length === 0 && preserved.length === 0) {
+    return undefined;
+  }
+  return [...fromForm, ...preserved];
+}
+
+/**
+ * @param {ParentNode & { querySelector?: typeof Document.prototype.querySelector, querySelectorAll?: typeof Document.prototype.querySelectorAll }} root
+ * @param {Element | { querySelector?: Function, querySelectorAll?: Function, getAttribute?: Function }} form
+ */
+export function readProductUpdate(root, form) {
+  const versionRaw = form?.getAttribute?.("data-product-version");
+  const version = Number(versionRaw);
+  if (!Number.isFinite(version) || version < 1) {
+    return null;
+  }
+
+  const body = readProductCreate(root, form);
+  if (!body) {
+    return null;
+  }
+  delete body.initialStock;
+  body.version = version;
   return body;
 }
