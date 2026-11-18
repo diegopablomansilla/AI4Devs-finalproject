@@ -6,14 +6,16 @@ use domain::{
     NewCategoria, UpdateCategoria,
 };
 
+use std::sync::Arc;
+
 use storage::testing::test_db;
 use storage::{CategoriaRepo as StorageCategoryRepo, MIGRATION_0002_SQL, checksum_hex};
 
-fn repo(db: &storage::Db) -> StorageCategoryRepo<'_> {
+fn repo(db: Arc<storage::Db>) -> StorageCategoryRepo {
     StorageCategoryRepo::new(db)
 }
 
-async fn create_fijaciones(db: &storage::Db) -> Categoria {
+async fn create_fijaciones(db: Arc<storage::Db>) -> Categoria {
     repo(db)
         .create(NewCategoria {
             nombre: "Fijaciones".into(),
@@ -26,7 +28,7 @@ async fn create_fijaciones(db: &storage::Db) -> Categoria {
 
 #[tokio::test]
 async fn migrate_applies_0002_categoria() {
-    let db = test_db().await;
+    let db = Arc::new(test_db().await);
     let rows = db.list_migrations().await.expect("list migrations");
     let v2 = rows
         .iter()
@@ -43,7 +45,7 @@ async fn migrate_applies_0002_categoria() {
 
 #[tokio::test]
 async fn migrate_rerun_keeps_single_0002_record() {
-    let db = test_db().await;
+    let db = Arc::new(test_db().await);
     db.migrate()
         .await
         .expect("second migrate must be idempotent");
@@ -59,7 +61,7 @@ async fn migrate_rerun_keeps_single_0002_record() {
 
 #[tokio::test]
 async fn categoria_allows_same_slug_under_different_padres() {
-    let db = test_db().await;
+    let db = Arc::new(test_db().await);
     db.query(
         "CREATE categoria:padre_a CONTENT { nombre: 'Padre A', slug: 'padre-a', ruta: ['Padre A'] }; \
          CREATE categoria:padre_b CONTENT { nombre: 'Padre B', slug: 'padre-b', ruta: ['Padre B'] }; \
@@ -73,7 +75,7 @@ async fn categoria_allows_same_slug_under_different_padres() {
 
 #[tokio::test]
 async fn categoria_rejects_duplicate_padre_slug() {
-    let db = test_db().await;
+    let db = Arc::new(test_db().await);
     db.query(
         "CREATE categoria:padre CONTENT { nombre: 'Padre', slug: 'padre', ruta: ['Padre'] }; \
          CREATE categoria:primera CONTENT { nombre: 'Una', slug: 'child', padre: categoria:padre, ruta: ['Padre', 'Una'] };",
@@ -93,7 +95,7 @@ async fn categoria_rejects_duplicate_padre_slug() {
 
 #[tokio::test]
 async fn categoria_rejects_empty_nombre() {
-    let db = test_db().await;
+    let db = Arc::new(test_db().await);
     let err = db
         .query("CREATE categoria:bad CONTENT { nombre: '', slug: 'bad', ruta: [] };")
         .await
@@ -107,8 +109,8 @@ async fn categoria_rejects_empty_nombre() {
 
 #[tokio::test]
 async fn category_repo_creates_root_fijaciones() {
-    let db = test_db().await;
-    let cat = create_fijaciones(&db).await;
+    let db = Arc::new(test_db().await);
+    let cat = create_fijaciones(Arc::clone(&db)).await;
     assert_eq!(cat.nombre, "Fijaciones");
     assert_eq!(cat.ruta, vec!["Fijaciones"]);
     assert!(cat.padre.is_none());
@@ -120,10 +122,10 @@ async fn category_repo_creates_root_fijaciones() {
 
 #[tokio::test]
 async fn category_repo_creates_child_pernos_with_ruta() {
-    let db = test_db().await;
-    let fijaciones = create_fijaciones(&db).await;
+    let db = Arc::new(test_db().await);
+    let fijaciones = create_fijaciones(Arc::clone(&db)).await;
     let fijaciones_id = fijaciones.id.clone();
-    let pernos = repo(&db)
+    let pernos = repo(Arc::clone(&db))
         .create(NewCategoria {
             nombre: "Pernos".into(),
             slug: None,
@@ -139,10 +141,13 @@ async fn category_repo_creates_child_pernos_with_ruta() {
 
 #[tokio::test]
 async fn category_repo_get_returns_persisted() {
-    let db = test_db().await;
-    let created = create_fijaciones(&db).await;
+    let db = Arc::new(test_db().await);
+    let created = create_fijaciones(Arc::clone(&db)).await;
     let created_id = created.id.clone();
-    let loaded = repo(&db).get(created_id.clone()).await.expect("get");
+    let loaded = repo(Arc::clone(&db))
+        .get(created_id.clone())
+        .await
+        .expect("get");
     assert_eq!(loaded.id, created_id);
     assert_eq!(loaded.nombre, created.nombre);
     assert_eq!(loaded.ruta, created.ruta);
@@ -150,9 +155,9 @@ async fn category_repo_get_returns_persisted() {
 
 #[tokio::test]
 async fn category_repo_list_all_includes_root_and_child() {
-    let db = test_db().await;
-    let fijaciones = create_fijaciones(&db).await;
-    let _pernos = repo(&db)
+    let db = Arc::new(test_db().await);
+    let fijaciones = create_fijaciones(Arc::clone(&db)).await;
+    let _pernos = repo(Arc::clone(&db))
         .create(NewCategoria {
             nombre: "Pernos".into(),
             slug: None,
@@ -160,7 +165,7 @@ async fn category_repo_list_all_includes_root_and_child() {
         })
         .await
         .expect("Pernos");
-    let all = repo(&db).list_all().await.expect("list_all");
+    let all = repo(Arc::clone(&db)).list_all().await.expect("list_all");
     assert_eq!(all.len(), 2);
     assert!(all.iter().any(|c| c.nombre == "Fijaciones"));
     assert!(all.iter().any(|c| c.nombre == "Pernos"));
@@ -168,9 +173,9 @@ async fn category_repo_list_all_includes_root_and_child() {
 
 #[tokio::test]
 async fn category_repo_create_emits_outbox_upsert() {
-    let db = test_db().await;
+    let db = Arc::new(test_db().await);
     let before = db.record_count("outbox").await.expect("outbox count");
-    let cat = create_fijaciones(&db).await;
+    let cat = create_fijaciones(Arc::clone(&db)).await;
     assert_eq!(
         db.record_count("outbox").await.expect("outbox count"),
         before + 1
@@ -185,8 +190,8 @@ async fn category_repo_create_emits_outbox_upsert() {
 
 #[tokio::test]
 async fn category_repo_allows_same_slug_under_different_padres() {
-    let db = test_db().await;
-    let a = repo(&db)
+    let db = Arc::new(test_db().await);
+    let a = repo(Arc::clone(&db))
         .create(NewCategoria {
             nombre: "Padre A".into(),
             slug: None,
@@ -194,7 +199,7 @@ async fn category_repo_allows_same_slug_under_different_padres() {
         })
         .await
         .expect("padre A");
-    let b = repo(&db)
+    let b = repo(Arc::clone(&db))
         .create(NewCategoria {
             nombre: "Padre B".into(),
             slug: None,
@@ -202,7 +207,7 @@ async fn category_repo_allows_same_slug_under_different_padres() {
         })
         .await
         .expect("padre B");
-    repo(&db)
+    repo(Arc::clone(&db))
         .create(NewCategoria {
             nombre: "Hija".into(),
             slug: Some(domain::Slug::parse("hija").expect("slug")),
@@ -210,7 +215,7 @@ async fn category_repo_allows_same_slug_under_different_padres() {
         })
         .await
         .expect("hija A");
-    repo(&db)
+    repo(Arc::clone(&db))
         .create(NewCategoria {
             nombre: "Hija".into(),
             slug: Some(domain::Slug::parse("hija").expect("slug")),
@@ -223,10 +228,10 @@ async fn category_repo_allows_same_slug_under_different_padres() {
 
 #[tokio::test]
 async fn category_repo_rejects_duplicate_slug_under_same_padre() {
-    let db = test_db().await;
-    let padre = create_fijaciones(&db).await;
+    let db = Arc::new(test_db().await);
+    let padre = create_fijaciones(Arc::clone(&db)).await;
     let padre_id = padre.id.clone();
-    repo(&db)
+    repo(Arc::clone(&db))
         .create(NewCategoria {
             nombre: "Uno".into(),
             slug: Some(domain::Slug::parse("dup-child").expect("slug")),
@@ -234,7 +239,7 @@ async fn category_repo_rejects_duplicate_slug_under_same_padre() {
         })
         .await
         .expect("first");
-    let err = repo(&db)
+    let err = repo(Arc::clone(&db))
         .create(NewCategoria {
             nombre: "Otro".into(),
             slug: Some(domain::Slug::parse("dup-child").expect("slug")),
@@ -254,9 +259,9 @@ async fn category_repo_rejects_duplicate_slug_under_same_padre() {
 
 #[tokio::test]
 async fn category_repo_rejects_duplicate_root_slug() {
-    let db = test_db().await;
-    create_fijaciones(&db).await;
-    let err = repo(&db)
+    let db = Arc::new(test_db().await);
+    create_fijaciones(Arc::clone(&db)).await;
+    let err = repo(Arc::clone(&db))
         .create(NewCategoria {
             nombre: "Otra Fijaciones".into(),
             slug: Some(domain::Slug::parse("fijaciones").expect("slug")),
@@ -275,19 +280,22 @@ async fn category_repo_rejects_duplicate_root_slug() {
 
 #[tokio::test]
 async fn category_repo_get_unknown_id_is_not_found() {
-    let db = test_db().await;
+    let db = Arc::new(test_db().await);
     let missing = Id::<Categoria>::generate();
-    let err = repo(&db).get(missing).await.expect_err("not found");
+    let err = repo(Arc::clone(&db))
+        .get(missing)
+        .await
+        .expect_err("not found");
     assert_eq!(err.code(), DomainCode::NotFound);
 }
 
 #[tokio::test]
 async fn category_repo_create_missing_padre_is_not_found() {
-    let db = test_db().await;
+    let db = Arc::new(test_db().await);
     let ghost = Id::<Categoria>::generate();
     let before = db.record_count("categoria").await.expect("count");
     let out_before = db.record_count("outbox").await.expect("outbox");
-    let err = repo(&db)
+    let err = repo(Arc::clone(&db))
         .create(NewCategoria {
             nombre: "Huerfana".into(),
             slug: None,
@@ -302,11 +310,11 @@ async fn category_repo_create_missing_padre_is_not_found() {
 
 #[tokio::test]
 async fn category_repo_rejects_depth_five() {
-    let db = test_db().await;
+    let db = Arc::new(test_db().await);
     let mut padre: Option<Id<Categoria>> = None;
     let names = ["Nivel1", "Nivel2", "Nivel3", "Nivel4"];
     for name in names {
-        let cat = repo(&db)
+        let cat = repo(Arc::clone(&db))
             .create(NewCategoria {
                 nombre: name.into(),
                 slug: None,
@@ -317,7 +325,7 @@ async fn category_repo_rejects_depth_five() {
         padre = Some(cat.id);
     }
     let depth4 = padre.expect("depth 4 parent");
-    let err = repo(&db)
+    let err = repo(Arc::clone(&db))
         .create(NewCategoria {
             nombre: "Nivel5".into(),
             slug: None,
@@ -340,9 +348,9 @@ async fn category_repo_rejects_depth_five() {
 
 // --- T-02-04 CategoryRepo::update ---
 
-async fn create_fijaciones_pernos_hex(db: &storage::Db) -> (Categoria, Categoria, Categoria) {
-    let fijaciones = create_fijaciones(db).await;
-    let pernos = repo(db)
+async fn create_fijaciones_pernos_hex(db: Arc<storage::Db>) -> (Categoria, Categoria, Categoria) {
+    let fijaciones = create_fijaciones(Arc::clone(&db)).await;
+    let pernos = repo(Arc::clone(&db))
         .create(NewCategoria {
             nombre: "Pernos".into(),
             slug: None,
@@ -350,7 +358,7 @@ async fn create_fijaciones_pernos_hex(db: &storage::Db) -> (Categoria, Categoria
         })
         .await
         .expect("Pernos");
-    let hex = repo(db)
+    let hex = repo(Arc::clone(&db))
         .create(NewCategoria {
             nombre: "Hex".into(),
             slug: None,
@@ -363,9 +371,9 @@ async fn create_fijaciones_pernos_hex(db: &storage::Db) -> (Categoria, Categoria
 
 #[tokio::test]
 async fn category_repo_renames_three_level_branch_ruta() {
-    let db = test_db().await;
-    let (fijaciones, _pernos, _hex) = create_fijaciones_pernos_hex(&db).await;
-    let updated = repo(&db)
+    let db = Arc::new(test_db().await);
+    let (fijaciones, _pernos, _hex) = create_fijaciones_pernos_hex(Arc::clone(&db)).await;
+    let updated = repo(Arc::clone(&db))
         .update(UpdateCategoria {
             id: fijaciones.id.clone(),
             nombre: "Tornillería".into(),
@@ -374,9 +382,9 @@ async fn category_repo_renames_three_level_branch_ruta() {
         .await
         .expect("rename branch");
     assert_eq!(updated.ruta, vec!["Tornillería"]);
-    let pernos = repo(&db)
+    let pernos = repo(Arc::clone(&db))
         .get(
-            repo(&db)
+            repo(Arc::clone(&db))
                 .list_all()
                 .await
                 .expect("list")
@@ -388,9 +396,9 @@ async fn category_repo_renames_three_level_branch_ruta() {
         .await
         .expect("pernos");
     assert_eq!(pernos.ruta, vec!["Tornillería", "Pernos"]);
-    let hex = repo(&db)
+    let hex = repo(Arc::clone(&db))
         .get(
-            repo(&db)
+            repo(Arc::clone(&db))
                 .list_all()
                 .await
                 .expect("list")
@@ -406,10 +414,10 @@ async fn category_repo_renames_three_level_branch_ruta() {
 
 #[tokio::test]
 async fn category_repo_update_emits_outbox_per_affected() {
-    let db = test_db().await;
-    let (fijaciones, _, _) = create_fijaciones_pernos_hex(&db).await;
+    let db = Arc::new(test_db().await);
+    let (fijaciones, _, _) = create_fijaciones_pernos_hex(Arc::clone(&db)).await;
     let before = db.record_count("outbox").await.expect("outbox");
-    repo(&db)
+    repo(Arc::clone(&db))
         .update(UpdateCategoria {
             id: fijaciones.id,
             nombre: "Tornillería".into(),
@@ -422,11 +430,11 @@ async fn category_repo_update_emits_outbox_per_affected() {
 
 #[tokio::test]
 async fn category_repo_move_under_descendant_is_category_cycle() {
-    let db = test_db().await;
-    let (fijaciones, pernos, _) = create_fijaciones_pernos_hex(&db).await;
+    let db = Arc::new(test_db().await);
+    let (fijaciones, pernos, _) = create_fijaciones_pernos_hex(Arc::clone(&db)).await;
     let before = db.record_count("outbox").await.expect("outbox");
     let cat_before = db.record_count("categoria").await.expect("count");
-    let err = repo(&db)
+    let err = repo(Arc::clone(&db))
         .update(UpdateCategoria {
             id: fijaciones.id,
             nombre: "Fijaciones".into(),
@@ -444,9 +452,9 @@ async fn category_repo_move_under_descendant_is_category_cycle() {
 
 #[tokio::test]
 async fn category_repo_move_under_self_is_category_cycle() {
-    let db = test_db().await;
-    let (fijaciones, _, _) = create_fijaciones_pernos_hex(&db).await;
-    let err = repo(&db)
+    let db = Arc::new(test_db().await);
+    let (fijaciones, _, _) = create_fijaciones_pernos_hex(Arc::clone(&db)).await;
+    let err = repo(Arc::clone(&db))
         .update(UpdateCategoria {
             id: fijaciones.id.clone(),
             nombre: "Fijaciones".into(),
@@ -459,9 +467,9 @@ async fn category_repo_move_under_self_is_category_cycle() {
 
 #[tokio::test]
 async fn category_repo_update_unknown_id_is_not_found() {
-    let db = test_db().await;
+    let db = Arc::new(test_db().await);
     let missing = Id::<Categoria>::generate();
-    let err = repo(&db)
+    let err = repo(Arc::clone(&db))
         .update(UpdateCategoria {
             id: missing,
             nombre: "X".into(),
@@ -474,11 +482,11 @@ async fn category_repo_update_unknown_id_is_not_found() {
 
 #[tokio::test]
 async fn category_repo_update_missing_padre_is_not_found() {
-    let db = test_db().await;
-    let (fijaciones, _, _) = create_fijaciones_pernos_hex(&db).await;
+    let db = Arc::new(test_db().await);
+    let (fijaciones, _, _) = create_fijaciones_pernos_hex(Arc::clone(&db)).await;
     let ghost = Id::<Categoria>::generate();
     let out_before = db.record_count("outbox").await.expect("outbox");
-    let err = repo(&db)
+    let err = repo(Arc::clone(&db))
         .update(UpdateCategoria {
             id: fijaciones.id,
             nombre: "Fijaciones".into(),
@@ -492,8 +500,8 @@ async fn category_repo_update_missing_padre_is_not_found() {
 
 #[tokio::test]
 async fn category_repo_move_rejects_depth_five() {
-    let db = test_db().await;
-    let solo = repo(&db)
+    let db = Arc::new(test_db().await);
+    let solo = repo(Arc::clone(&db))
         .create(NewCategoria {
             nombre: "Suelta".into(),
             slug: None,
@@ -503,7 +511,7 @@ async fn category_repo_move_rejects_depth_five() {
         .expect("suelta");
     let mut padre: Option<Id<Categoria>> = None;
     for name in ["B1", "B2", "B3", "B4"] {
-        let cat = repo(&db)
+        let cat = repo(Arc::clone(&db))
             .create(NewCategoria {
                 nombre: name.into(),
                 slug: None,
@@ -514,7 +522,7 @@ async fn category_repo_move_rejects_depth_five() {
         padre = Some(cat.id);
     }
     let depth4 = padre.expect("b4");
-    let err = repo(&db)
+    let err = repo(Arc::clone(&db))
         .update(UpdateCategoria {
             id: solo.id,
             nombre: "Suelta".into(),
@@ -533,8 +541,8 @@ async fn category_repo_move_rejects_depth_five() {
 
 #[tokio::test]
 async fn category_repo_rename_rejects_duplicate_slug() {
-    let db = test_db().await;
-    repo(&db)
+    let db = Arc::new(test_db().await);
+    repo(Arc::clone(&db))
         .create(NewCategoria {
             nombre: "Tornillería".into(),
             slug: None,
@@ -542,8 +550,8 @@ async fn category_repo_rename_rejects_duplicate_slug() {
         })
         .await
         .expect("tornilleria");
-    let fijaciones = create_fijaciones(&db).await;
-    let err = repo(&db)
+    let fijaciones = create_fijaciones(Arc::clone(&db)).await;
+    let err = repo(Arc::clone(&db))
         .update(UpdateCategoria {
             id: fijaciones.id,
             nombre: "Tornillería".into(),
@@ -561,25 +569,25 @@ async fn category_repo_rename_rejects_duplicate_slug() {
 
 #[tokio::test]
 async fn category_repo_set_activo_persists_inactive() {
-    let db = test_db().await;
-    let fijaciones = create_fijaciones(&db).await;
+    let db = Arc::new(test_db().await);
+    let fijaciones = create_fijaciones(Arc::clone(&db)).await;
     let before = db.record_count("outbox").await.expect("outbox");
-    let updated = repo(&db)
+    let updated = repo(Arc::clone(&db))
         .set_activo(fijaciones.id.clone(), false)
         .await
         .expect("deactivate");
     assert!(!updated.activo);
-    let loaded = repo(&db).get(fijaciones.id).await.expect("get");
+    let loaded = repo(Arc::clone(&db)).get(fijaciones.id).await.expect("get");
     assert!(!loaded.activo);
     assert_eq!(db.record_count("outbox").await.expect("outbox"), before + 1);
 }
 
 #[tokio::test]
 async fn category_repo_set_activo_unknown_id_is_not_found() {
-    let db = test_db().await;
+    let db = Arc::new(test_db().await);
     let before = db.record_count("outbox").await.expect("outbox");
     let missing = Id::<Categoria>::generate();
-    let err = repo(&db)
+    let err = repo(Arc::clone(&db))
         .set_activo(missing, false)
         .await
         .expect_err("not found");

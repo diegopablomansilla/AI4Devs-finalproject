@@ -7,7 +7,7 @@ use axum::{
     http::{HeaderMap, HeaderValue, StatusCode},
     response::{IntoResponse, Response},
 };
-use domain::{DomainCode, DomainError, FieldError};
+use domain::{DomainCode, DomainError, FieldError, UnavailableCode};
 use serde::Serialize;
 
 const PROBLEM_BASE: &str = "https://vectra.local/problems";
@@ -130,6 +130,57 @@ impl ApiError {
     }
 
     #[must_use]
+    pub fn from_domain(err: DomainError, instance: impl Into<String>) -> Self {
+        Self::from(err).with_instance(instance.into())
+    }
+
+    #[must_use]
+    pub fn with_instance(mut self, instance: String) -> Self {
+        self.body.instance = Some(instance);
+        self
+    }
+
+    #[must_use]
+    pub fn catalog_unavailable(instance: String) -> Self {
+        Self::from(DomainError::unavailable(UnavailableCode::Unavailable)).with_instance(instance)
+    }
+
+    #[must_use]
+    pub fn invalid_category_id(instance: String) -> Self {
+        Self::invalid_input_with_fields(
+            vec![FieldProblem {
+                field: "categoryId".into(),
+                message: "must be a valid ULID".into(),
+            }],
+            Some("Invalid category id".into()),
+            Some(instance),
+            "invalid_input",
+        )
+    }
+
+    #[must_use]
+    pub fn patch_empty(instance: String) -> Self {
+        Self::invalid_input_with_fields(
+            vec![],
+            Some("Request body must include at least one updatable field.".into()),
+            Some(instance),
+            "invalid_input",
+        )
+    }
+
+    #[must_use]
+    pub fn patch_slug_only(instance: String) -> Self {
+        Self::invalid_input_with_fields(
+            vec![FieldProblem {
+                field: "slug".into(),
+                message: "category slug cannot be updated via PATCH".into(),
+            }],
+            Some("Revise the request body.".into()),
+            Some(instance),
+            "invalid_input",
+        )
+    }
+
     pub fn from_json_rejection(
         rejection: axum::extract::rejection::JsonRejection,
         instance: Option<String>,
@@ -171,7 +222,7 @@ impl From<DomainError> for ApiError {
                 let mapped = errors
                     .iter()
                     .map(|FieldError { field, message }| FieldProblem {
-                        field: field.clone(),
+                        field: remap_api_field(field),
                         message: message.clone(),
                     })
                     .collect::<Vec<_>>();
@@ -271,6 +322,14 @@ fn title_for_code(code: &str) -> &'static str {
         "payload_too_large" => "El cuerpo es demasiado grande",
         "internal" => "Error interno",
         _ => "Error",
+    }
+}
+
+fn remap_api_field(field: &str) -> String {
+    match field {
+        "nombre" => "name".into(),
+        "padre" => "parentId".into(),
+        other => other.to_string(),
     }
 }
 

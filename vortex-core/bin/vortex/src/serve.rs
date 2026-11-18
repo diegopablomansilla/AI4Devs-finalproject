@@ -1,12 +1,14 @@
 //! `vortex serve` — ordered boot (T-00-20) and graceful shutdown (T-00-10).
 
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 use std::time::Instant;
+
+use std::sync::Arc;
 
 use api::{AppState, build_router};
 use axum::serve;
-use storage::{DB_DIR_NAME, Db};
+use catalog::{CategoryService, ProductionOccupancy};
+use storage::{CategoriaRepo, DB_DIR_NAME, Db};
 use supervisor::{ComponentId, ComponentStatus, HealthRegistry};
 use tokio::net::TcpListener;
 
@@ -107,8 +109,11 @@ async fn serve_config(config: Config, _logging_guard: LoggingGuard) -> i32 {
         "boot.storage"
     );
 
-    // Retain Db for the process lifetime (composition root; not injected into AppState yet).
-    let _db = db;
+    let db = Arc::new(db);
+    let category_gateway: Arc<dyn catalog::CategoryGateway> = Arc::new(CategoryService::new(
+        CategoriaRepo::new(Arc::clone(&db)),
+        ProductionOccupancy,
+    ));
 
     let bind = match config.server.bind.parse::<std::net::SocketAddr>() {
         Ok(addr) => addr,
@@ -136,7 +141,8 @@ async fn serve_config(config: Config, _logging_guard: LoggingGuard) -> i32 {
     let media_root = Path::new(&config.paths.datos).join("media");
     let state = AppState::with_health(health)
         .with_static_roots(web_root, media_root)
-        .with_version(env!("CARGO_PKG_VERSION"));
+        .with_version(env!("CARGO_PKG_VERSION"))
+        .with_categories(category_gateway);
     let router = build_router(state);
     if let Err(e) = serve(listener, router)
         .with_graceful_shutdown(shutdown_signal())

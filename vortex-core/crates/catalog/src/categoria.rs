@@ -1,6 +1,7 @@
 //! Category use cases (T-02-05).
 
 use std::future::Future;
+use std::pin::Pin;
 
 use domain::{
     Categoria, CategoryRepo, ConflictCode, DomainError, Id, NewCategoria, UpdateCategoria,
@@ -94,6 +95,123 @@ where
             return Ok(current);
         }
         self.repo.set_activo(id, true).await
+    }
+}
+
+/// Production stub until `producto` occupancy exists (T-02-18).
+#[derive(Debug, Default, Clone, Copy)]
+pub struct ProductionOccupancy;
+
+impl CategoryOccupancy for ProductionOccupancy {
+    async fn has_active_products(&self, _id: Id<Categoria>) -> Result<bool, DomainError> {
+        Ok(false)
+    }
+}
+
+/// Object-safe facade for HTTP injection (`Arc<dyn CategoryGateway>`).
+pub trait CategoryGateway: Send + Sync {
+    fn create(
+        &self,
+        input: NewCategoria,
+    ) -> Pin<Box<dyn Future<Output = Result<Categoria, DomainError>> + Send + '_>>;
+
+    fn get(
+        &self,
+        id: Id<Categoria>,
+    ) -> Pin<Box<dyn Future<Output = Result<Categoria, DomainError>> + Send + '_>>;
+
+    fn list_all(
+        &self,
+    ) -> Pin<Box<dyn Future<Output = Result<Vec<Categoria>, DomainError>> + Send + '_>>;
+
+    fn rename(
+        &self,
+        id: Id<Categoria>,
+        nombre: String,
+    ) -> Pin<Box<dyn Future<Output = Result<Categoria, DomainError>> + Send + '_>>;
+
+    fn move_category(
+        &self,
+        id: Id<Categoria>,
+        padre: Option<Id<Categoria>>,
+    ) -> Pin<Box<dyn Future<Output = Result<Categoria, DomainError>> + Send + '_>>;
+
+    fn deactivate(
+        &self,
+        id: Id<Categoria>,
+    ) -> Pin<Box<dyn Future<Output = Result<Categoria, DomainError>> + Send + '_>>;
+
+    fn reactivate(
+        &self,
+        id: Id<Categoria>,
+    ) -> Pin<Box<dyn Future<Output = Result<Categoria, DomainError>> + Send + '_>>;
+}
+
+impl<R, O> CategoryGateway for CategoryService<R, O>
+where
+    R: CategoryRepo + Send + Sync,
+    O: CategoryOccupancy + Send + Sync,
+{
+    fn create(
+        &self,
+        input: NewCategoria,
+    ) -> Pin<Box<dyn Future<Output = Result<Categoria, DomainError>> + Send + '_>> {
+        Box::pin(CategoryService::create(self, input))
+    }
+
+    fn get(
+        &self,
+        id: Id<Categoria>,
+    ) -> Pin<Box<dyn Future<Output = Result<Categoria, DomainError>> + Send + '_>> {
+        Box::pin(CategoryService::get(self, id))
+    }
+
+    fn list_all(
+        &self,
+    ) -> Pin<Box<dyn Future<Output = Result<Vec<Categoria>, DomainError>> + Send + '_>> {
+        Box::pin(CategoryService::list_all(self))
+    }
+
+    fn rename(
+        &self,
+        id: Id<Categoria>,
+        nombre: String,
+    ) -> Pin<Box<dyn Future<Output = Result<Categoria, DomainError>> + Send + '_>> {
+        Box::pin(CategoryService::rename(self, id, nombre))
+    }
+
+    fn move_category(
+        &self,
+        id: Id<Categoria>,
+        padre: Option<Id<Categoria>>,
+    ) -> Pin<Box<dyn Future<Output = Result<Categoria, DomainError>> + Send + '_>> {
+        Box::pin(CategoryService::move_category(self, id, padre))
+    }
+
+    fn deactivate(
+        &self,
+        id: Id<Categoria>,
+    ) -> Pin<Box<dyn Future<Output = Result<Categoria, DomainError>> + Send + '_>> {
+        Box::pin(CategoryService::deactivate(self, id))
+    }
+
+    fn reactivate(
+        &self,
+        id: Id<Categoria>,
+    ) -> Pin<Box<dyn Future<Output = Result<Categoria, DomainError>> + Send + '_>> {
+        Box::pin(CategoryService::reactivate(self, id))
+    }
+}
+
+#[cfg(test)]
+mod occupancy_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn catalog_production_occupancy_is_false() {
+        let occ = ProductionOccupancy;
+        let id = Id::<Categoria>::generate();
+        assert!(!occ.has_active_products(id).await.expect("occupancy"));
     }
 }
 
