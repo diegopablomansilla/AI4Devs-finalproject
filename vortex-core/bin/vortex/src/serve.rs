@@ -7,8 +7,8 @@ use std::sync::Arc;
 
 use api::{AppState, build_router};
 use axum::serve;
-use catalog::{CategoryService, ProductionOccupancy};
-use storage::{CategoriaRepo, DB_DIR_NAME, Db};
+use catalog::{BrandService, CategoryService, ProductionOccupancy};
+use storage::{CategoriaRepo, DB_DIR_NAME, Db, MarcaRepo};
 use supervisor::{ComponentId, ComponentStatus, HealthRegistry};
 use tokio::net::TcpListener;
 
@@ -114,6 +114,8 @@ async fn serve_config(config: Config, _logging_guard: LoggingGuard) -> i32 {
         CategoriaRepo::new(Arc::clone(&db)),
         ProductionOccupancy,
     ));
+    let brand_gateway: Arc<dyn catalog::BrandGateway> =
+        Arc::new(BrandService::new(MarcaRepo::new(Arc::clone(&db))));
 
     let bind = match config.server.bind.parse::<std::net::SocketAddr>() {
         Ok(addr) => addr,
@@ -142,7 +144,8 @@ async fn serve_config(config: Config, _logging_guard: LoggingGuard) -> i32 {
     let state = AppState::with_health(health)
         .with_static_roots(web_root, media_root)
         .with_version(env!("CARGO_PKG_VERSION"))
-        .with_categories(category_gateway);
+        .with_categories(category_gateway)
+        .with_brands(brand_gateway);
     let router = build_router(state);
     if let Err(e) = serve(listener, router)
         .with_graceful_shutdown(shutdown_signal())
