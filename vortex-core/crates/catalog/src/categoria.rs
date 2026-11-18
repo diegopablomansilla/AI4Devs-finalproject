@@ -216,7 +216,7 @@ mod occupancy_tests {
 }
 
 #[cfg(test)]
-mod testing {
+pub mod testing {
     use super::*;
     use domain::{
         CategoriaDraft, ConflictCode, InvalidInputCode, MAX_DEPTH, Slug, Timestamp, reject_cycle,
