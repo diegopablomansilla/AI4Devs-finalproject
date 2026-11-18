@@ -317,3 +317,102 @@ textarea:focus-visible {
   background: transparent;
   cursor: pointer;
 }
+
+.vx-attr-admin {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vx-space-3);
+}
+
+.vx-attr-title {
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+.vx-attr-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--vx-space-2);
+}
+
+.vx-attr-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vx-space-2);
+  padding: var(--vx-space-3);
+  border-radius: var(--vx-radius-md);
+  background: var(--vx-color-surface-solid);
+}
+
+.vx-attr-form-title {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.vx-attr-form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--vx-space-2);
+}
+
+.vx-attr-type-label,
+.vx-attr-check {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vx-space-1);
+  font-size: 0.875rem;
+}
+
+.vx-attr-check {
+  flex-direction: row;
+  align-items: center;
+  gap: var(--vx-space-2);
+  min-height: var(--vx-touch-min);
+}
+
+.vx-attr-type-label select {
+  min-height: var(--vx-touch-min);
+  font: inherit;
+}
+
+.vx-attr-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.vx-attr-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--vx-space-2);
+  padding: var(--vx-space-1) 0;
+}
+
+.vx-attr-key,
+.vx-attr-type,
+.vx-attr-unit,
+.vx-attr-inactive {
+  color: var(--vx-color-text-muted);
+  font-size: 0.875rem;
+}
+
+.vx-attr-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--vx-space-1);
+}
+
+.vx-attr-actions button,
+.vx-attr-toolbar button,
+.vx-attr-form button {
+  min-height: var(--vx-touch-min);
+  min-width: var(--vx-touch-min);
+  padding: var(--vx-space-2) var(--vx-space-3);
+  border-radius: var(--vx-radius-sm);
+  border: 1px solid var(--vx-color-text-muted);
+  font: inherit;
+  color: var(--vx-color-text);
+  background: transparent;
+  cursor: pointer;
+}
