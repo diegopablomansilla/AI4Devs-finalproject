@@ -415,7 +415,7 @@ describe("router_admin_current_section_has_aria_current", () => {
 
 describe("router_admin_content_region_has_no_business_ui", () => {
   test("sin ABM", () => {
-    const { outlet, window, document } = createTestDom("#/admin/productos");
+    const { outlet, window, document } = createTestDom("#/admin/stock");
     startRouter({ window, document, outlet });
     const html = outlet.innerHTML;
     const contentStart = html.indexOf('data-region="admin-content"');
@@ -448,9 +448,9 @@ describe("router_admin_does_not_call_api", () => {
       return original?.(...args) ?? Promise.resolve({ ok: true });
     };
     try {
-      const { outlet, window, document } = createTestDom("#/admin/productos");
+      const { outlet, window, document } = createTestDom("#/admin/stock");
       startRouter({ window, document, outlet });
-      window.location.hash = "#/admin/stock";
+      window.location.hash = "#/admin/relaciones";
       assert.equal(calls.length, 0);
     } finally {
       globalThis.fetch = original;
