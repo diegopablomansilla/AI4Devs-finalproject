@@ -1,5 +1,5 @@
 #!/usr/bin/env sh
-# Verifica vectra-web: árbol, tokens (T-01-02), router (T-01-01), componentes (T-01-03), overlays (T-01-04), product-card (T-01-05), api (T-01-06), errors (T-01-07), omnibox foco (T-01-08), modos y vx-query (T-01-09), keyboard-list (T-01-10), admin shell y terminal (T-01-11), health y capacidades (T-01-12), manifest PWA (T-01-13), Service Worker y aviso offline (T-01-14), actualización del SW (T-01-15).
+# Verifica vectra-web: árbol, tokens (T-01-02), router (T-01-01), componentes (T-01-03), overlays (T-01-04), product-card (T-01-05), api (T-01-06), errors (T-01-07), omnibox foco (T-01-08), modos y vx-query (T-01-09), keyboard-list (T-01-10), admin shell y terminal (T-01-11), health y capacidades (T-01-12), manifest PWA (T-01-13), Service Worker y aviso offline (T-01-14), actualización del SW (T-01-15), UI categorías (T-02-07).
 set -eu
 
 if [ -n "${CHECK_ROOT:-}" ]; then
@@ -23,6 +23,7 @@ INDEX="${WEB}/index.html"
 [ -d "${WEB}/js/components" ] || fail 'vectra_web_tree_includes_css_app_router_components: falta vectra-web/js/components/'
 [ -f "${WEB}/js/app.js" ] || fail 'vectra_web_tree_includes_css_app_router_components: falta vectra-web/js/app.js'
 [ -f "${WEB}/js/router.js" ] || fail 'vectra_web_tree_includes_css_app_router_components: falta vectra-web/js/router.js'
+[ -f "${WEB}/js/admin/categories.js" ] || fail 'categories_tree_missing_module_fails: falta vectra-web/js/admin/categories.js'
 [ -f "${WEB}/js/api.js" ] || fail 'api_tree_includes_api_js: falta vectra-web/js/api.js'
 [ -f "${WEB}/js/errors.js" ] || fail 'errors_tree_includes_errors_js: falta vectra-web/js/errors.js'
 [ -f "${WEB}/js/keyboard-list.js" ] || fail 'keyboard_list_tree_includes_module: falta vectra-web/js/keyboard-list.js'
@@ -125,6 +126,7 @@ ADMIN_TEST="${ROOT}/scripts/fixtures/vectra-web/admin.test.mjs"
 HEALTH_TEST="${ROOT}/scripts/fixtures/vectra-web/health.test.mjs"
 MANIFEST_TEST="${ROOT}/scripts/fixtures/vectra-web/manifest.test.mjs"
 SW_TEST="${ROOT}/scripts/fixtures/vectra-web/sw.test.mjs"
+CATEGORIES_TEST="${ROOT}/scripts/fixtures/vectra-web/categories.test.mjs"
 [ -f "${ROUTER_TEST}" ] || fail 'falta scripts/fixtures/vectra-web/router.test.mjs'
 [ -f "${TOKENS_TEST}" ] || fail 'falta scripts/fixtures/vectra-web/tokens.test.mjs'
 [ -f "${COMPONENTS_TEST}" ] || fail 'falta scripts/fixtures/vectra-web/components.test.mjs'
@@ -136,9 +138,10 @@ SW_TEST="${ROOT}/scripts/fixtures/vectra-web/sw.test.mjs"
 [ -f "${HEALTH_TEST}" ] || fail 'falta scripts/fixtures/vectra-web/health.test.mjs'
 [ -f "${MANIFEST_TEST}" ] || fail 'falta scripts/fixtures/vectra-web/manifest.test.mjs'
 [ -f "${SW_TEST}" ] || fail 'falta scripts/fixtures/vectra-web/sw.test.mjs'
+[ -f "${CATEGORIES_TEST}" ] || fail 'falta scripts/fixtures/vectra-web/categories.test.mjs'
 
 if ! command -v node >/dev/null 2>&1; then
   fail 'node no está en PATH (se requiere para tests del router)'
 fi
 
-node --test "${ROUTER_TEST}" "${TOKENS_TEST}" "${COMPONENTS_TEST}" "${API_TEST}" "${ERRORS_TEST}" "${OMNIBOX_TEST}" "${KEYBOARD_LIST_TEST}" "${ADMIN_TEST}" "${HEALTH_TEST}" "${MANIFEST_TEST}" "${SW_TEST}"
+node --test "${ROUTER_TEST}" "${TOKENS_TEST}" "${COMPONENTS_TEST}" "${API_TEST}" "${ERRORS_TEST}" "${OMNIBOX_TEST}" "${KEYBOARD_LIST_TEST}" "${ADMIN_TEST}" "${HEALTH_TEST}" "${MANIFEST_TEST}" "${SW_TEST}" "${CATEGORIES_TEST}"

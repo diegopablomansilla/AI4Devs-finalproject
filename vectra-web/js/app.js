@@ -1,5 +1,8 @@
 import "./components/index.js";
 import { startRouter } from "./router.js";
+import { request } from "./api.js";
+import { showError } from "./errors.js";
+import { mountCategories } from "./admin/categories.js";
 import { startHealth } from "./health.js";
 import { startSwUpdateWatcher } from "./sw-update.js";
 
@@ -18,7 +21,14 @@ export function registerAppServiceWorker(nav = globalThis.navigator) {
 
 const outlet = document.getElementById("app");
 if (outlet) {
-  startRouter({ window, document, outlet });
+  startRouter({
+    window,
+    document,
+    outlet,
+    request,
+    showError,
+    mountCategories,
+  });
   startHealth({ fetch: globalThis.fetch.bind(globalThis), window, document });
   registerAppServiceWorker();
   void startSwUpdateWatcher({ window, document });
