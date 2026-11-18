@@ -12,7 +12,7 @@ pub use categoria::CategoriaRepo;
 pub use marca::MarcaRepo;
 pub use migrate::{
     MIGRATION_0000_SQL, MIGRATION_0001_SQL, MIGRATION_0002_SQL, MIGRATION_0003_SQL,
-    MIGRATION_0004_SQL, MigrateError, Migration, MigrationRecord, checksum_hex,
+    MIGRATION_0004_SQL, MIGRATION_0005_SQL, MigrateError, Migration, MigrationRecord, checksum_hex,
 };
 pub use tx::{OutboxNotifier, Tx};
 

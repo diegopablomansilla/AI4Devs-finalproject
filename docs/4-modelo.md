@@ -336,6 +336,9 @@ DEFINE INDEX idx_producto_marca     ON producto FIELDS marca;
 -- Búsqueda de respaldo cuando Meilisearch no está disponible (prefijo, sin tolerancia a errores)
 DEFINE ANALYZER an_respaldo TOKENIZERS blank, class FILTERS lowercase, ascii, edgengram(2, 15);
 DEFINE INDEX ft_producto_nombre ON producto FIELDS nombre SEARCH ANALYZER an_respaldo BM25;
+
+-- Búsqueda por código exacta en SurrealDB (H-05); no UNIQUE: varios productos pueden compartir OEM
+DEFINE INDEX idx_producto_codigos ON producto FIELDS codigos[*].valor;
 ```
 
 Ejemplo de alta:
