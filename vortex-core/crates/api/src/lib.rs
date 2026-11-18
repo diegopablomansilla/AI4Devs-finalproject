@@ -8,6 +8,7 @@ mod error;
 mod gateway;
 mod health;
 mod metrics;
+pub mod pagination;
 mod products;
 mod static_files;
 mod stock;
@@ -30,6 +31,10 @@ pub use error::ApiError;
 pub use gateway::{DEFAULT_BODY_LIMIT, DEFAULT_REQUEST_TIMEOUT, apply_gateway_layers};
 pub use metrics::{
     BACKUP_FAILURES_TOTAL, OUTBOX_FAILED_TOTAL, OUTBOX_LAG, operation_duration_seconds,
+};
+pub use pagination::{
+    CursorPage, DEFAULT_PAGE_LIMIT, MAX_PAGE_LIMIT, decode_cursor, encode_cursor, paginate,
+    resolve_limit,
 };
 
 /// Shared application state for HTTP handlers (`Arc<dyn …>` added in later tickets).
