@@ -204,6 +204,7 @@ ${navLinks}
  *   showError?: (err: unknown) => void,
  *   mountCategories?: (el: Element, deps: object) => Promise<void>,
  *   mountBrands?: (el: Element, deps: object) => Promise<void>,
+ *   mountAttributeDefinitions?: (el: Element, deps: object) => Promise<void>,
  * }} opts
  */
 export function startRouter({
@@ -215,6 +216,7 @@ export function startRouter({
   showError,
   mountCategories,
   mountBrands,
+  mountAttributeDefinitions,
 }) {
   const resolvedStorage =
     storage ??
@@ -247,6 +249,13 @@ export function startRouter({
         typeof mountBrands === "function"
       ) {
         void mountBrands(region, deps);
+      } else if (
+        region &&
+        typeof request === "function" &&
+        section === "atributos" &&
+        typeof mountAttributeDefinitions === "function"
+      ) {
+        void mountAttributeDefinitions(region, deps);
       }
     }
   };

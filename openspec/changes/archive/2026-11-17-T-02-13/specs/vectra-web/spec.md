@@ -1,0 +1,231 @@
+# Spec Delta
+
+Ticket padre: T-02-13. Change: T-02-13. HU: HU-02-03 (el escenario «aparece como filtro en la búsqueda» queda en T-03-18 / T-03-19; `attribute_in_use` queda en T-02-23).
+
+## ADDED Requirements
+
+### Requirement: UI de atributos técnicos en administración
+
+Cuando el *router* pinta `data-view="admin"` y `data-section="atributos"` (`#/admin/atributos`), `data-region="admin-content"` MUST montar el ABM de definiciones de atributo técnico. La vista MUST cargar `GET /api/v1/attribute-definitions?includeInactive=true` (lista plana `{ items }` de [docs/openapi.yaml](../../../../../docs/openapi.yaml)). MUST pintar las filas **en el orden de `items`** (la API ya ordena por `order` ascendente y, en empate, por `key`). MUST NOT reordenar por `label` ni por `key` en el cliente. Cada ítem MUST mostrar `label` y MAY mostrar `key`, `type` y `unit` como texto secundario. Una definición con `active = false` MUST distinguirse visualmente (p. ej. etiqueta «Inactiva») y MUST ofrecer reactivar, no dar de baja.
+
+La vista MUST ofrecer, en español y operables por teclado (controles con tamaño táctil ≥ `--vx-touch-min`), un formulario con:
+
+- `key` (snake_case, obligatorio en alta)
+- `label` (obligatorio)
+- `type`: uno de `text`, `number`, `boolean`, `enum` (valores de API; etiquetas visibles en español)
+- `unit` (opcional)
+- `options`: visible **solo** cuando `type` es `enum`; ausente o no visible para los demás tipos
+- `facetable` (booleano)
+- `searchable` (booleano)
+- `order` (entero; si el administrador no lo cambia, el alta MAY omitirlo y el servidor usa `0`)
+
+Acciones:
+
+- **Nueva definición**: `POST /api/v1/attribute-definitions` con el cuerpo `AttributeDefinitionCreate` (HU-02-03 «Atributo enumerado»; Listo cuando: "grado").
+- **Editar**: `PATCH /api/v1/attribute-definitions/{attributeId}` con los campos cambiados.
+- **Dar de baja**: `DELETE /api/v1/attribute-definitions/{attributeId}` sobre una definición activa.
+- **Reactivar**: `PATCH` con `{ "active": true }` sobre una inactiva.
+
+Al crear "grado" el `POST` MUST enviar `key` `"grado"`, `label` no vacío, `type` `"enum"`, `options` `["2", "5", "8"]` y `facetable` verdadero. Si `type` no es `enum`, el cuerpo MUST NOT incluir `options` (o MUST enviar `null`). Un `key` o `label` vacío (solo espacios) MUST NOT enviarse.
+
+MUST NOT pintar vista previa de facetas: MUST NOT haber chips de filtro de muestra, MUST NOT haber un panel o control cuyo propósito sea previsualizar facetas de búsqueda (**No hace**). MUST NOT llamar otros paths de `/api/v1` ni `/health` desde esta vista. Tras un `POST`/`PATCH`/`DELETE` exitoso, MUST volver a `GET` e hidratar el listado.
+
+La UI MUST NOT consultar `producto` ni bloquear edición/baja por occupancy (`attribute_in_use` es T-02-23). Los errores MUST mostrarse con `showError` / `messageFor(code)` (requirement «Mensajes en español por ErrorCode»): el toast usa el `code` de `problem+json` (`invalid_input`, `conflict`, `not_found`, `unavailable`, `network`, …), no el `title` crudo. `base.css` MAY añadir clases del listado solo con *tokens* `--vx-*` existentes. MUST NOT agregar *tokens* nuevos ni un Web Component nuevo.
+
+Si no hay definiciones, MUST mostrar el listado vacío y la acción de crear. Textos visibles MUST estar en español.
+
+#### Scenario: alta de grado enum facetable actualiza el listado (happy, HU-02-03, Listo cuando)
+
+- **WHEN** el administrador crea la definición con clave `"grado"`, tipo `enum`, opciones `"2"`, `"5"` y `"8"`, y `facetable` verdadero
+- **THEN** se envía `POST /api/v1/attribute-definitions` con `key` `"grado"`, `type` `"enum"`, `options` `["2", "5", "8"]` y `facetable` verdadero
+- **AND** tras recargar, el listado muestra `"grado"` (o su `label`) activa
+
+#### Scenario: el listado respeta el order de la API (happy)
+
+- **WHEN** `GET` devuelve `{ "items": [ { "key": "grado", "order": 0 }, { "key": "medida", "order": 10 } ] }`
+- **THEN** la primera fila visible corresponde a `"grado"`
+- **AND** la segunda corresponde a `"medida"`
+
+#### Scenario: opciones visibles solo para enum (happy)
+
+- **WHEN** el administrador abre el formulario de alta y elige `type` `enum`
+- **THEN** el control de opciones está visible
+- **AND** al cambiar `type` a `text`, `number` o `boolean` el control de opciones deja de estar visible
+
+#### Scenario: crear definición en listado vacío (happy)
+
+- **WHEN** `GET` devuelve `{ "items": [] }`
+- **THEN** la región muestra la acción de crear definición
+- **AND** al confirmar "grado" enum 2/5/8 facetable se envía el `POST` del escenario de alta
+
+#### Scenario: editar label (happy)
+
+- **WHEN** existe `"grado"` activa
+- **AND** el administrador cambia `label` a `"Grado SAE"`
+- **THEN** se envía `PATCH /api/v1/attribute-definitions/{id}` con `{ "label": "Grado SAE" }`
+- **AND** tras recargar, el listado muestra `"Grado SAE"`
+
+#### Scenario: dar de baja y reactivar (happy)
+
+- **WHEN** `"grado"` es una definición activa
+- **AND** el administrador la da de baja
+- **THEN** se envía `DELETE /api/v1/attribute-definitions/{id}`
+- **AND** tras recargar, `"grado"` se muestra inactiva y ofrece reactivar
+- **AND** al reactivar se envía `PATCH` con `{ "active": true }`
+
+#### Scenario: el listado pide inactivas (happy)
+
+- **WHEN** se pinta `#/admin/atributos` con un cliente HTTP inyectado
+- **THEN** la primera petición es `GET /api/v1/attribute-definitions?includeInactive=true`
+
+#### Scenario: enum sin opciones muestra invalid_input (unhappy, HU-02-03)
+
+- **WHEN** el administrador confirma crear con `type` `enum` y opciones vacías o ausentes
+- **THEN** se envía `POST` con `type` `"enum"` y `options` ausentes, vacías o solo strings vacíos
+- **AND** si el servidor responde `400` con `code` `invalid_input`, se muestra el mensaje en español de `invalid_input`
+
+#### Scenario: clave duplicada muestra conflict (unhappy)
+
+- **WHEN** el servidor responde `409` con `code` `conflict` al crear
+- **THEN** se muestra el mensaje en español de `conflict`
+
+#### Scenario: id desconocido muestra not_found (unhappy)
+
+- **WHEN** el servidor responde `404` con `code` `not_found` al editar o dar de baja
+- **THEN** se muestra el mensaje en español de `not_found`
+- **AND** el listado no se reemplaza por un estado vacío
+
+#### Scenario: key o label vacío no llama a POST (unhappy)
+
+- **WHEN** el administrador confirma crear con `key` o `label` vacío o solo espacios
+- **THEN** no se envía `POST /api/v1/attribute-definitions`
+
+#### Scenario: fallo de red muestra network (unhappy)
+
+- **WHEN** el cliente HTTP rechaza el `GET` inicial con `code` `network`
+- **THEN** se muestra el mensaje en español de `network`
+- **AND** no se lanza una excepción no capturada
+
+#### Scenario: no hay vista previa de facetas (unhappy, No hace)
+
+- **WHEN** se inspecciona el ABM de atributos
+- **THEN** no hay un control, panel o lista de chips cuyo propósito sea previsualizar facetas de búsqueda
+- **AND** no se llama a `/api/v1/search`
+
+#### Scenario: type no enum no envía options (unhappy)
+
+- **WHEN** el administrador crea una definición con `type` `text` (o `number` / `boolean`) y `key`/`label` no vacíos
+- **THEN** el cuerpo de `POST` no incluye `options` o envía `options` `null`
+
+### Requirement: Tests de la UI de atributos técnicos
+
+Antes de archive, la suite MUST incluir estos tests (nombres estables). Happy y unhappy path son obligatorios. MUST ejecutarse con `node --test` desde `./scripts/check-vectra-web.sh` (sin jsdom, sin `package.json`, sin dependencias npm). El Listo cuando del ticket (crear "grado" enum 2/5/8 facetable a mano) MUST poder ejecutarse contra `vortex serve` + esta UI; la suite automatizada MUST cubrir el mismo comportamiento observable.
+
+| Test | Ubicación | Tipo |
+|---|---|---|
+| `attrs_list_requests_include_inactive` | `scripts/fixtures/vectra-web/attribute-definitions.test.mjs` | happy |
+| `attrs_list_preserves_api_order` | `attribute-definitions.test.mjs` | happy |
+| `attrs_create_grado_enum_facetable` | `attribute-definitions.test.mjs` | happy (HU-02-03, Listo cuando) |
+| `attrs_empty_list_offers_create` | `attribute-definitions.test.mjs` | happy |
+| `attrs_options_visible_only_for_enum` | `attribute-definitions.test.mjs` | happy |
+| `attrs_edit_patches_label` | `attribute-definitions.test.mjs` | happy |
+| `attrs_deactivate_deletes` | `attribute-definitions.test.mjs` | happy |
+| `attrs_reactivate_patches_active_true` | `attribute-definitions.test.mjs` | happy |
+| `attrs_enum_without_options_shows_invalid_input` | `attribute-definitions.test.mjs` | unhappy (HU-02-03) |
+| `attrs_duplicate_key_shows_conflict` | `attribute-definitions.test.mjs` | unhappy |
+| `attrs_not_found_shows_not_found` | `attribute-definitions.test.mjs` | unhappy |
+| `attrs_network_shows_network` | `attribute-definitions.test.mjs` | unhappy |
+| `attrs_empty_key_or_label_does_not_post` | `attribute-definitions.test.mjs` | unhappy |
+| `attrs_non_enum_does_not_send_options` | `attribute-definitions.test.mjs` | unhappy |
+| `attrs_no_facet_preview` | `attribute-definitions.test.mjs` | unhappy (No hace) |
+| `attrs_missing_module_fails` | `scripts/check-vectra-web.sh` | unhappy (harness) |
+| `router_admin_content_region_has_no_business_ui` | `router.test.mjs` | unhappy (secciones que no son `categorias`, `marcas` ni `atributos`) |
+| `router_admin_does_not_call_api` | `router.test.mjs` | unhappy (`#/admin/productos` y `#/admin/stock`) |
+
+`check-vectra-web.sh` MUST fallar si falta `vectra-web/js/admin/attribute-definitions.js`. MUST NOT exigir Playwright. `cargo fmt --all -- --check`, `cargo clippy --workspace -- -D warnings` y `cargo test --workspace` en `vortex-core/` MUST seguir en verde ([docs/desarrollo-git-openspec.md](../../../../../docs/desarrollo-git-openspec.md) §5).
+
+#### Scenario: la suite de atributos cubre happy y unhappy (happy)
+
+- **WHEN** se ejecuta `./scripts/check-vectra-web.sh`
+- **THEN** corre `attribute-definitions.test.mjs` con los tests de la tabla
+- **AND** el comando termina con código 0 sobre el árbol que cumple esta spec
+
+#### Scenario: falta el módulo de atributos (unhappy)
+
+- **WHEN** falta `vectra-web/js/admin/attribute-definitions.js`
+- **AND** se ejecuta `./scripts/check-vectra-web.sh`
+- **THEN** el comando termina con código distinto de 0
+- **AND** el mensaje nombra `attribute-definitions.js`
+
+## MODIFIED Requirements
+
+### Requirement: Layout de la vista administración
+
+Cuando el *router* pinta `data-view="admin"` (`#/admin/<sección>` con slug `[a-z0-9-]+`), el *outlet* MUST incluir, en este orden visual:
+
+1. Un encabezado con un enlace `<a href="#/">` cuyo texto visible está en español (p. ej. "Volver al operador"). Ese enlace MUST ser suficiente para volver a la vista operador **en un paso** (Listo cuando del ticket T-01-11): un único cambio de *hash* a `#/` pinta `data-view="operator"` sin recargar el documento.
+2. Una navegación (`<nav>` o equivalente con nombre accesible en español, p. ej. `aria-label="Administración"`) con **exactamente** estos ítems, en este orden, cada uno un `<a>` cuyo `href` es `#/admin/<slug>` y cuyo texto visible es la etiqueta en español:
+
+| Slug | Etiqueta |
+|---|---|
+| `productos` | Productos |
+| `categorias` | Categorías |
+| `marcas` | Marcas |
+| `atributos` | Atributos |
+| `stock` | Stock |
+| `relaciones` | Relaciones |
+| `sinonimos` | Sinónimos |
+| `notas-tecnicas` | Notas técnicas |
+
+3. Una región `data-region="admin-content"` reservada al contenido de la sección activa. Si `data-section="categorias"`, MUST montar el ABM del requirement «UI de categorías en administración». Si `data-section="marcas"`, MUST montar el ABM del requirement «UI de marcas en administración». Si `data-section="atributos"`, MUST montar el ABM del requirement «UI de atributos técnicos en administración». En cualquier otra sección del menú (y en un slug no listado) MUST seguir vacía de UI de negocio: MUST NOT contener `vx-product-card`, MUST NOT montar formularios de alta/edición de catálogo, MUST NOT llamar a `/api/v1/*` ni a `/health`. MAY mostrar un título o texto placeholder de la sección (español) sin datos.
+4. El ajuste "Nombre de esta terminal" (requirement siguiente), visible en la vista administración.
+
+El ítem del menú cuyo slug coincide con `data-section` MUST tener `aria-current="page"`. Los demás MUST NOT tener `aria-current="page"`. Si el slug no está en la tabla (sigue siendo administración válida por T-01-01), MUST pintar el mismo layout (menú + región vacía + ajuste de terminal) y MUST NOT marcar ningún ítem con `aria-current="page"`.
+
+MUST conservar el enlace del operador `<a href="#/admin/productos">`. MUST NOT pedir credenciales ni mostrar formulario de login (`input[type="password"]` o usuario/contraseña). MUST NOT incluir `vx-omnibox`. `base.css` MAY definir clases de layout (p. ej. `.vx-admin`) usando solo *tokens* `--vx-*` existentes. MUST NOT agregar *tokens* nuevos.
+
+#### Scenario: el menú lista las ocho secciones y el enlace de vuelta (happy, Listo cuando)
+
+- **WHEN** la app inicia con hash `#/admin/productos` (o se navega desde `#/`)
+- **THEN** el *outlet* muestra `data-view="admin"` y `data-section="productos"`
+- **AND** hay un `<nav>` con enlaces `href` a `#/admin/productos`, `#/admin/categorias`, `#/admin/marcas`, `#/admin/atributos`, `#/admin/stock`, `#/admin/relaciones`, `#/admin/sinonimos` y `#/admin/notas-tecnicas`
+- **AND** hay un enlace `href="#/"`
+- **AND** el ítem Productos tiene `aria-current="page"`
+
+#### Scenario: cambiar de sección no recarga (happy)
+
+- **WHEN** la vista administración está en `#/admin/productos`
+- **AND** el *hash* pasa a `#/admin/categorias`
+- **THEN** el *outlet* muestra `data-view="admin"` y `data-section="categorias"`
+- **AND** el ítem Categorías tiene `aria-current="page"`
+- **AND** Productos ya no tiene `aria-current="page"`
+- **AND** no se invoca recarga del documento
+
+#### Scenario: volver al operador en un paso (happy, Listo cuando)
+
+- **WHEN** la vista administración está visible (`#/admin/productos` u otra sección del menú)
+- **AND** se sigue el enlace `href="#/"` (o el *hash* pasa a `#/`)
+- **THEN** el *outlet* muestra `data-view="operator"`
+- **AND** ya no está visible `data-view="admin"`
+- **AND** no se invoca recarga del documento
+
+#### Scenario: la región de contenido no monta ABM (unhappy)
+
+- **WHEN** el hash es `#/admin/productos` (o `#/admin/stock`, u otra sección del menú distinta de `categorias`, `marcas` y `atributos`)
+- **THEN** `data-region="admin-content"` no contiene `vx-product-card`
+- **AND** no hay `<form>` de alta o edición de catálogo
+- **AND** no se envía ninguna petición HTTP
+
+#### Scenario: slug de admin no listado no marca el menú (unhappy)
+
+- **WHEN** el hash es `#/admin/foo`
+- **THEN** el *outlet* muestra `data-view="admin"` y `data-section="foo"`
+- **AND** el menú de ocho secciones sigue visible
+- **AND** ningún ítem del menú tiene `aria-current="page"`
+- **AND** no se lanza excepción
+
+#### Scenario: administración no pide credenciales (unhappy / frontera)
+
+- **WHEN** se navega a `#/admin/productos`
+- **THEN** no hay `input[type="password"]` ni campo de usuario
+- **AND** no hay `vx-omnibox`
