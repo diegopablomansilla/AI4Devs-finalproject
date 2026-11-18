@@ -385,6 +385,43 @@ fn validate_valor_for_def(
     }
 }
 
+/// Resolved attribute on a product sheet (OpenAPI `AttributeValue` metadata).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AtributoFicha {
+    pub def: Id<AtributoDef>,
+    pub clave: String,
+    pub etiqueta: String,
+    pub unidad: Option<String>,
+    pub valor: ValorAtributo,
+}
+
+/// Product sheet with hydrated marca, category path and resolved attributes.
+#[derive(Debug, Clone, PartialEq)]
+pub struct FichaProducto {
+    pub producto: Producto,
+    pub marca: Option<Marca>,
+    pub categoria: Categoria,
+    pub atributos: Vec<AtributoFicha>,
+}
+
+/// Input for `ProductRepo::update` (optimistic lock; no `stock` nor `activo`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct UpdateProducto {
+    pub id: Id<Producto>,
+    pub version: i32,
+    pub sku: String,
+    pub nombre: String,
+    pub tipo: String,
+    pub descripcion: Option<String>,
+    pub marca: Option<Id<Marca>>,
+    pub categoria: Id<Categoria>,
+    pub atributos: Vec<AtributoValor>,
+    pub codigos: Vec<Codigo>,
+    pub unidad_medida: UnidadMedida,
+    pub precio: Decimal,
+    pub ubicacion: Option<Ubicacion>,
+}
+
 /// Input for `ProductRepo::create`.
 #[derive(Debug, Clone, PartialEq)]
 pub struct NewProducto {
@@ -408,7 +445,15 @@ pub trait ProductRepo {
         input: NewProducto,
     ) -> impl Future<Output = Result<Producto, DomainError>> + Send;
 
-    fn get(&self, id: Id<Producto>) -> impl Future<Output = Result<Producto, DomainError>> + Send;
+    fn get(
+        &self,
+        id: Id<Producto>,
+    ) -> impl Future<Output = Result<FichaProducto, DomainError>> + Send;
+
+    fn update(
+        &self,
+        input: UpdateProducto,
+    ) -> impl Future<Output = Result<FichaProducto, DomainError>> + Send;
 }
 
 fn field_invalid_input(field: &str, message: &str) -> DomainError {
@@ -717,6 +762,115 @@ mod tests {
         assert_eq!(fields[0].field, "attributes[0].value");
     }
 
+    #[test]
+    fn ficha_producto_exposes_marca_ruta_and_resolved_attributes() {
+        use crate::categoria::{Categoria, CategoriaDraft, Slug};
+        use crate::marca::{Marca, MarcaDraft};
+
+        let defs = vec![def_medida_texto()];
+        let medida = &defs[0];
+        let draft = ProductoDraft {
+            id: Id::generate(),
+            sku: "PER-M8X40-ZN".into(),
+            nombre: "Perno hexagonal M8 x 40 zincado".into(),
+            tipo: "Perno".into(),
+            descripcion: None,
+            marca: Some(Id::generate()),
+            categoria: Id::generate(),
+            atributos: vec![AtributoValor {
+                def: medida.id.clone(),
+                valor: ValorAtributo::Texto("M8".into()),
+            }],
+            codigos: vec![],
+            unidad_medida: UnidadMedida::Unidad,
+            precio: "120.50".parse().expect("precio"),
+            ubicacion: None,
+            stock: "0".parse().expect("stock"),
+            activo: true,
+            version: 1,
+            creado_en: ts(),
+            actualizado_en: ts(),
+        };
+        let producto = Producto::try_new(draft, &defs).expect("producto");
+        let parent_id = Id::generate();
+        let child_slug = Slug::from_nombre("Pernos").expect("slug");
+        let categoria = Categoria::try_new(CategoriaDraft {
+            id: Id::generate(),
+            nombre: "Pernos".into(),
+            slug: child_slug,
+            padre: Some(parent_id.clone()),
+            ancestros: vec![parent_id],
+            ruta: vec!["Fijaciones".into(), "Pernos".into()],
+            activo: true,
+            creado_en: ts(),
+            actualizado_en: ts(),
+        })
+        .expect("categoria");
+        let marca = Marca::try_new(MarcaDraft {
+            id: Id::generate(),
+            nombre: "Fixser".into(),
+            slug: Slug::from_nombre("Fixser").expect("marca slug"),
+            activo: true,
+            creado_en: ts(),
+            actualizado_en: ts(),
+        })
+        .expect("marca");
+        let ficha = FichaProducto {
+            producto,
+            marca: Some(marca.clone()),
+            categoria,
+            atributos: vec![AtributoFicha {
+                def: medida.id.clone(),
+                clave: "medida".into(),
+                etiqueta: "Medida".into(),
+                unidad: Some("mm".into()),
+                valor: ValorAtributo::Texto("M8".into()),
+            }],
+        };
+        assert_eq!(
+            ficha.marca.as_ref().map(|m| m.nombre.as_str()),
+            Some("Fixser")
+        );
+        assert_eq!(ficha.categoria.ruta, ["Fijaciones", "Pernos"]);
+        assert_eq!(ficha.atributos[0].clave, "medida");
+        assert_eq!(ficha.atributos[0].etiqueta, "Medida");
+        assert_eq!(ficha.atributos[0].unidad.as_deref(), Some("mm"));
+    }
+
+    #[test]
+    fn update_producto_has_no_stock_or_activo_fields() {
+        let update = UpdateProducto {
+            id: Id::generate(),
+            version: 1,
+            sku: "SKU".into(),
+            nombre: "Nombre".into(),
+            tipo: "Perno".into(),
+            descripcion: None,
+            marca: None,
+            categoria: Id::generate(),
+            atributos: vec![],
+            codigos: vec![],
+            unidad_medida: UnidadMedida::Unidad,
+            precio: "1".parse().expect("precio"),
+            ubicacion: None,
+        };
+        assert_eq!(update.version, 1);
+        let _ = (
+            update.id,
+            update.sku,
+            update.nombre,
+            update.tipo,
+            update.descripcion,
+            update.marca,
+            update.categoria,
+            update.atributos,
+            update.codigos,
+            update.unidad_medida,
+            update.precio,
+            update.ubicacion,
+        );
+    }
+
     struct DummyProductRepo;
 
     impl ProductRepo for DummyProductRepo {
@@ -730,13 +884,20 @@ mod tests {
         fn get(
             &self,
             _id: Id<Producto>,
-        ) -> impl Future<Output = Result<Producto, DomainError>> + Send {
+        ) -> impl Future<Output = Result<FichaProducto, DomainError>> + Send {
+            async { Err(DomainError::not_found()) }
+        }
+
+        fn update(
+            &self,
+            _input: UpdateProducto,
+        ) -> impl Future<Output = Result<FichaProducto, DomainError>> + Send {
             async { Err(DomainError::not_found()) }
         }
     }
 
     #[test]
-    fn product_repo_trait_exposes_create_get() {
+    fn product_repo_trait_exposes_create_get_update() {
         fn assert_repo<R: ProductRepo>(r: &R) {
             let _f1 = r.create(NewProducto {
                 sku: "x".into(),
@@ -753,7 +914,32 @@ mod tests {
                 stock_inicial: "0".parse().unwrap(),
             });
             let _f2 = r.get(Id::generate());
+            let _f3 = r.update(UpdateProducto {
+                id: Id::generate(),
+                version: 1,
+                sku: "x".into(),
+                nombre: "n".into(),
+                tipo: "t".into(),
+                descripcion: None,
+                marca: None,
+                categoria: Id::generate(),
+                atributos: vec![],
+                codigos: vec![],
+                unidad_medida: UnidadMedida::Unidad,
+                precio: "0".parse().unwrap(),
+                ubicacion: None,
+            });
         }
         assert_repo(&DummyProductRepo);
+    }
+
+    #[test]
+    fn product_repo_trait_get_returns_ficha() {
+        fn assert_get_future<R: ProductRepo>(
+            r: &R,
+        ) -> impl Future<Output = Result<FichaProducto, DomainError>> + Send {
+            r.get(Id::generate())
+        }
+        let _ = assert_get_future(&DummyProductRepo {});
     }
 }

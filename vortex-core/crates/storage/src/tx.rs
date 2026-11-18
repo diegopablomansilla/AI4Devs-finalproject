@@ -140,6 +140,10 @@ fn map_surreal_error(err: SurrealError, statements: &[String]) -> DomainError {
 pub(crate) fn map_surreal_message(msg: &str, statements: &[String]) -> DomainError {
     let lower = msg.to_lowercase();
 
+    if lower.contains("version_conflict") {
+        return DomainError::conflict(ConflictCode::VersionConflict);
+    }
+
     if lower.contains("stock_negativo") {
         return DomainError::invalid_input(InvalidInputCode::NegativeStock, vec![]);
     }
