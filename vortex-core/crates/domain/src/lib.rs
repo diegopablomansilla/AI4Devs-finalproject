@@ -36,7 +36,7 @@ pub use movimiento_stock::{
 };
 pub use outbox::{OutboxEntity, OutboxEvent, OutboxEventError, OutboxOp};
 pub use producto::{
-    AtributoValor, Codigo, NewProducto, ProductRepo, Producto, ProductoDraft, Sku, TipoCodigo,
-    Ubicacion, UnidadMedida, ValorAtributo,
+    AtributoFicha, AtributoValor, Codigo, FichaProducto, NewProducto, ProductRepo, Producto,
+    ProductoDraft, Sku, TipoCodigo, Ubicacion, UnidadMedida, UpdateProducto, ValorAtributo,
 };
 pub use timestamp::{InvalidTimestamp, Timestamp};

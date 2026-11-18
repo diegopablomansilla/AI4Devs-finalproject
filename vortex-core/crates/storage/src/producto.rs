@@ -1,20 +1,23 @@
-//! SurrealDB adapter for `ProductRepo` (T-02-18).
+//! SurrealDB adapter for `ProductRepo` (T-02-18, T-02-19).
 
 use std::future::Future;
 use std::str::FromStr as _;
 use std::sync::Arc;
 
 use domain::{
-    AtributoDef, AtributoValor, AttributeDefRepo, Codigo, Decimal, DomainError, Id,
-    InvalidInputCode, Marca, MovimientoStock, NewProducto, OutboxEntity, OutboxEvent, OutboxOp,
-    ProductRepo, Producto, ProductoDraft, Timestamp, TipoCodigo, Ubicacion, UnavailableCode,
-    UnidadMedida, ValorAtributo,
+    AtributoDef, AtributoFicha, AtributoValor, AttributeDefRepo, BrandRepo, CategoryRepo, Codigo,
+    ConflictCode, Decimal, DomainError, FichaProducto, Id, InvalidInputCode, Marca,
+    MovimientoStock, NewProducto, OutboxEntity, OutboxEvent, OutboxOp, ProductRepo, Producto,
+    ProductoDraft, Timestamp, TipoCodigo, Ubicacion, UnavailableCode, UnidadMedida, UpdateProducto,
+    ValorAtributo,
 };
 use serde::Deserialize;
 use surrealdb::{RecordId, RecordIdKey};
 
 use crate::Db;
 use crate::atributo_def::AtributoDefRepo;
+use crate::categoria::CategoriaRepo;
+use crate::marca::MarcaRepo;
 use crate::tx::map_surreal_message;
 
 /// Product persistence against table `producto`.
@@ -102,9 +105,17 @@ impl ProductRepo for ProductoRepo {
     fn get(
         &self,
         id: Id<domain::Producto>,
-    ) -> impl Future<Output = Result<Producto, DomainError>> + Send {
+    ) -> impl Future<Output = Result<FichaProducto, DomainError>> + Send {
         let db = Arc::clone(&self.db);
-        async move { fetch_one(db, id).await }
+        async move { fetch_ficha(db, id).await }
+    }
+
+    fn update(
+        &self,
+        input: UpdateProducto,
+    ) -> impl Future<Output = Result<FichaProducto, DomainError>> + Send {
+        let db = Arc::clone(&self.db);
+        async move { update_impl(db, input).await }
     }
 }
 
@@ -147,7 +158,92 @@ async fn create_impl(db: Arc<Db>, input: NewProducto) -> Result<Producto, Domain
     tx.emit(event);
     tx.commit().await?;
 
-    fetch_one(db, id).await
+    fetch_producto(db, id).await
+}
+
+async fn update_impl(db: Arc<Db>, input: UpdateProducto) -> Result<FichaProducto, DomainError> {
+    validate_update_input(&input)?;
+    let current = fetch_producto(Arc::clone(&db), input.id.clone()).await?;
+    if current.version != input.version {
+        return Err(DomainError::conflict(ConflictCode::VersionConflict));
+    }
+
+    let id_str = input.id.to_string();
+    let producto_thing = product_thing_ref(&id_str);
+    let set_body = build_update_set(&input)?;
+    let version = input.version;
+    let update_sql = format!(
+        "UPDATE {producto_thing} \
+         SET {set_body}, version += 1 \
+         WHERE version = {version};"
+    );
+
+    let event = OutboxEvent::try_new(OutboxEntity::Producto, OutboxOp::Upsert, &id_str, None)
+        .map_err(|_| DomainError::unavailable(UnavailableCode::Unavailable))?;
+
+    let mut tx = db.as_ref().tx();
+    tx.run(update_sql);
+    tx.emit(event);
+    tx.commit().await?;
+
+    let ficha = fetch_ficha(db, input.id).await?;
+    let p = &ficha.producto;
+    if p.version != input.version + 1
+        || p.sku.as_str() != input.sku.trim()
+        || p.nombre.trim() != input.nombre.trim()
+        || p.precio != input.precio
+    {
+        return Err(DomainError::conflict(ConflictCode::VersionConflict));
+    }
+    Ok(ficha)
+}
+
+fn validate_update_input(input: &UpdateProducto) -> Result<(), DomainError> {
+    if input.sku.trim().is_empty() || input.nombre.trim().is_empty() {
+        return Err(invalid_create());
+    }
+    if input.version < 1 {
+        return Err(invalid_create());
+    }
+    let zero = Decimal::from_str("0").map_err(|_| invalid_create())?;
+    if input.precio < zero {
+        return Err(invalid_create());
+    }
+    Ok(())
+}
+
+fn build_update_set(input: &UpdateProducto) -> Result<String, DomainError> {
+    let sku = sql_string(input.sku.trim());
+    let nombre = sql_string(input.nombre.trim());
+    let tipo = sql_string(input.tipo.trim());
+    let descripcion = match &input.descripcion {
+        None => "NONE".to_string(),
+        Some(d) => sql_string(d),
+    };
+    let marca = match &input.marca {
+        None => "NONE".to_string(),
+        Some(id) => format!("type::thing('marca', '{}')", id),
+    };
+    let categoria = format!("type::thing('categoria', '{}')", input.categoria);
+    let atributos = build_atributos_sql(&input.atributos)?;
+    let codigos = build_codigos_sql(&input.codigos);
+    let unidad = sql_string(input.unidad_medida.as_str());
+    let precio = sql_decimal(input.precio);
+    let ubicacion = build_ubicacion_sql(&input.ubicacion);
+
+    Ok(format!(
+        "sku = {sku}, \
+         nombre = {nombre}, \
+         tipo = {tipo}, \
+         descripcion = {descripcion}, \
+         marca = {marca}, \
+         categoria = {categoria}, \
+         atributos = {atributos}, \
+         codigos = {codigos}, \
+         unidad_medida = {unidad}, \
+         precio = {precio}, \
+         ubicacion = {ubicacion}"
+    ))
 }
 
 fn validate_create_input(input: &NewProducto) -> Result<(), DomainError> {
@@ -266,15 +362,88 @@ fn valor_to_sql(valor: &ValorAtributo) -> Result<String, DomainError> {
     })
 }
 
-async fn fetch_one(db: Arc<Db>, id: Id<Producto>) -> Result<Producto, DomainError> {
+async fn fetch_producto(db: Arc<Db>, id: Id<Producto>) -> Result<Producto, DomainError> {
+    let row = fetch_product_record(Arc::clone(&db), &id).await?;
+    record_to_producto(db, Some(id), row).await
+}
+
+async fn fetch_product_record(
+    db: Arc<Db>,
+    id: &Id<Producto>,
+) -> Result<ProductoRecord, DomainError> {
     let id_str = id.to_string();
     let stmt = format!("SELECT * FROM type::thing('producto', '{id_str}');");
-    let row = query_product_records(db.as_ref(), &stmt)
+    query_product_records(db.as_ref(), &stmt)
         .await?
         .into_iter()
         .next()
-        .ok_or(DomainError::not_found())?;
-    record_to_producto(db, Some(id), row).await
+        .ok_or(DomainError::not_found())
+}
+
+async fn fetch_ficha(db: Arc<Db>, id: Id<Producto>) -> Result<FichaProducto, DomainError> {
+    let row = fetch_product_record(Arc::clone(&db), &id).await?;
+    let producto = record_to_producto(Arc::clone(&db), Some(id.clone()), row).await?;
+    hydrate_ficha(db, producto).await
+}
+
+async fn hydrate_ficha(db: Arc<Db>, producto: Producto) -> Result<FichaProducto, DomainError> {
+    let categoria = CategoriaRepo::new(Arc::clone(&db))
+        .get(producto.categoria.clone())
+        .await?;
+    let marca = match &producto.marca {
+        None => None,
+        Some(marca_id) => Some(
+            MarcaRepo::new(Arc::clone(&db))
+                .get(marca_id.clone())
+                .await?,
+        ),
+    };
+
+    let defs = load_atributo_defs_for_product(Arc::clone(&db), &producto.atributos).await?;
+    let atributos = producto
+        .atributos
+        .iter()
+        .map(|av| {
+            let def = defs
+                .iter()
+                .find(|d| d.id == av.def)
+                .ok_or(DomainError::unavailable(UnavailableCode::Unavailable))?;
+            Ok(AtributoFicha {
+                def: av.def.clone(),
+                clave: def.clave.clone(),
+                etiqueta: def.etiqueta.clone(),
+                unidad: def.unidad.clone(),
+                valor: av.valor.clone(),
+            })
+        })
+        .collect::<Result<Vec<_>, DomainError>>()?;
+
+    Ok(FichaProducto {
+        producto,
+        marca,
+        categoria,
+        atributos,
+    })
+}
+
+async fn load_atributo_defs_for_product(
+    db: Arc<Db>,
+    attrs: &[AtributoValor],
+) -> Result<Vec<AtributoDef>, DomainError> {
+    if attrs.is_empty() {
+        return Ok(vec![]);
+    }
+    let repo = AtributoDefRepo::new(db);
+    let mut defs = Vec::new();
+    let mut seen: Vec<Id<AtributoDef>> = Vec::new();
+    for attr in attrs {
+        if seen.contains(&attr.def) {
+            continue;
+        }
+        seen.push(attr.def.clone());
+        defs.push(repo.get(attr.def.clone()).await?);
+    }
+    Ok(defs)
 }
 
 async fn record_to_producto(

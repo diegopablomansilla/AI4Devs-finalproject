@@ -3,12 +3,16 @@
 use std::sync::Arc;
 
 use domain::{
-    Categoria, CategoryRepo, ConflictCode, DomainCode, DomainError, Id, NewCategoria, NewProducto,
-    ProductRepo, Producto, UnidadMedida,
+    AtributoDef, AtributoValor, AttributeDefRepo, BrandRepo, Categoria, CategoryRepo, Codigo,
+    ConflictCode, DomainCode, DomainError, Id, Marca, NewAtributoDef, NewCategoria, NewMarca,
+    NewProducto, ProductRepo, Producto, TipoAtributo, TipoCodigo, UnidadMedida, UpdateProducto,
+    ValorAtributo,
 };
 
 use storage::testing::test_db;
-use storage::{CategoriaRepo, MIGRATION_0005_SQL, ProductoRepo, checksum_hex};
+use storage::{
+    AtributoDefRepo, CategoriaRepo, MIGRATION_0005_SQL, MarcaRepo, ProductoRepo, checksum_hex,
+};
 
 fn product_repo(db: Arc<storage::Db>) -> ProductoRepo {
     ProductoRepo::new(db)
@@ -291,11 +295,11 @@ async fn product_repo_get_returns_persisted() {
         .get(created.id.clone())
         .await
         .expect("get");
-    assert_eq!(loaded.id, created.id);
-    assert_eq!(loaded.sku.as_str(), created.sku.as_str());
-    assert_eq!(loaded.nombre, created.nombre);
-    assert_eq!(loaded.stock, created.stock);
-    assert_eq!(loaded.version, created.version);
+    assert_eq!(loaded.producto.id, created.id);
+    assert_eq!(loaded.producto.sku.as_str(), created.sku.as_str());
+    assert_eq!(loaded.producto.nombre, created.nombre);
+    assert_eq!(loaded.producto.stock, created.stock);
+    assert_eq!(loaded.producto.version, created.version);
 }
 
 #[tokio::test]
@@ -377,6 +381,319 @@ fn assert_duplicate_sku(err: DomainError) {
         } => {}
         other => panic!("expected duplicate_sku, got {other:?}"),
     }
+}
+
+fn assert_version_conflict(err: DomainError) {
+    match err {
+        DomainError::Conflict {
+            code: ConflictCode::VersionConflict,
+            ..
+        } => {}
+        other => panic!("expected version_conflict, got {other:?}"),
+    }
+}
+
+async fn seed_ficha_catalog(db: Arc<storage::Db>) -> (Id<Categoria>, Id<Marca>, Id<AtributoDef>) {
+    let parent = CategoriaRepo::new(Arc::clone(&db))
+        .create(NewCategoria {
+            nombre: "Fijaciones".into(),
+            slug: None,
+            padre: None,
+        })
+        .await
+        .expect("parent categoria");
+    let child = CategoriaRepo::new(Arc::clone(&db))
+        .create(NewCategoria {
+            nombre: "Pernos".into(),
+            slug: None,
+            padre: Some(parent.id),
+        })
+        .await
+        .expect("child categoria");
+    let marca = MarcaRepo::new(Arc::clone(&db))
+        .create(NewMarca {
+            nombre: "Fixser".into(),
+            slug: None,
+        })
+        .await
+        .expect("marca");
+    let medida = AtributoDefRepo::new(Arc::clone(&db))
+        .create(NewAtributoDef {
+            clave: "medida".into(),
+            etiqueta: "Medida".into(),
+            tipo: TipoAtributo::Texto,
+            unidad: Some("mm".into()),
+            opciones: None,
+            facetable: false,
+            buscable: true,
+            orden: 0,
+        })
+        .await
+        .expect("medida def");
+    (child.id, marca.id, medida.id)
+}
+
+fn new_perno_rich(
+    categoria: Id<Categoria>,
+    marca: Id<Marca>,
+    medida_def: Id<AtributoDef>,
+    sku: &str,
+    stock_inicial: &str,
+) -> NewProducto {
+    NewProducto {
+        sku: sku.into(),
+        nombre: "Perno hexagonal M8 x 40 zincado".into(),
+        tipo: "Perno".into(),
+        descripcion: None,
+        marca: Some(marca),
+        categoria,
+        atributos: vec![AtributoValor {
+            def: medida_def,
+            valor: ValorAtributo::Texto("M8".into()),
+        }],
+        codigos: vec![Codigo::try_new(TipoCodigo::Fabricante, "HX-0840Z").expect("codigo")],
+        unidad_medida: UnidadMedida::Unidad,
+        precio: "120.50".parse().expect("precio"),
+        ubicacion: None,
+        stock_inicial: stock_inicial.parse().expect("stock"),
+    }
+}
+
+fn update_from_producto(producto: &Producto, version: i32) -> UpdateProducto {
+    UpdateProducto {
+        id: producto.id.clone(),
+        version,
+        sku: producto.sku.as_str().to_string(),
+        nombre: producto.nombre.clone(),
+        tipo: producto.tipo.clone(),
+        descripcion: producto.descripcion.clone(),
+        marca: producto.marca.clone(),
+        categoria: producto.categoria.clone(),
+        atributos: producto.atributos.clone(),
+        codigos: producto.codigos.clone(),
+        unidad_medida: producto.unidad_medida,
+        precio: producto.precio,
+        ubicacion: producto.ubicacion.clone(),
+    }
+}
+
+#[tokio::test]
+async fn product_repo_get_hydrates_marca_ruta_and_attributes() {
+    let db = Arc::new(test_db().await);
+    let (categoria, marca, medida) = seed_ficha_catalog(Arc::clone(&db)).await;
+    let created = product_repo(Arc::clone(&db))
+        .create(new_perno_rich(
+            categoria,
+            marca,
+            medida,
+            "PER-M8X40-ZN",
+            "0",
+        ))
+        .await
+        .expect("create");
+    let ficha = product_repo(Arc::clone(&db))
+        .get(created.id.clone())
+        .await
+        .expect("get");
+    assert_eq!(
+        ficha.marca.as_ref().map(|m| m.nombre.as_str()),
+        Some("Fixser")
+    );
+    assert_eq!(ficha.categoria.ruta, ["Fijaciones", "Pernos"]);
+    assert_eq!(ficha.atributos.len(), 1);
+    assert_eq!(ficha.atributos[0].clave, "medida");
+    assert_eq!(ficha.atributos[0].etiqueta, "Medida");
+    assert_eq!(ficha.atributos[0].unidad.as_deref(), Some("mm"));
+    assert!(matches!(
+        ficha.atributos[0].valor,
+        ValorAtributo::Texto(ref s) if s == "M8"
+    ));
+}
+
+#[tokio::test]
+async fn product_repo_update_increments_version() {
+    let db = Arc::new(test_db().await);
+    let (categoria, marca, medida) = seed_ficha_catalog(Arc::clone(&db)).await;
+    let created = product_repo(Arc::clone(&db))
+        .create(new_perno_rich(
+            categoria,
+            marca,
+            medida,
+            "PER-M8X40-ZN",
+            "0",
+        ))
+        .await
+        .expect("create");
+    let mut input = update_from_producto(&created, 1);
+    input.precio = "130.00".parse().expect("precio");
+    let ficha = product_repo(Arc::clone(&db))
+        .update(input)
+        .await
+        .expect("update");
+    assert_eq!(ficha.producto.precio, "130.00".parse().expect("precio"));
+    assert_eq!(ficha.producto.version, 2);
+}
+
+#[tokio::test]
+async fn product_repo_update_does_not_write_stock() {
+    let db = Arc::new(test_db().await);
+    let (categoria, marca, medida) = seed_ficha_catalog(Arc::clone(&db)).await;
+    let created = product_repo(Arc::clone(&db))
+        .create(new_perno_rich(
+            categoria,
+            marca,
+            medida,
+            "PER-M8X40-ZN",
+            "50",
+        ))
+        .await
+        .expect("create");
+    assert_eq!(created.stock.to_string(), "50");
+    let before_movs = db.record_count("movimiento_stock").await.expect("movs");
+    let mut input = update_from_producto(&created, 1);
+    input.precio = "125.00".parse().expect("precio");
+    let ficha = product_repo(Arc::clone(&db))
+        .update(input)
+        .await
+        .expect("update");
+    assert_eq!(ficha.producto.stock.to_string(), "50");
+    assert_eq!(
+        db.record_count("movimiento_stock").await.expect("movs"),
+        before_movs
+    );
+}
+
+#[tokio::test]
+async fn product_repo_update_replaces_atributos_and_codigos() {
+    let db = Arc::new(test_db().await);
+    let (categoria, marca, medida) = seed_ficha_catalog(Arc::clone(&db)).await;
+    let created = product_repo(Arc::clone(&db))
+        .create(new_perno_rich(
+            categoria,
+            marca,
+            medida,
+            "PER-M8X40-ZN",
+            "0",
+        ))
+        .await
+        .expect("create");
+    assert_eq!(created.codigos.len(), 1);
+    assert_eq!(created.atributos.len(), 1);
+    let mut input = update_from_producto(&created, 1);
+    input.atributos = vec![];
+    input.codigos = vec![Codigo::try_new(TipoCodigo::Oem, "OEM-1").expect("oem")];
+    let ficha = product_repo(Arc::clone(&db))
+        .update(input)
+        .await
+        .expect("update");
+    assert!(ficha.producto.atributos.is_empty());
+    assert_eq!(ficha.producto.codigos.len(), 1);
+    assert_eq!(ficha.producto.codigos[0].tipo, TipoCodigo::Oem);
+}
+
+#[tokio::test]
+async fn product_repo_concurrent_updates_same_version_conflict() {
+    let db = Arc::new(test_db().await);
+    let (categoria, marca, medida) = seed_ficha_catalog(Arc::clone(&db)).await;
+    let created = product_repo(Arc::clone(&db))
+        .create(new_perno_rich(
+            categoria,
+            marca,
+            medida,
+            "PER-M8X40-ZN",
+            "0",
+        ))
+        .await
+        .expect("create");
+    let before_outbox = db.record_count("outbox").await.expect("outbox");
+
+    let mut first = update_from_producto(&created, 1);
+    first.precio = "130.00".parse().expect("precio");
+    product_repo(Arc::clone(&db))
+        .update(first)
+        .await
+        .expect("first update");
+
+    let mut second = update_from_producto(&created, 1);
+    second.precio = "140.00".parse().expect("precio");
+    let err = product_repo(Arc::clone(&db))
+        .update(second)
+        .await
+        .expect_err("version conflict");
+    assert_version_conflict(err);
+
+    let ficha = product_repo(Arc::clone(&db))
+        .get(created.id.clone())
+        .await
+        .expect("reload");
+    assert_eq!(ficha.producto.precio, "130.00".parse().expect("precio"));
+    assert_eq!(ficha.producto.version, 2);
+    assert_eq!(
+        db.record_count("outbox").await.expect("outbox"),
+        before_outbox + 1
+    );
+}
+
+#[tokio::test]
+async fn product_repo_update_unknown_id_is_not_found() {
+    let db = Arc::new(test_db().await);
+    let missing = Id::<Producto>::generate();
+    let err = product_repo(Arc::clone(&db))
+        .update(UpdateProducto {
+            id: missing,
+            version: 1,
+            sku: "X".into(),
+            nombre: "X".into(),
+            tipo: "Perno".into(),
+            descripcion: None,
+            marca: None,
+            categoria: Id::generate(),
+            atributos: vec![],
+            codigos: vec![],
+            unidad_medida: UnidadMedida::Unidad,
+            precio: "1".parse().expect("precio"),
+            ubicacion: None,
+        })
+        .await
+        .expect_err("not found");
+    assert_eq!(err.code(), DomainCode::NotFound);
+}
+
+#[tokio::test]
+async fn product_repo_update_rejects_duplicate_sku() {
+    let db = Arc::new(test_db().await);
+    let (categoria, marca, medida) = seed_ficha_catalog(Arc::clone(&db)).await;
+    let a = product_repo(Arc::clone(&db))
+        .create(new_perno_rich(
+            categoria.clone(),
+            marca.clone(),
+            medida.clone(),
+            "SKU-A",
+            "0",
+        ))
+        .await
+        .expect("a");
+    let b = product_repo(Arc::clone(&db))
+        .create(new_perno_rich(categoria, marca, medida, "SKU-B", "0"))
+        .await
+        .expect("b");
+    let before_outbox = db.record_count("outbox").await.expect("outbox");
+    let mut input = update_from_producto(&b, 1);
+    input.sku = a.sku.as_str().to_string();
+    let err = product_repo(Arc::clone(&db))
+        .update(input)
+        .await
+        .expect_err("duplicate sku");
+    assert_duplicate_sku(err);
+    let reloaded = product_repo(Arc::clone(&db))
+        .get(b.id.clone())
+        .await
+        .expect("b still");
+    assert_eq!(reloaded.producto.sku.as_str(), "SKU-B");
+    assert_eq!(
+        db.record_count("outbox").await.expect("outbox"),
+        before_outbox
+    );
 }
 
 #[tokio::test]
