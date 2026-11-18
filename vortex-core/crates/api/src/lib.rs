@@ -1,6 +1,7 @@
 //! API Gateway HTTP shell (T-00-10 … T-00-14, T-00-19).
 
 mod app_json;
+mod categories;
 mod error;
 mod gateway;
 mod health;
@@ -15,8 +16,9 @@ use axum::{
     http::{StatusCode, Uri},
     middleware,
     response::IntoResponse,
-    routing::get,
+    routing::{get, patch},
 };
+use catalog::CategoryGateway;
 use domain::HealthReport;
 
 pub use app_json::AppJson;
@@ -38,6 +40,7 @@ struct AppStateInner {
     web_root: PathBuf,
     media_root: PathBuf,
     version: String,
+    categories: Option<Arc<dyn CategoryGateway>>,
 }
 
 impl AppState {
@@ -56,6 +59,7 @@ impl AppState {
                 web_root: PathBuf::new(),
                 media_root: PathBuf::new(),
                 version: env!("CARGO_PKG_VERSION").to_owned(),
+                categories: None,
             }),
         }
     }
@@ -91,6 +95,16 @@ impl AppState {
     #[must_use]
     pub fn version(&self) -> String {
         self.inner.version.clone()
+    }
+
+    #[must_use]
+    pub fn with_categories(mut self, categories: Arc<dyn CategoryGateway>) -> Self {
+        Arc::make_mut(&mut self.inner).categories = Some(categories);
+        self
+    }
+
+    pub(crate) fn categories(&self) -> Option<Arc<dyn CategoryGateway>> {
+        self.inner.categories.clone()
     }
 }
 
@@ -132,6 +146,14 @@ pub fn router_shell(state: AppState) -> Router {
         .route(
             "/metrics",
             get(metrics::get_metrics).post(|| async { StatusCode::METHOD_NOT_ALLOWED }),
+        )
+        .route(
+            "/api/v1/categories",
+            get(categories::list_categories).post(categories::post_category),
+        )
+        .route(
+            "/api/v1/categories/{category_id}",
+            patch(categories::patch_category).delete(categories::delete_category),
         )
         .fallback(fallback_not_found)
         .layer(middleware::from_fn(metrics::record_http_duration))

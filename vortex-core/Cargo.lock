@@ -165,6 +165,7 @@ name = "api"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "catalog",
  "domain",
  "jsonschema",
  "metrics",
@@ -5348,6 +5349,7 @@ version = "0.1.0"
 dependencies = [
  "api",
  "axum",
+ "catalog",
  "clap",
  "serde",
  "serde_json",

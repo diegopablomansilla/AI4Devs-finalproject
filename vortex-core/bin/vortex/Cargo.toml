@@ -6,6 +6,7 @@ publish = false
 
 [dependencies]
 api = { path = "../../crates/api" }
+catalog = { path = "../../crates/catalog" }
 supervisor = { path = "../../crates/supervisor" }
 storage = { path = "../../crates/storage" }
 toml = { workspace = true }

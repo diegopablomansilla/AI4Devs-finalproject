@@ -2,4 +2,4 @@
 
 pub mod categoria;
 
-pub use categoria::{CategoryOccupancy, CategoryService};
+pub use categoria::{CategoryGateway, CategoryOccupancy, CategoryService, ProductionOccupancy};

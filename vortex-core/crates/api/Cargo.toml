@@ -6,6 +6,7 @@ publish = false
 
 [dependencies]
 axum = { workspace = true }
+catalog = { path = "../catalog" }
 domain = { path = "../domain" }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }

@@ -2,6 +2,7 @@
 
 use std::future::Future;
 use std::str::FromStr as _;
+use std::sync::Arc;
 
 use domain::{
     Categoria, CategoriaDraft, CategoryRepo, ConflictCode, DomainError, Id, InvalidInputCode,
@@ -15,12 +16,12 @@ use crate::Db;
 use crate::tx::map_surreal_message;
 
 /// Category persistence against table `categoria`.
-pub struct CategoriaRepo<'a> {
-    db: &'a Db,
+pub struct CategoriaRepo {
+    db: Arc<Db>,
 }
 
-impl<'a> CategoriaRepo<'a> {
-    pub fn new(db: &'a Db) -> Self {
+impl CategoriaRepo {
+    pub fn new(db: Arc<Db>) -> Self {
         Self { db }
     }
 }
@@ -45,34 +46,34 @@ fn default_true() -> bool {
     true
 }
 
-impl<'a> CategoryRepo for CategoriaRepo<'a> {
+impl CategoryRepo for CategoriaRepo {
     fn create(
         &self,
         input: NewCategoria,
     ) -> impl Future<Output = Result<Categoria, DomainError>> + Send {
-        let db = self.db;
-        async move { create_impl(db, input).await }
+        let db = Arc::clone(&self.db);
+        async move { create_impl(db.as_ref(), input).await }
     }
 
     fn get(
         &self,
         id: Id<Categoria>,
     ) -> impl Future<Output = Result<Categoria, DomainError>> + Send {
-        let db = self.db;
-        async move { fetch_one(db, id).await }
+        let db = Arc::clone(&self.db);
+        async move { fetch_one(db.as_ref(), id).await }
     }
 
     fn list_all(&self) -> impl Future<Output = Result<Vec<Categoria>, DomainError>> + Send {
-        let db = self.db;
-        async move { fetch_all(db).await }
+        let db = Arc::clone(&self.db);
+        async move { fetch_all(db.as_ref()).await }
     }
 
     fn update(
         &self,
         input: UpdateCategoria,
     ) -> impl Future<Output = Result<Categoria, DomainError>> + Send {
-        let db = self.db;
-        async move { update_impl(db, input).await }
+        let db = Arc::clone(&self.db);
+        async move { update_impl(db.as_ref(), input).await }
     }
 
     fn set_activo(
@@ -80,8 +81,8 @@ impl<'a> CategoryRepo for CategoriaRepo<'a> {
         id: Id<Categoria>,
         activo: bool,
     ) -> impl Future<Output = Result<Categoria, DomainError>> + Send {
-        let db = self.db;
-        async move { set_activo_impl(db, id, activo).await }
+        let db = Arc::clone(&self.db);
+        async move { set_activo_impl(db.as_ref(), id, activo).await }
     }
 }
 

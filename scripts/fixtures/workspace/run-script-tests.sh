@@ -223,6 +223,10 @@ workspace = true
 EOF
 assert_ok 'api con allowlist openapi' "${tmp}"
 
+# happy: api declares path catalog (T-02-06)
+cp "${REPO_ROOT}/vortex-core/crates/api/Cargo.toml" "${tmp}/vortex-core/crates/api/Cargo.toml"
+assert_ok 'api declara path catalog' "${tmp}"
+
 # unhappy: api declares jsonschema in runtime dependencies
 cp "${REPO_ROOT}/vortex-core/crates/api/Cargo.toml" "${tmp}/vortex-core/crates/api/Cargo.toml"
 cat >"${tmp}/vortex-core/crates/api/Cargo.toml" <<'EOF'
@@ -377,6 +381,10 @@ serde_json = { workspace = true }
 workspace = true
 EOF
 assert_ok 'vortex con path storage' "${tmp}"
+
+# happy: vortex declares path catalog (T-02-06)
+cp "${REPO_ROOT}/vortex-core/bin/vortex/Cargo.toml" "${tmp}/vortex-core/bin/vortex/Cargo.toml"
+assert_ok 'vortex declara path catalog' "${tmp}"
 
 # unhappy: vortex declares metrics
 cat >"${tmp}/vortex-core/bin/vortex/Cargo.toml" <<'EOF'
