@@ -318,6 +318,76 @@ textarea:focus-visible {
   cursor: pointer;
 }
 
+.vx-product-admin {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vx-space-3);
+}
+
+.vx-product-title {
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+.vx-product-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--vx-space-3);
+}
+
+.vx-product-filter {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vx-space-1);
+  font-size: 0.875rem;
+}
+
+.vx-product-filter select {
+  min-height: var(--vx-touch-min);
+  padding: var(--vx-space-1) var(--vx-space-2);
+  border-radius: var(--vx-radius-sm);
+  border: 1px solid var(--vx-color-text-muted);
+  font: inherit;
+  color: var(--vx-color-text);
+  background: var(--vx-color-surface-solid);
+}
+
+.vx-product-table-wrap {
+  overflow-x: auto;
+}
+
+.vx-product-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+
+.vx-product-table th,
+.vx-product-table td {
+  padding: var(--vx-space-2);
+  text-align: left;
+  border-bottom: 1px solid var(--vx-color-text-muted);
+  vertical-align: top;
+}
+
+.vx-product-inactive {
+  color: var(--vx-color-text-muted);
+  font-size: 0.875rem;
+}
+
+.vx-product-actions button,
+.vx-product-load-more button {
+  min-height: var(--vx-touch-min);
+  min-width: var(--vx-touch-min);
+  padding: var(--vx-space-2) var(--vx-space-3);
+  border-radius: var(--vx-radius-sm);
+  border: 1px solid var(--vx-color-text-muted);
+  font: inherit;
+  color: var(--vx-color-text);
+  background: transparent;
+  cursor: pointer;
+}
+
 .vx-attr-admin {
   display: flex;
   flex-direction: column;
