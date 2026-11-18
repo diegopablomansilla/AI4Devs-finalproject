@@ -2295,6 +2295,7 @@ Cuando el *router* pinta `data-view="admin"` y `data-section="productos"` (`#/ad
 La vista MUST ofrecer, en español y operables por teclado (controles con tamaño táctil ≥ `--vx-touch-min`):
 
 - **Nuevo producto**: abre la ficha de alta del requirement «UI alta de producto (ficha Datos)». MUST estar disponible también cuando `items` está vacío.
+- **Editar**: en cada fila (activa o inactiva), abre la ficha del requirement «UI edición de producto (ficha Datos)» (T-02-37).
 - **Filtro categoría**: opciones hidratadas desde `GET /api/v1/categories?includeInactive=true`. Al elegir una categoría MUST enviar `categoryId` de esa categoría; MUST NOT expandir descendientes en el cliente (la API incluye la rama; HU-02-10 «Filtro por rama»).
 - **Filtro marca**: opciones hidratadas desde `GET /api/v1/brands?includeInactive=true`. Al elegir una marca MUST enviar `brandId`.
 - **Filtro estado**: `Activos` (`active=true`, defecto) e `Inactivos` (`active=false`). MUST NOT haber un valor «todos» (el contrato no lo ofrece).
@@ -2306,7 +2307,7 @@ Un producto con `active = false` MUST distinguirse visualmente (p. ej. etiqueta 
 
 Al cambiar un filtro MUST pedir de nuevo la **primera** página (sin `cursor`) con los filtros actuales y MUST reemplazar las filas (no append). Tras un `DELETE`/`PATCH` exitoso MUST recargar la primera página con los mismos filtros.
 
-MUST NOT ofrecer edición en línea en la **tabla**: MUST NOT haber `contenteditable`, MUST NOT haber `<input>` / `vx-field` en celdas de `sku`, `name`, `price` o `stock` (**No hace** de T-02-34). Mientras el listado está visible (ficha cerrada) MUST NOT haber `<form>` de alta ni enviar `POST /api/v1/products`. MUST NOT abrir ficha de **edición** (T-02-37). MUST NOT llamar a `/api/v1/search` ni a `/health` desde esta vista. MUST NOT enviar `q`. Si el `GET` de listado devuelve `items` vacío, MUST mostrar el listado vacío **y** MUST ofrecer «Nuevo producto».
+MUST NOT ofrecer edición en línea en la **tabla**: MUST NOT haber `contenteditable`, MUST NOT haber `<input>` / `vx-field` en celdas de `sku`, `name`, `price` o `stock` (**No hace** de T-02-34). Mientras el listado está visible (ficha cerrada) MUST NOT haber `<form>` de alta ni enviar `POST /api/v1/products`. MUST NOT llamar a `/api/v1/search` ni a `/health` desde esta vista. MUST NOT enviar `q`. Si el `GET` de listado devuelve `items` vacío, MUST mostrar el listado vacío **y** MUST ofrecer «Nuevo producto».
 
 Los errores MUST mostrarse con `showError` / `messageFor(code)` (requirement «Mensajes en español por ErrorCode»): el toast usa el `code` de `problem+json` (`invalid_input`, `not_found`, `version_conflict`, `unavailable`, `network`, …), no el `title` crudo. Si falla un lookup de categoría/marca, MUST mostrar el error y MAY dejar el `<select>` sin opciones; MUST NOT impedir mostrar filas si el `GET` de productos ya respondió. `base.css` MAY añadir clases de tabla/filtros solo con *tokens* `--vx-*` existentes. MUST NOT agregar *tokens* nuevos ni un Web Component nuevo.
 
@@ -2366,6 +2367,11 @@ Textos visibles MUST estar en español.
 - **AND** se envía `PATCH /api/v1/products/{id}` con `{ "version": <versión de la ficha>, "active": true }`
 - **AND** el cuerpo del `PATCH` no incluye `sku`, `name`, `price` ni `stock`
 
+#### Scenario: el listado ofrece Editar (happy, T-02-37)
+
+- **WHEN** se pinta el listado con al menos una fila
+- **THEN** hay `data-action="edit"` con el `data-product-id` de esa fila
+
 #### Scenario: fallo de red muestra network (unhappy)
 
 - **WHEN** el cliente HTTP rechaza el `GET` inicial de productos con `code` `network`
@@ -2387,7 +2393,7 @@ Textos visibles MUST estar en español.
 
 - **WHEN** el `PATCH` de reactivación responde `409` con `code` `version_conflict`
 - **THEN** se muestra el mensaje en español de `version_conflict`
-- **AND** no se pinta un diff de campos (eso es T-02-37)
+- **AND** no se pinta un diff de campos (eso es solo en ficha de edición T-02-37)
 
 #### Scenario: no hay edición en línea (unhappy, No hace)
 
@@ -2721,3 +2727,252 @@ MUST NOT exigir Playwright. `cargo fmt --all -- --check`, `cargo clippy --worksp
 
 - **WHEN** se inspecciona `product-sheet.test.mjs`
 - **THEN** existe el test `sheet_cuarenta_on_largo_sets_attribute_field_error`
+
+### Requirement: UI edición de producto (ficha Datos)
+
+Cuando el administrador activa **Editar** en una fila del listado de `#/admin/productos`, `data-region="admin-content"` MUST mostrar la **ficha de edición** (MUST NOT cambiar el hash). MUST pedir `GET /api/v1/products/{productId}` y `GET /api/v1/attribute-definitions` (sin `includeInactive`). El título MUST ser «Editar producto» (MUST NOT «Nuevo producto»). El `<form>` MUST tener `data-form="edit-product"` y un atributo oculto con la `version` actual del producto.
+
+La ficha MUST reutilizar la pestaña Datos de la ficha de alta: mismos campos editables (SKU, nombre, tipo, descripción, categoría, marca, unidad, precio, ubicación, atributos, códigos). MUST hidratar valores desde el `Product` del GET. MUST NOT pintar ni permitir editar `initialStock`. El **stock** actual MUST mostrarse en **solo lectura** (MUST NOT `vx-field` ni `<input>` editable para `stock`). MUST NOT enviar `stock`, `initialStock` ni `active` en el PATCH de ficha (baja/reactivar permanece en el listado).
+
+Al **Guardar**, MUST enviar `PATCH /api/v1/products/{productId}` con cuerpo `ProductUpdate`: `version` obligatoria más los campos de ficha presentes en el formulario, alineados con [docs/openapi.yaml](../../../../../docs/openapi.yaml). Atributos MUST enviarse como en el alta; MUST preservar en el array atributos de definiciones **inactivas** presentes en el GET aunque no tengan control pintado. Códigos `barcode` u otros tipos del GET MUST preservarse aunque no haya control.
+
+Tras **200**, MUST volver al listado y recargar la primera página con los filtros actuales. **Cancelar** MUST volver al listado sin PATCH.
+
+Errores MUST usar `showError` / `messageFor(code)`. `invalid_input` MUST pintar `errors[].field` en `vx-field` (incluido `attributes[n].value` con remap por `definitionId` como en T-02-36). La ficha MUST permanecer abierta si el PATCH falla (excepto tras `version_conflict`, ver requirement siguiente). MUST NOT agregar *tokens* CSS nuevos ni Web Component nuevo.
+
+Textos visibles MUST estar en español.
+
+#### Scenario: Editar abre ficha hidratada (happy)
+
+- **WHEN** el listado muestra un producto activo
+- **AND** el administrador activa Editar
+- **THEN** se pide `GET /api/v1/products/{id}` y `GET /api/v1/attribute-definitions`
+- **AND** la región muestra «Editar producto» y `data-form="edit-product"`
+- **AND** el SKU del GET aparece en el control de SKU
+
+#### Scenario: Edición exitosa incrementa version (happy, HU-02-05)
+
+- **WHEN** el producto tiene `version` 3 y precio `"120.50"`
+- **AND** el administrador cambia el precio a `130.00` y guarda
+- **THEN** se envía `PATCH` con `{ "version": 3, "price": "130.00", … }` y sin `stock`
+- **AND** tras 200 vuelve al listado
+
+#### Scenario: stock es solo lectura (happy, HU-02-05)
+
+- **WHEN** la ficha de edición está abierta y el producto tiene `stock` `"50"`
+- **THEN** hay un bloque visible con el stock
+- **AND** no hay `vx-field` ni `<input>` con `name` `stock` ni `initialStock`
+
+#### Scenario: Conflicto recarga y muestra campos cambiados (unhappy, HU-02-05, Listo cuando)
+
+- **WHEN** la ficha tenía snapshot `version` 3 y precio `"120.50"`
+- **AND** el administrador cambió el nombre localmente
+- **AND** el `PATCH` responde `409` con `code` `version_conflict`
+- **THEN** se pide de nuevo `GET /api/v1/products/{id}` con `version` 4 y precio `"130.00"`
+- **AND** el toast muestra el mensaje en español de `version_conflict`
+- **AND** un elemento `role="status"` lista el cambio en **Precio** (u otro campo distinto)
+- **AND** el precio visible es `130.00` (valor del servidor, no el nombre local sin guardar)
+
+#### Scenario: no combina cambios locales tras conflicto (unhappy, No hace)
+
+- **WHEN** tras `version_conflict` el GET trae nombre `"Perno A"` y el usuario había escrito `"Perno B"` localmente
+- **THEN** el nombre visible es `"Perno A"`
+- **AND** no se envía un segundo PATCH automático
+
+#### Scenario: invalid_input en PATCH (unhappy)
+
+- **WHEN** el PATCH responde `400` con `code` `invalid_input` y `errors[].field` `sku`
+- **THEN** el `vx-field` de SKU recibe el mensaje
+- **AND** la ficha permanece abierta
+
+#### Scenario: not_found al abrir edición (unhappy)
+
+- **WHEN** `GET /api/v1/products/{id}` responde `404` `not_found` al abrir Editar
+- **THEN** se muestra el mensaje en español de `not_found`
+- **AND** MUST volver al listado o no dejar un formulario vacío indefinido
+
+#### Scenario: red en PATCH (unhappy)
+
+- **WHEN** el `PATCH` falla con error `network`
+- **THEN** se muestra el mensaje en español de `network`
+- **AND** la ficha permanece abierta
+
+### Requirement: Tests de edición de producto
+
+Antes de archive, la suite MUST incluir:
+
+| Test | Ubicación | Tipo |
+|---|---|---|
+| `sheet_edit_opens_hydrated_datos_tab` | `scripts/fixtures/vectra-web/product-sheet.test.mjs` | happy |
+| `sheet_edit_price_patches_with_version` | `product-sheet.test.mjs` | happy (HU-02-05) |
+| `sheet_edit_stock_is_read_only` | `product-sheet.test.mjs` | happy / frontera |
+| `sheet_edit_version_conflict_reloads_and_lists_changed_fields` | `product-sheet.test.mjs` | unhappy (Listo cuando) |
+| `sheet_edit_does_not_merge_local_unsaved_fields` | `product-sheet.test.mjs` | unhappy (No hace) |
+| `sheet_edit_invalid_input_sets_field_error` | `product-sheet.test.mjs` | unhappy |
+| `sheet_edit_not_found_shows_not_found` | `product-sheet.test.mjs` | unhappy |
+| `sheet_edit_network_shows_network` | `product-sheet.test.mjs` | unhappy |
+| `sheet_edit_empty_required_does_not_patch` | `product-sheet.test.mjs` | unhappy |
+| `products_list_offers_edit` | `scripts/fixtures/vectra-web/products.test.mjs` | happy |
+| `diff_changed_product_fields_lists_price` | `product-sheet.test.mjs` | unhappy (unitario) |
+
+`./scripts/check-vectra-web.sh` MUST ejecutarlos. `cargo test --workspace` MUST seguir en verde.
+
+#### Scenario: la suite de edición corre en check (happy)
+
+- **WHEN** se ejecuta `./scripts/check-vectra-web.sh`
+- **THEN** incluye `product-sheet.test.mjs` con los tests de la tabla de este requirement
+- **AND** incluye `products_list_offers_edit` en `products.test.mjs`
+
+### Requirement: UI pestaña Stock (ingresos y ajustes)
+
+Cuando la **ficha de edición** está abierta (requirement «UI edición de producto (ficha Datos)»), la pestaña **Stock** MUST ser operable: MUST NOT tener `aria-disabled`. Activarla MUST seleccionarla (`aria-selected="true"` en Stock, `"false"` en Datos) y MUST mostrar el panel de stock **sin** cambiar el hash (sigue `#/admin/productos`). MUST NOT enviar HTTP solo por cambiar de pestaña. La pestaña **Relaciones** MUST seguir no operable. MUST NOT pintar pestaña Imágenes (v2, T-02-39).
+
+En la ficha de **alta**, Stock MUST permanecer no operable (requirement «UI alta de producto (ficha Datos)»); MUST NOT habilitarse ni enviar `POST .../stock-movements` desde el alta.
+
+El panel Stock MUST estar en español y operable por teclado (controles con tamaño táctil ≥ `--vx-touch-min`). MUST incluir:
+
+| Campo visible | Control | `name` (JSON / `vx-field`) | Obligatorio |
+|---|---|---|---|
+| Tipo | `<select>` | `type` | sí (`inbound` o `adjustment`; etiquetas Ingreso / Ajuste) |
+| Cantidad | `vx-field` | `quantity` | sí (string decimal con signo, ≠ 0; `inbound` > 0) |
+| Motivo | `vx-field` | `reason` | sí si `type` es `adjustment`; no si `inbound` |
+| Stock actual | solo lectura | — | — (valor de la ficha; MUST NOT ser `<input>` editable) |
+
+MUST haber una acción de registrar (p. ej. «Registrar movimiento») en un `<form data-form="stock-movement">`. MUST NOT ofrecer editar ni borrar un movimiento (ni `data-action` de update/delete sobre un id de movimiento). MUST NOT pintar un listado paginado de historial ni una acción de exportar. MUST NOT llamar `GET /api/v1/products/{productId}/stock-movements`.
+
+Al registrar, si faltan tipo o cantidad (vacíos / solo espacios), o si el tipo es `adjustment` y el motivo está vacío, MUST NOT enviar `POST`. Si el tipo es `adjustment` y el motivo falta, MUST tratarlo como `invalid_input` sobre `reason` (HU-02-07 «Ajuste sin motivo»).
+
+Si el formulario es válido, MUST enviar `POST /api/v1/products/{productId}/stock-movements` con cuerpo `StockMovementCreate` alineado con [docs/openapi.yaml](../../../../../docs/openapi.yaml): `type` (`inbound` \| `adjustment`), `quantity` como **string** decimal, `reason` omitido o `null` en ingreso vacío, `reason` string en ajuste. MUST NOT enviar `initial` ni `sale`. MUST NOT enviar `version` ni `stock` ni PATCH de ficha. `api.request` ya adjunta `X-Vectra-Terminal` si hay nombre de terminal (T-01-06); esta vista MUST NOT duplicar esa cabecera.
+
+Tras **201** `StockMovement`, MUST permanecer en la pestaña Stock y MUST mostrar el `resultingStock` (p. ej. `role="status"`). MUST actualizar el stock de solo lectura de la ficha a ese valor. MUST NOT volver al listado. MUST NOT cambiar la `version` visible de la ficha.
+
+Errores MUST usar `showError` / `messageFor(code)`: el toast usa el `code` (`invalid_input`, `negative_stock`, `not_found`, `unavailable`, `network`, …), no el `title` crudo. `invalid_input` MUST pintar `errors[].field` en el `vx-field` cuyo `name` es `quantity` o `reason`. `negative_stock` MUST mostrar el mensaje en español de `errors.js` y MUST dejar el stock de solo lectura **igual que antes del POST**. La ficha MUST permanecer abierta si el POST falla. `base.css` MAY añadir clases de pestaña/panel Stock solo con *tokens* `--vx-*` existentes. MUST NOT agregar *tokens* nuevos ni un Web Component nuevo.
+
+Textos visibles MUST estar en español.
+
+#### Scenario: pestaña Stock operable en edición (happy)
+
+- **WHEN** la ficha de edición está abierta
+- **THEN** la pestaña Stock no tiene `aria-disabled`
+- **AND** Datos está seleccionada
+- **AND** Relaciones sigue no operable
+- **AND** no hay pestaña Imágenes
+
+#### Scenario: activar Stock muestra el formulario (happy)
+
+- **WHEN** la ficha de edición está abierta
+- **AND** el administrador activa la pestaña Stock
+- **THEN** Stock queda `aria-selected="true"`
+- **AND** hay `data-form="stock-movement"` con controles `type`, `quantity` y `reason`
+- **AND** el stock actual de la ficha es visible en solo lectura
+- **AND** no se envía HTTP por el cambio de pestaña
+- **AND** el hash sigue `#/admin/productos`
+
+#### Scenario: Ingreso actualiza stock resultante (happy, HU-02-07, Listo cuando)
+
+- **WHEN** el producto tiene stock `"10"`
+- **AND** el administrador registra un ingreso de cantidad `"20"`
+- **THEN** se envía `POST /api/v1/products/{id}/stock-movements` con `{ "type": "inbound", "quantity": "20" }` y sin `reason` vacío como obligatorio
+- **AND** `quantity` viaja como string (MUST NOT número JSON)
+- **AND** el cuerpo no incluye `version` ni `stock`
+- **AND** tras 201 con `resultingStock` `"30"` se muestra ese valor
+- **AND** el stock de solo lectura pasa a `"30"`
+- **AND** la pestaña Stock permanece abierta
+
+#### Scenario: Ajuste a cero con motivo (happy, HU-02-07)
+
+- **WHEN** el producto tiene stock `"5"`
+- **AND** el administrador registra un ajuste de `"-5"` con motivo `"Conteo físico"`
+- **THEN** se envía `POST` con `{ "type": "adjustment", "quantity": "-5", "reason": "Conteo físico" }`
+- **AND** tras 201 con `resultingStock` `"0"` se muestra ese valor
+
+#### Scenario: Ajuste sin motivo no envía POST (unhappy, HU-02-07, Listo cuando)
+
+- **WHEN** el administrador elige tipo Ajuste y cantidad `"-1"` sin motivo
+- **THEN** no se envía `POST /api/v1/products/{id}/stock-movements`
+- **AND** el control `reason` recibe un error de campo
+- **AND** se muestra el mensaje en español de `invalid_input`
+
+#### Scenario: Stock negativo no cambia el stock (unhappy, HU-02-07, Listo cuando)
+
+- **WHEN** el producto tiene stock `"5"`
+- **AND** el `POST` de ajuste `"-8"` con motivo responde `400` con `code` `negative_stock`
+- **THEN** se muestra el mensaje en español de `negative_stock`
+- **AND** el stock de solo lectura sigue `"5"`
+- **AND** la ficha permanece abierta en Stock
+
+#### Scenario: invalid_input pinta quantity (unhappy)
+
+- **WHEN** el POST responde `400` con `code` `invalid_input` y `errors[].field` `quantity`
+- **THEN** el `vx-field` de cantidad recibe el mensaje
+- **AND** el toast muestra el mensaje en español de `invalid_input`
+- **AND** la ficha permanece abierta
+
+#### Scenario: not_found en POST de movimiento (unhappy)
+
+- **WHEN** el POST responde `404` con `code` `not_found`
+- **THEN** se muestra el mensaje en español de `not_found`
+- **AND** la ficha permanece abierta
+
+#### Scenario: red en POST de movimiento (unhappy)
+
+- **WHEN** el POST falla con error `network`
+- **THEN** se muestra el mensaje en español de `network`
+- **AND** la ficha permanece abierta
+
+#### Scenario: no hay edición ni borrado de movimientos (unhappy, HU-02-07 Inmutabilidad)
+
+- **WHEN** se inspecciona el panel Stock
+- **THEN** no hay acción de editar ni borrar un movimiento
+- **AND** no hay `PATCH` ni `DELETE` hacia `stock-movements`
+
+#### Scenario: no hay historial ni exportar (unhappy, No hace)
+
+- **WHEN** se inspecciona el panel Stock o se registra un movimiento
+- **THEN** no se envía `GET /api/v1/products/{id}/stock-movements`
+- **AND** no hay acción de exportar el historial
+- **AND** no hay tabla paginada de movimientos
+
+#### Scenario: cantidad vacía no envía POST (unhappy)
+
+- **WHEN** el tipo es Ingreso y la cantidad está vacía
+- **AND** el administrador intenta registrar
+- **THEN** no se envía `POST`
+
+#### Scenario: alta sigue con Stock no operable (happy / frontera)
+
+- **WHEN** la ficha de alta está abierta
+- **THEN** la pestaña Stock tiene `aria-disabled="true"` o equivalente
+- **AND** activarla no envía `POST .../stock-movements`
+
+### Requirement: Tests de pestaña Stock
+
+Antes de archive, la suite MUST incluir:
+
+| Test | Ubicación | Tipo |
+|---|---|---|
+| `sheet_edit_stock_tab_is_operable` | `scripts/fixtures/vectra-web/product-sheet.test.mjs` | happy |
+| `sheet_stock_shows_form_without_http` | `product-sheet.test.mjs` | happy |
+| `sheet_stock_inbound_posts_and_shows_resulting_stock` | `product-sheet.test.mjs` | happy (HU-02-07, Listo cuando) |
+| `sheet_stock_adjustment_to_zero_with_reason` | `product-sheet.test.mjs` | happy (HU-02-07) |
+| `sheet_stock_adjustment_without_reason_shows_invalid_input` | `product-sheet.test.mjs` | unhappy (HU-02-07, Listo cuando) |
+| `sheet_stock_negative_keeps_stock_and_shows_negative_stock` | `product-sheet.test.mjs` | unhappy (HU-02-07, Listo cuando) |
+| `sheet_stock_invalid_input_sets_field_error` | `product-sheet.test.mjs` | unhappy |
+| `sheet_stock_not_found_shows_not_found` | `product-sheet.test.mjs` | unhappy |
+| `sheet_stock_network_shows_network` | `product-sheet.test.mjs` | unhappy |
+| `sheet_stock_empty_quantity_does_not_post` | `product-sheet.test.mjs` | unhappy |
+| `sheet_stock_has_no_edit_or_delete_movement` | `product-sheet.test.mjs` | unhappy (Inmutabilidad) |
+| `sheet_stock_does_not_get_or_export_history` | `product-sheet.test.mjs` | unhappy (No hace) |
+| `sheet_create_stock_tab_stays_disabled` | `product-sheet.test.mjs` | happy / frontera |
+
+`./scripts/check-vectra-web.sh` MUST ejecutarlos. MUST NOT exigir Playwright. `cargo fmt --all -- --check`, `cargo clippy --workspace -- -D warnings` y `cargo test --workspace` en `vortex-core/` MUST seguir en verde ([docs/desarrollo-git-openspec.md](../../../../../docs/desarrollo-git-openspec.md) §5). El Listo cuando del ticket (escenarios de HU-02-07 a mano) MUST poder ejecutarse contra `vortex serve` + esta UI; la suite automatizada MUST cubrir el mismo comportamiento observable (la cabecera `X-Vectra-Terminal` queda cubierta por `api.js` / T-01-06).
+
+#### Scenario: la suite de Stock corre en check (happy)
+
+- **WHEN** se ejecuta `./scripts/check-vectra-web.sh`
+- **THEN** incluye `product-sheet.test.mjs` con los tests de la tabla de este requirement
+
+#### Scenario: el Listo cuando está cubierto por tests nombrados (unhappy)
+
+- **WHEN** se inspecciona `product-sheet.test.mjs`
+- **THEN** existen `sheet_stock_inbound_posts_and_shows_resulting_stock`, `sheet_stock_adjustment_without_reason_shows_invalid_input` y `sheet_stock_negative_keeps_stock_and_shows_negative_stock`

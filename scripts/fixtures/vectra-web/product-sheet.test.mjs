@@ -15,7 +15,15 @@ const errorsUrl = pathToFileURL(
 ).href;
 
 const { mountProducts } = await import(productsUrl);
-const { renderCreateProductSheet, readProductCreate } = await import(sheetUrl);
+const {
+  renderCreateProductSheet,
+  renderEditProductSheet,
+  renderStockPanel,
+  readProductCreate,
+  readProductUpdate,
+  readStockMovement,
+  diffChangedProductFields,
+} = await import(sheetUrl);
 const { createErrorUi } = await import(errorsUrl);
 
 const FIJACIONES = {
@@ -197,6 +205,77 @@ function createSelectStub(name, bag) {
   };
 }
 
+function createStockFormStub(html) {
+  /** @type {Record<string, string>} */
+  const fieldBag = {};
+  /** @type {Record<string, string>} */
+  const selectBag = { type: "inbound" };
+  for (const m of html.matchAll(/<vx-field[^>]+name="([^"]+)"/g)) {
+    fieldBag[m[1]] = "";
+  }
+  return {
+    getAttribute(name) {
+      if (name === "data-form") {
+        return "stock-movement";
+      }
+      return null;
+    },
+    querySelector(sel) {
+      const fieldMatch = sel.match(/^vx-field\[name="([^"]+)"\]$/);
+      if (fieldMatch) {
+        return createFieldStub(fieldMatch[1], fieldBag);
+      }
+      const selectMatch = sel.match(/^select\[name="([^"]+)"\]$/);
+      if (selectMatch) {
+        return createSelectStub(selectMatch[1], selectBag);
+      }
+      return null;
+    },
+    fieldBag,
+    selectBag,
+  };
+}
+
+function createTabStub(tab) {
+  return {
+    getAttribute(name) {
+      if (name === "data-tab") {
+        return tab;
+      }
+      if (name === "aria-disabled") {
+        return null;
+      }
+      if (name === "aria-selected") {
+        return tab === "stock" ? "false" : "true";
+      }
+      return null;
+    },
+    closest(sel) {
+      if (sel === '[role="tab"][data-tab]') {
+        return this;
+      }
+      return null;
+    },
+  };
+}
+
+function createEditFormStub(html) {
+  const stub = createProductFormStub(html);
+  const verMatch = html.match(/data-product-version="(\d+)"/);
+  const version = verMatch ? verMatch[1] : "1";
+  const origGet = stub.getAttribute.bind(stub);
+  stub.getAttribute = (name) => {
+    if (name === "data-form") {
+      return "edit-product";
+    }
+    if (name === "data-product-version") {
+      return version;
+    }
+    return origGet(name);
+  };
+  return stub;
+}
+
 function createProductFormStub(html) {
   /** @type {Record<string, string>} */
   const fieldBag = {};
@@ -269,6 +348,36 @@ function createProductFormStub(html) {
 function queryStub(html, selector) {
   const patterns = [
     {
+      re: /^\[data-action="([^"]+)"\]\[data-product-id="([^"]+)"\]$/,
+      run(m) {
+        const action = m[1];
+        const productId = m[2];
+        const needle = `data-action="${action}" data-product-id="${productId}"`;
+        const needleAlt = `data-product-id="${productId}" data-action="${action}"`;
+        if (!html.includes(needle) && !html.includes(needleAlt)) {
+          return null;
+        }
+        const stub = {
+          getAttribute(name) {
+            if (name === "data-action") {
+              return action;
+            }
+            if (name === "data-product-id") {
+              return productId;
+            }
+            return null;
+          },
+          closest(sel) {
+            if (sel === "[data-action]") {
+              return this;
+            }
+            return null;
+          },
+        };
+        return stub;
+      },
+    },
+    {
       re: /^\[data-action="([^"]+)"\]$/,
       run(m) {
         const action = m[1];
@@ -298,6 +407,47 @@ function queryStub(html, selector) {
           return null;
         }
         return createProductFormStub(html);
+      },
+    },
+    {
+      re: /^form\[data-form="edit-product"\]$/,
+      run() {
+        if (!html.includes('data-form="edit-product"')) {
+          return null;
+        }
+        return createEditFormStub(html);
+      },
+    },
+    {
+      re: /^form\[data-form="stock-movement"\]$/,
+      run() {
+        if (!html.includes('data-form="stock-movement"')) {
+          return null;
+        }
+        return createStockFormStub(html);
+      },
+    },
+    {
+      re: /^\[role="tab"\]\[data-tab="([^"]+)"\]$/,
+      run(m) {
+        const tab = m[1];
+        if (!html.includes(`data-tab="${tab}"`)) {
+          return null;
+        }
+        const disabled =
+          new RegExp(
+            `data-tab="${tab}"[^>]*aria-disabled="true"|aria-disabled="true"[^>]*data-tab="${tab}"`,
+          ).test(html);
+        const stub = createTabStub(tab);
+        if (disabled) {
+          stub.getAttribute = (name) => {
+            if (name === "aria-disabled") {
+              return "true";
+            }
+            return createTabStub(tab).getAttribute(name);
+          };
+        }
+        return stub;
       },
     },
     {
@@ -340,9 +490,44 @@ function queryAllStub(html, selector) {
   return single ? [single] : [];
 }
 
+const PERN_LIST_ROW = {
+  id: "01J9PERNEDIT00000001",
+  sku: PERN_SKU,
+  name: "Perno hexagonal M8 x 40 zincado",
+  productType: "Perno",
+  brand: "Fixser",
+  categoryPath: ["Fijaciones"],
+  price: "120.50",
+  stock: "50",
+  active: true,
+};
+
+const PERN_FICHA = {
+  id: PERN_LIST_ROW.id,
+  sku: PERN_SKU,
+  name: PERN_LIST_ROW.name,
+  productType: "Perno",
+  description: null,
+  brand: { id: FIXSER.id, name: "Fixser" },
+  category: { id: FIJACIONES.id, name: "Fijaciones", path: ["Fijaciones"] },
+  attributes: [],
+  codes: [],
+  unitOfMeasure: "unit",
+  price: "120.50",
+  stock: "50",
+  active: true,
+  version: 3,
+  images: [],
+  createdAt: "2026-01-01T00:00:00Z",
+  updatedAt: "2026-01-01T00:00:00Z",
+};
+
+const PERN_FICHA_STOCK_10 = { ...PERN_FICHA, stock: "10" };
+const PERN_FICHA_STOCK_5 = { ...PERN_FICHA, stock: "5" };
+
 function apiError(code, errors = []) {
   const status =
-    code === "duplicate_sku"
+    code === "duplicate_sku" || code === "version_conflict"
       ? 409
       : code === "not_found"
         ? 404
@@ -356,6 +541,68 @@ function apiError(code, errors = []) {
     title: code,
     errors,
   };
+}
+
+function fillEditForm(form, categoryId, opts = {}) {
+  fillPernoForm(form, categoryId, { ...opts, initialStock: undefined });
+  delete form.fieldBag.initialStock;
+}
+
+function defaultEditMountResponses(
+  extra = [],
+  attrDefs = { items: [] },
+  ficha = PERN_FICHA,
+) {
+  return [
+    { items: [FIJACIONES] },
+    { items: [FIXSER] },
+    { items: [PERN_LIST_ROW], nextCursor: null },
+    ficha,
+    attrDefs,
+    ...extra,
+  ];
+}
+
+function fillStockForm(form, opts = {}) {
+  form.selectBag.type = opts.type ?? "inbound";
+  form.fieldBag.quantity = opts.quantity ?? "";
+  if (opts.reason != null) {
+    form.fieldBag.reason = opts.reason;
+  } else {
+    form.fieldBag.reason = "";
+  }
+}
+
+async function openEditStockTab(el, deps, productId = PERN_LIST_ROW.id) {
+  const request = deps.request ?? deps;
+  await openEditSheet(el, { request, showError: deps.showError ?? (() => {}) }, productId);
+  const callsBefore =
+    typeof deps.calls !== "undefined" ? deps.calls.length : 0;
+  const tab = el.querySelector('[role="tab"][data-tab="stock"]');
+  assert.ok(tab, "pestaña Stock");
+  el.dispatchClick(tab);
+  for (let i = 0; i < 6; i++) {
+    await new Promise((r) => setTimeout(r, 0));
+  }
+  if (deps.calls) {
+    assert.equal(deps.calls.length, callsBefore);
+  }
+  return el.querySelector('form[data-form="stock-movement"]');
+}
+
+async function openEditSheet(el, deps, productId = PERN_LIST_ROW.id) {
+  const request = deps.request ?? deps;
+  const showError = deps.showError ?? (() => {});
+  await mountProducts(el, { request, showError });
+  const editBtn = el.querySelector(
+    `[data-action="edit"][data-product-id="${productId}"]`,
+  );
+  assert.ok(editBtn, "botón Editar");
+  el.dispatchClick(editBtn);
+  for (let i = 0; i < 6; i++) {
+    await new Promise((r) => setTimeout(r, 0));
+  }
+  return el.querySelector('form[data-form="edit-product"]');
 }
 
 function fillPernoForm(form, categoryId, opts = {}) {
@@ -814,5 +1061,544 @@ describe("readProductCreate_unit", () => {
     const form = createProductFormStub(html);
     const root = { querySelector: (s) => form.querySelector(s) };
     assert.equal(readProductCreate(root, form), null);
+  });
+});
+
+describe("diff_changed_product_fields_lists_price", () => {
+  test("precio cambiado", () => {
+    const before = { ...PERN_FICHA, price: "120.50", version: 3 };
+    const after = { ...PERN_FICHA, price: "130.00", version: 4 };
+    const { keys, labels } = diffChangedProductFields(before, after);
+    assert.deepEqual(keys, ["price"]);
+    assert.deepEqual(labels, ["Precio"]);
+  });
+});
+
+describe("sheet_edit_stock_is_read_only", () => {
+  test("stock visible sin input editable", () => {
+    const html = renderEditProductSheet(PERN_FICHA, [FIJACIONES], [FIXSER], []);
+    assert.match(html, /Stock actual: 50/);
+    assert.doesNotMatch(html, /name="stock"/);
+    assert.doesNotMatch(html, /name="initialStock"/);
+  });
+});
+
+describe("sheet_edit_opens_hydrated_datos_tab", () => {
+  test("Editar producto y SKU hidratado", async () => {
+    const { request, calls } = createCallTracker(defaultEditMountResponses());
+    const el = createMountEl();
+    await openEditSheet(el, request);
+    assert.match(el.html, /Editar producto/);
+    assert.match(el.html, /data-form="edit-product"/);
+    assert.match(el.html, new RegExp(`value="${PERN_SKU}"`));
+    assert.ok(
+      calls.some(
+        (c) =>
+          c.method === "GET" &&
+          c.path === `/api/v1/products/${PERN_LIST_ROW.id}`,
+      ),
+    );
+    assert.ok(
+      calls.some(
+        (c) => c.method === "GET" && c.path === "/api/v1/attribute-definitions",
+      ),
+    );
+  });
+});
+
+describe("sheet_edit_price_patches_with_version", () => {
+  test("PATCH con version", async () => {
+    const updated = { ...PERN_FICHA, price: "130.00", version: 4 };
+    const { request, calls } = createCallTracker(
+      defaultEditMountResponses([updated, { items: [PERN_LIST_ROW], nextCursor: null }]),
+    );
+    const el = createMountEl();
+    const form = await openEditSheet(el, request);
+    fillEditForm(form, FIJACIONES.id, { price: "130.00" });
+    el.dispatchSubmit(form);
+    await new Promise((r) => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 0));
+
+    const patch = calls.find((c) => c.method === "PATCH");
+    assert.ok(patch);
+    assert.equal(patch.body.version, 3);
+    assert.equal(patch.body.price, "130.00");
+    assert.equal(patch.body.initialStock, undefined);
+    assert.equal(patch.body.stock, undefined);
+    assert.match(el.html, /class="vx-product-table"/);
+  });
+});
+
+describe("sheet_edit_version_conflict_reloads_and_lists_changed_fields", () => {
+  test("409 recarga y role status Precio", async () => {
+    const errors = [];
+    const fichaV4 = {
+      ...PERN_FICHA,
+      version: 4,
+      price: "130.00",
+    };
+    const { request, calls } = createCallTracker(
+      defaultEditMountResponses([
+        { throw: apiError("version_conflict") },
+        fichaV4,
+      ]),
+    );
+    const el = createMountEl();
+    const form = await openEditSheet(el, {
+      request,
+      showError: (e) => errors.push(e.code),
+    });
+    fillEditForm(form, FIJACIONES.id, {
+      name: "Nombre local sin guardar",
+      price: "125.00",
+    });
+    el.dispatchSubmit(form);
+    await new Promise((r) => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 0));
+
+    assert.deepEqual(errors, ["version_conflict"]);
+    assert.ok(
+      calls.filter(
+        (c) =>
+          c.method === "GET" &&
+          c.path === `/api/v1/products/${PERN_LIST_ROW.id}`,
+      ).length >= 2,
+    );
+    assert.match(el.html, /role="status"/);
+    assert.match(el.html, /Precio/);
+    assert.match(el.html, /value="130\.00"/);
+    assert.match(el.html, /data-form="edit-product"/);
+  });
+});
+
+describe("sheet_edit_does_not_merge_local_unsaved_fields", () => {
+  test("nombre del servidor tras conflicto", async () => {
+    const fichaV4 = {
+      ...PERN_FICHA,
+      version: 4,
+      price: "130.00",
+      name: "Perno actualizado por otra terminal",
+    };
+    const { request } = createCallTracker(
+      defaultEditMountResponses([
+        { throw: apiError("version_conflict") },
+        fichaV4,
+      ]),
+    );
+    const el = createMountEl();
+    const form = await openEditSheet(el, { request, showError: () => {} });
+    fillEditForm(form, FIJACIONES.id, { name: "Nombre local B" });
+    el.dispatchSubmit(form);
+    await new Promise((r) => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 0));
+
+    assert.match(
+      el.html,
+      /value="Perno actualizado por otra terminal"/,
+    );
+    assert.doesNotMatch(el.html, /value="Nombre local B"/);
+  });
+});
+
+describe("sheet_edit_invalid_input_sets_field_error", () => {
+  test("error en sku", async () => {
+    const { request } = createCallTracker(
+      defaultEditMountResponses([
+        {
+          throw: apiError("invalid_input", [
+            { field: "sku", message: "inválido" },
+          ]),
+        },
+      ]),
+    );
+    const el = createMountEl();
+    const root = { querySelector: (s) => el.querySelector(s) };
+    const { showError } = createErrorUi({ root });
+    const form = await openEditSheet(el, { request, showError });
+    fillEditForm(form, FIJACIONES.id);
+    el.dispatchSubmit(form);
+    await new Promise((r) => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 0));
+
+    assert.match(
+      el.html,
+      /name="sku"[^>]*error="inválido"|error="inválido"[^>]*name="sku"/,
+    );
+    assert.match(el.html, /data-form="edit-product"/);
+  });
+});
+
+describe("sheet_edit_not_found_shows_not_found", () => {
+  test("GET ficha 404", async () => {
+    const errors = [];
+    const { request } = createCallTracker([
+      { items: [FIJACIONES] },
+      { items: [FIXSER] },
+      { items: [PERN_LIST_ROW], nextCursor: null },
+      { throw: apiError("not_found") },
+    ]);
+    const el = createMountEl();
+    await openEditSheet(el, {
+      request,
+      showError: (e) => errors.push(e.code),
+    });
+    await new Promise((r) => setTimeout(r, 0));
+
+    assert.deepEqual(errors, ["not_found"]);
+    assert.match(el.html, /class="vx-product-table"/);
+  });
+});
+
+describe("sheet_edit_network_shows_network", () => {
+  test("PATCH network", async () => {
+    const errors = [];
+    const { request } = createCallTracker(
+      defaultEditMountResponses([{ throw: apiError("network") }]),
+    );
+    const el = createMountEl();
+    const form = await openEditSheet(el, {
+      request,
+      showError: (e) => errors.push(e.code),
+    });
+    fillEditForm(form, FIJACIONES.id);
+    el.dispatchSubmit(form);
+    await new Promise((r) => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 0));
+
+    assert.deepEqual(errors, ["network"]);
+    assert.match(el.html, /data-form="edit-product"/);
+  });
+});
+
+describe("sheet_edit_empty_required_does_not_patch", () => {
+  test("sin PATCH si falta precio", async () => {
+    const { request, calls } = createCallTracker(defaultEditMountResponses());
+    const el = createMountEl();
+    const form = await openEditSheet(el, request);
+    form.fieldBag.price = "";
+    el.dispatchSubmit(form);
+    await new Promise((r) => setTimeout(r, 0));
+    assert.equal(calls.filter((c) => c.method === "PATCH").length, 0);
+  });
+});
+
+describe("readStockMovement_unit", () => {
+  test("cantidad vacía devuelve null", () => {
+    const html = renderStockPanel("10", {});
+    const form = createStockFormStub(html);
+    const root = { querySelector: (s) => form.querySelector(s) };
+    form.fieldBag.quantity = "";
+    assert.equal(readStockMovement(root, form), null);
+  });
+
+  test("ajuste sin motivo devuelve error reason", () => {
+    const html = renderStockPanel("5", {});
+    const form = createStockFormStub(html);
+    const root = { querySelector: (s) => form.querySelector(s) };
+    form.selectBag.type = "adjustment";
+    form.fieldBag.quantity = "-1";
+    form.fieldBag.reason = "";
+    const parsed = readStockMovement(root, form);
+    assert.deepEqual(parsed, { error: "reason" });
+  });
+});
+
+describe("renderStockPanel_unit", () => {
+  test("formulario y stock resultante", () => {
+    const html = renderStockPanel("10", {}, "30");
+    assert.match(html, /data-form="stock-movement"/);
+    assert.match(html, /Stock actual: 10/);
+    assert.match(html, /role="status"/);
+    assert.match(html, /Stock resultante: 30/);
+    assert.doesNotMatch(html, /name="stock"/);
+  });
+});
+
+describe("sheet_create_stock_tab_stays_disabled", () => {
+  test("Stock no operable en alta", async () => {
+    const { request } = createCallTracker(defaultMountResponses());
+    const el = createMountEl();
+    await openCreateSheet(el, request);
+    assert.match(el.html, /data-tab="stock"[^>]*aria-disabled="true"|aria-disabled="true"[^>]*data-tab="stock"/);
+    const tab = el.querySelector('[role="tab"][data-tab="stock"]');
+    const before = el.html;
+    el.dispatchClick(tab);
+    await new Promise((r) => setTimeout(r, 0));
+    assert.equal(el.html, before);
+    assert.doesNotMatch(el.html, /data-form="stock-movement"/);
+  });
+});
+
+describe("sheet_edit_stock_tab_is_operable", () => {
+  test("Stock sin aria-disabled", async () => {
+    const { request } = createCallTracker(defaultEditMountResponses());
+    const el = createMountEl();
+    await openEditSheet(el, request);
+    assert.doesNotMatch(
+      el.html,
+      /data-tab="stock"[^>]*aria-disabled="true"|aria-disabled="true"[^>]*data-tab="stock"/,
+    );
+    assert.match(el.html, /data-tab="relaciones"[^>]*aria-disabled="true"|aria-disabled="true"[^>]*data-tab="relaciones"/);
+  });
+});
+
+describe("sheet_stock_shows_form_without_http", () => {
+  test("panel Stock sin HTTP extra", async () => {
+    const tracker = createCallTracker(defaultEditMountResponses());
+    const el = createMountEl();
+    const form = await openEditStockTab(el, tracker);
+    assert.ok(form);
+    assert.match(el.html, /data-form="stock-movement"/);
+    assert.match(el.html, /name="quantity"/);
+    assert.match(el.html, /aria-selected="true"[^>]*data-tab="stock"|data-tab="stock"[^>]*aria-selected="true"/);
+  });
+});
+
+describe("sheet_stock_inbound_posts_and_shows_resulting_stock", () => {
+  test("ingreso 10 + 20 → 30", async () => {
+    const movement = {
+      id: "01J9MOVINBOUND0000001",
+      productId: PERN_LIST_ROW.id,
+      type: "inbound",
+      quantity: "20",
+      resultingStock: "30",
+      reason: null,
+      terminal: null,
+      createdAt: "2026-01-01T00:00:00Z",
+    };
+    const { request, calls } = createCallTracker(
+      defaultEditMountResponses([movement], { items: [] }, PERN_FICHA_STOCK_10),
+    );
+    const el = createMountEl();
+    const form = await openEditStockTab(el, { request, calls });
+    fillStockForm(form, { type: "inbound", quantity: "20" });
+    el.dispatchSubmit(form);
+    for (let i = 0; i < 6; i++) {
+      await new Promise((r) => setTimeout(r, 0));
+    }
+    const post = calls.find(
+      (c) => c.method === "POST" && c.path.includes("/stock-movements"),
+    );
+    assert.ok(post);
+    assert.equal(post.body.type, "inbound");
+    assert.equal(post.body.quantity, "20");
+    assert.equal(post.body.reason, undefined);
+    assert.equal(calls.filter((c) => c.method === "PATCH").length, 0);
+    assert.match(el.html, /Stock resultante: 30/);
+    assert.match(el.html, /Stock actual: 30/);
+  });
+});
+
+describe("sheet_stock_empty_quantity_does_not_post", () => {
+  test("sin POST sin cantidad", async () => {
+    const { request, calls } = createCallTracker(defaultEditMountResponses());
+    const el = createMountEl();
+    const form = await openEditStockTab(el, { request, calls });
+    fillStockForm(form, { type: "inbound", quantity: "" });
+    el.dispatchSubmit(form);
+    await new Promise((r) => setTimeout(r, 0));
+    assert.equal(
+      calls.filter((c) => c.method === "POST" && c.path.includes("stock-movements")).length,
+      0,
+    );
+  });
+});
+
+describe("sheet_stock_adjustment_to_zero_with_reason", () => {
+  test("ajuste -5 a cero", async () => {
+    const movement = {
+      id: "01J9MOVADJ00000000001",
+      productId: PERN_LIST_ROW.id,
+      type: "adjustment",
+      quantity: "-5",
+      resultingStock: "0",
+      reason: "Conteo físico",
+      createdAt: "2026-01-01T00:00:00Z",
+    };
+    const { request, calls } = createCallTracker(
+      defaultEditMountResponses([movement], { items: [] }, PERN_FICHA_STOCK_5),
+    );
+    const el = createMountEl();
+    const form = await openEditStockTab(el, { request, calls });
+    fillStockForm(form, {
+      type: "adjustment",
+      quantity: "-5",
+      reason: "Conteo físico",
+    });
+    el.dispatchSubmit(form);
+    for (let i = 0; i < 6; i++) {
+      await new Promise((r) => setTimeout(r, 0));
+    }
+    const post = calls.find((c) => c.method === "POST");
+    assert.equal(post?.body?.type, "adjustment");
+    assert.equal(post?.body?.reason, "Conteo físico");
+    assert.match(el.html, /Stock resultante: 0/);
+  });
+});
+
+describe("sheet_stock_adjustment_without_reason_shows_invalid_input", () => {
+  test("sin POST ni motivo", async () => {
+    const errors = [];
+    const { request, calls } = createCallTracker(defaultEditMountResponses());
+    const el = createMountEl();
+    const form = await openEditStockTab(el, {
+      request,
+      calls,
+      showError: (e) => errors.push(e.code),
+    });
+    fillStockForm(form, { type: "adjustment", quantity: "-1", reason: "" });
+    el.dispatchSubmit(form);
+    for (let i = 0; i < 4; i++) {
+      await new Promise((r) => setTimeout(r, 0));
+    }
+    assert.deepEqual(errors, ["invalid_input"]);
+    assert.equal(
+      calls.filter((c) => c.method === "POST" && c.path.includes("stock-movements")).length,
+      0,
+    );
+    assert.match(
+      el.html,
+      /name="reason"[^>]*error="El motivo es obligatorio"/,
+    );
+  });
+});
+
+describe("sheet_stock_negative_keeps_stock_and_shows_negative_stock", () => {
+  test("stock intacto en 5", async () => {
+    const errors = [];
+    const { request, calls } = createCallTracker(
+      defaultEditMountResponses(
+        [{ throw: apiError("negative_stock") }],
+        { items: [] },
+        PERN_FICHA_STOCK_5,
+      ),
+    );
+    const el = createMountEl();
+    const form = await openEditStockTab(el, {
+      request,
+      calls,
+      showError: (e) => errors.push(e.code),
+    });
+    fillStockForm(form, {
+      type: "adjustment",
+      quantity: "-8",
+      reason: "Conteo físico",
+    });
+    el.dispatchSubmit(form);
+    for (let i = 0; i < 6; i++) {
+      await new Promise((r) => setTimeout(r, 0));
+    }
+    assert.deepEqual(errors, ["negative_stock"]);
+    assert.match(el.html, /Stock actual: 5/);
+  });
+});
+
+describe("sheet_stock_invalid_input_sets_field_error", () => {
+  test("quantity con invalid_input", async () => {
+    const { request, calls } = createCallTracker(
+      defaultEditMountResponses(
+        [
+          {
+            throw: apiError("invalid_input", [
+              { field: "quantity", message: "inválida" },
+            ]),
+          },
+        ],
+        { items: [] },
+        PERN_FICHA_STOCK_10,
+      ),
+    );
+    const el = createMountEl();
+    const root = { querySelector: (s) => el.querySelector(s) };
+    const { showError } = createErrorUi({ root });
+    const form = await openEditStockTab(el, { request, calls, showError });
+    fillStockForm(form, { type: "inbound", quantity: "0" });
+    el.dispatchSubmit(form);
+    for (let i = 0; i < 6; i++) {
+      await new Promise((r) => setTimeout(r, 0));
+    }
+    assert.match(el.html, /name="quantity"[^>]*error="inválida"/);
+    assert.match(el.html, /data-form="stock-movement"/);
+  });
+});
+
+describe("sheet_stock_not_found_shows_not_found", () => {
+  test("POST 404", async () => {
+    const errors = [];
+    const { request } = createCallTracker(
+      defaultEditMountResponses([{ throw: apiError("not_found") }]),
+    );
+    const el = createMountEl();
+    const form = await openEditStockTab(el, {
+      request,
+      showError: (e) => errors.push(e.code),
+    });
+    fillStockForm(form, { type: "inbound", quantity: "1" });
+    el.dispatchSubmit(form);
+    for (let i = 0; i < 6; i++) {
+      await new Promise((r) => setTimeout(r, 0));
+    }
+    assert.deepEqual(errors, ["not_found"]);
+    assert.match(el.html, /data-form="stock-movement"/);
+  });
+});
+
+describe("sheet_stock_network_shows_network", () => {
+  test("fallo de red", async () => {
+    const errors = [];
+    const { request } = createCallTracker(
+      defaultEditMountResponses([{ throw: apiError("network") }]),
+    );
+    const el = createMountEl();
+    const form = await openEditStockTab(el, {
+      request,
+      showError: (e) => errors.push(e.code),
+    });
+    fillStockForm(form, { type: "inbound", quantity: "1" });
+    el.dispatchSubmit(form);
+    for (let i = 0; i < 6; i++) {
+      await new Promise((r) => setTimeout(r, 0));
+    }
+    assert.deepEqual(errors, ["network"]);
+    assert.match(el.html, /data-form="stock-movement"/);
+  });
+});
+
+describe("sheet_stock_has_no_edit_or_delete_movement", () => {
+  test("sin acciones de mutate", async () => {
+    const { request } = createCallTracker(defaultEditMountResponses());
+    const el = createMountEl();
+    await openEditStockTab(el, { request });
+    assert.doesNotMatch(el.html, /data-action="edit-movement"/i);
+    assert.doesNotMatch(el.html, /data-action="delete-movement"/i);
+    assert.doesNotMatch(el.html, /Borrar movimiento/i);
+    assert.doesNotMatch(el.html, /Editar movimiento/i);
+  });
+});
+
+describe("sheet_stock_does_not_get_or_export_history", () => {
+  test("sin GET historial ni exportar", async () => {
+    const { request, calls } = createCallTracker(defaultEditMountResponses());
+    const el = createMountEl();
+    const form = await openEditStockTab(el, { request, calls });
+    fillStockForm(form, { type: "inbound", quantity: "1" });
+    el.dispatchSubmit(form);
+    for (let i = 0; i < 4; i++) {
+      await new Promise((r) => setTimeout(r, 0));
+    }
+    assert.equal(
+      calls.filter(
+        (c) =>
+          c.method === "GET" && c.path.includes("/stock-movements"),
+      ).length,
+      0,
+    );
+    assert.doesNotMatch(el.html, /Exportar/i);
+    assert.doesNotMatch(el.html, /Historial/i);
   });
 });

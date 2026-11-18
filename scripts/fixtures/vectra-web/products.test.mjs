@@ -320,6 +320,20 @@ describe("products_empty_list_does_not_post", () => {
   });
 });
 
+describe("products_list_offers_edit", () => {
+  test("Editar en cada fila", async () => {
+    const { request } = createCallTracker([
+      { items: [FIJACIONES] },
+      { items: [FIXSER] },
+      { items: [PERN001], nextCursor: null },
+    ]);
+    const el = createMountEl();
+    await mountProducts(el, { request, showError: () => {} });
+    assert.match(el.html, /data-action="edit"/);
+    assert.match(el.html, new RegExp(`data-product-id="${PERN001.id}"`));
+  });
+});
+
 describe("products_empty_list_offers_create", () => {
   test("ofrece Nuevo producto", async () => {
     const { request } = createCallTracker([

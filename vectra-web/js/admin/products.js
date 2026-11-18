@@ -3,8 +3,14 @@
  */
 
 import {
+  diffChangedProductFields,
+  mergePatchAttributes,
+  mergePatchCodes,
   readProductCreate,
+  readProductUpdate,
+  readStockMovement,
   renderCreateProductSheet,
+  renderEditProductSheet,
 } from "./product-sheet.js";
 
 /**
@@ -73,9 +79,10 @@ function renderRow(product) {
   const inactiveBadge = inactive
     ? ' <span class="vx-product-inactive">Inactivo</span>'
     : "";
-  const actions = inactive
+  const lifecycle = inactive
     ? `<button type="button" data-action="reactivate" data-product-id="${id}">Reactivar</button>`
     : `<button type="button" data-action="deactivate" data-product-id="${id}">Dar de baja</button>`;
+  const actions = `<button type="button" data-action="edit" data-product-id="${id}">Editar</button> ${lifecycle}`;
   const brand = product.brand == null ? "" : escapeHtml(product.brand);
   const categoryPath = escapeHtml(formatCategoryPath(product.categoryPath));
 
@@ -197,14 +204,28 @@ export async function mountProducts(el, { request, showError = () => {} }) {
   let brands = [];
   /** @type {{ categoryId: string, brandId: string, active: boolean }} */
   let filters = { categoryId: "", brandId: "", active: true };
-  /** @type {"list" | "create"} */
+  /** @type {"list" | "create" | "edit"} */
   let mode = "list";
+  /** @type {string | null} */
+  let editProductId = null;
+  /** @type {Record<string, unknown> | null} */
+  let editSnapshot = null;
+  /** @type {string[]} */
+  let conflictLabels = [];
+  /** @type {string[]} */
+  let changedFieldKeys = [];
   /** @type {Record<string, string>} */
   let fieldErrors = {};
   /** @type {Array<{ id: string, label: string, type: string, unit?: string | null, options?: string[] | null, active?: boolean }>} */
   let attributeDefs = [];
   /** @type {Array<{ definitionId: string, value: unknown }>} */
   let lastPostedAttributes = [];
+  /** @type {"datos" | "stock"} */
+  let sheetTab = "datos";
+  /** @type {Record<string, string>} */
+  let stockFieldErrors = {};
+  /** @type {string | null} */
+  let lastResultingStock = null;
 
   const paint = () => {
     if (mode === "create") {
@@ -213,6 +234,25 @@ export async function mountProducts(el, { request, showError = () => {} }) {
         brands,
         attributeDefs,
         fieldErrors,
+      );
+      return;
+    }
+    if (mode === "edit" && editSnapshot) {
+      el.innerHTML = renderEditProductSheet(
+        /** @type {Parameters<typeof renderEditProductSheet>[0]} */ (
+          editSnapshot
+        ),
+        categories,
+        brands,
+        attributeDefs,
+        fieldErrors,
+        changedFieldKeys,
+        conflictLabels,
+        {
+          activeTab: sheetTab,
+          stockFieldErrors,
+          lastResultingStock,
+        },
       );
       return;
     }
@@ -299,6 +339,21 @@ export async function mountProducts(el, { request, showError = () => {} }) {
 
   el.addEventListener("click", (ev) => {
     const target = ev.target;
+    const tabEl =
+      target?.closest?.('[role="tab"][data-tab]') ??
+      (target?.getAttribute?.("data-tab") ? target : null);
+    if (tabEl && mode === "edit") {
+      if (tabEl.getAttribute?.("aria-disabled") === "true") {
+        return;
+      }
+      const tab = tabEl.getAttribute?.("data-tab");
+      if (tab === "datos" || tab === "stock") {
+        sheetTab = tab;
+        paint();
+      }
+      return;
+    }
+
     const actionEl = target?.closest?.("[data-action]") ?? target;
     const action = actionEl?.getAttribute?.("data-action");
     if (!action) {
@@ -307,6 +362,9 @@ export async function mountProducts(el, { request, showError = () => {} }) {
 
     if (action === "create") {
       mode = "create";
+      sheetTab = "datos";
+      stockFieldErrors = {};
+      lastResultingStock = null;
       fieldErrors = {};
       lastPostedAttributes = [];
       void (async () => {
@@ -324,6 +382,13 @@ export async function mountProducts(el, { request, showError = () => {} }) {
 
     if (action === "cancel-sheet") {
       mode = "list";
+      editProductId = null;
+      editSnapshot = null;
+      conflictLabels = [];
+      changedFieldKeys = [];
+      sheetTab = "datos";
+      stockFieldErrors = {};
+      lastResultingStock = null;
       fieldErrors = {};
       lastPostedAttributes = [];
       paint();
@@ -337,6 +402,36 @@ export async function mountProducts(el, { request, showError = () => {} }) {
 
     const productId = actionEl.getAttribute?.("data-product-id");
     if (!productId) {
+      return;
+    }
+
+    if (action === "edit") {
+      mode = "edit";
+      editProductId = productId;
+      sheetTab = "datos";
+      stockFieldErrors = {};
+      lastResultingStock = null;
+      fieldErrors = {};
+      conflictLabels = [];
+      changedFieldKeys = [];
+      lastPostedAttributes = [];
+      void (async () => {
+        try {
+          const [ficha, defs] = await Promise.all([
+            request("GET", `/api/v1/products/${productId}`),
+            request("GET", "/api/v1/attribute-definitions"),
+          ]);
+          editSnapshot = ficha;
+          attributeDefs = Array.isArray(defs?.items) ? defs.items : [];
+          paint();
+        } catch (err) {
+          showError(err);
+          mode = "list";
+          editProductId = null;
+          editSnapshot = null;
+          paint();
+        }
+      })();
       return;
     }
 
@@ -371,53 +466,210 @@ export async function mountProducts(el, { request, showError = () => {} }) {
     }
   });
 
+  const applyStockFieldErrors = (err) => {
+    stockFieldErrors = {};
+    const list = Array.isArray(err?.errors) ? err.errors : [];
+    for (const item of list) {
+      const field = item?.field;
+      if (field === "quantity" || field === "reason") {
+        stockFieldErrors[field] = String(item.message ?? "");
+      }
+    }
+    paint();
+    showError(err);
+  };
+
+  const applyFieldErrors = (err, postedAttributes) => {
+    fieldErrors = {};
+    const activeDefs = attributeDefs.filter((d) => d.active !== false);
+    const list = Array.isArray(err?.errors) ? err.errors : [];
+    for (const item of list) {
+      const field = item?.field;
+      const message = String(item.message ?? "");
+      if (!field) {
+        continue;
+      }
+      const attrMatch = field.match(/^attributes\[(\d+)\]\.value$/);
+      if (attrMatch) {
+        const n = Number(attrMatch[1]);
+        const defId = postedAttributes[n]?.definitionId;
+        const renderIndex = activeDefs.findIndex((d) => d.id === defId);
+        if (renderIndex >= 0) {
+          fieldErrors[`attributes[${renderIndex}].value`] = message;
+          continue;
+        }
+      }
+      fieldErrors[field] = message;
+    }
+    paint();
+    showError(err);
+  };
+
   el.addEventListener("submit", (ev) => {
     const form = ev.target;
     const formKind = form?.getAttribute?.("data-form");
-    if (formKind !== "create-product") {
+    if (
+      formKind !== "create-product" &&
+      formKind !== "edit-product" &&
+      formKind !== "stock-movement"
+    ) {
       return;
     }
     ev.preventDefault?.();
 
-    const body = readProductCreate(el, form);
-    if (!body) {
+    if (formKind === "stock-movement") {
+      if (!editProductId || !editSnapshot) {
+        return;
+      }
+      const parsed = readStockMovement(el, form);
+      if (parsed == null) {
+        return;
+      }
+      if ("error" in parsed && parsed.error === "reason") {
+        const localErr = {
+          code: "invalid_input",
+          status: 400,
+          title: "invalid_input",
+          errors: [{ field: "reason", message: "El motivo es obligatorio" }],
+        };
+        stockFieldErrors = { reason: "El motivo es obligatorio" };
+        paint();
+        showError(localErr);
+        return;
+      }
+      const stockBefore = String(editSnapshot.stock ?? "");
+      void (async () => {
+        try {
+          const movement = await request(
+            "POST",
+            `/api/v1/products/${editProductId}/stock-movements`,
+            { body: parsed },
+          );
+          const resulting = String(movement?.resultingStock ?? "");
+          editSnapshot = { ...editSnapshot, stock: resulting };
+          lastResultingStock = resulting;
+          stockFieldErrors = {};
+          sheetTab = "stock";
+          paint();
+        } catch (err) {
+          if (err?.code === "negative_stock") {
+            editSnapshot = { ...editSnapshot, stock: stockBefore };
+            stockFieldErrors = {};
+            paint();
+            showError(err);
+            return;
+          }
+          if (err?.code === "invalid_input") {
+            applyStockFieldErrors(err);
+            return;
+          }
+          stockFieldErrors = {};
+          paint();
+          showError(err);
+        }
+      })();
       return;
     }
 
+    if (formKind === "create-product") {
+      const body = readProductCreate(el, form);
+      if (!body) {
+        return;
+      }
+
+      void (async () => {
+        lastPostedAttributes = Array.isArray(body.attributes)
+          ? body.attributes
+          : [];
+        try {
+          await request("POST", "/api/v1/products", { body });
+          mode = "list";
+          fieldErrors = {};
+          lastPostedAttributes = [];
+          await reloadFirstPage();
+        } catch (err) {
+          applyFieldErrors(err, lastPostedAttributes);
+        }
+      })();
+      return;
+    }
+
+    const body = readProductUpdate(el, form);
+    if (!body || !editProductId || !editSnapshot) {
+      return;
+    }
+
+    const merged = { ...body };
+    const mergedAttrs = mergePatchAttributes(
+      /** @type {Array<{ definitionId: string, value: unknown }>} */ (
+        body.attributes
+      ),
+      editSnapshot,
+      attributeDefs,
+    );
+    if (mergedAttrs !== undefined) {
+      merged.attributes = mergedAttrs;
+    } else {
+      delete merged.attributes;
+    }
+    const mergedCodes = mergePatchCodes(
+      /** @type {Array<{ type: string, value: string }>} */ (body.codes),
+      editSnapshot,
+    );
+    if (mergedCodes !== undefined) {
+      merged.codes = mergedCodes;
+    } else {
+      delete merged.codes;
+    }
+
     void (async () => {
-      lastPostedAttributes = Array.isArray(body.attributes)
-        ? body.attributes
+      lastPostedAttributes = Array.isArray(merged.attributes)
+        ? merged.attributes
         : [];
+      const snapshotBeforeSubmit = editSnapshot;
       try {
-        await request("POST", "/api/v1/products", { body });
+        await request("PATCH", `/api/v1/products/${editProductId}`, {
+          body: merged,
+        });
         mode = "list";
+        editProductId = null;
+        editSnapshot = null;
+        conflictLabels = [];
+        changedFieldKeys = [];
+        sheetTab = "datos";
+        stockFieldErrors = {};
+        lastResultingStock = null;
         fieldErrors = {};
         lastPostedAttributes = [];
         await reloadFirstPage();
       } catch (err) {
-        fieldErrors = {};
-        const activeDefs = attributeDefs.filter((d) => d.active !== false);
-        const list = Array.isArray(err?.errors) ? err.errors : [];
-        for (const item of list) {
-          const field = item?.field;
-          const message = String(item.message ?? "");
-          if (!field) {
-            continue;
+        if (err?.code === "version_conflict" && editProductId) {
+          showError(err);
+          try {
+            const fresh = await request(
+              "GET",
+              `/api/v1/products/${editProductId}`,
+            );
+            const { keys, labels } = diffChangedProductFields(
+              snapshotBeforeSubmit,
+              fresh,
+            );
+            editSnapshot = fresh;
+            conflictLabels = labels;
+            changedFieldKeys = keys;
+            fieldErrors = {};
+            lastPostedAttributes = [];
+            paint();
+          } catch (reloadErr) {
+            showError(reloadErr);
+            mode = "list";
+            editProductId = null;
+            editSnapshot = null;
+            paint();
           }
-          const attrMatch = field.match(/^attributes\[(\d+)\]\.value$/);
-          if (attrMatch) {
-            const n = Number(attrMatch[1]);
-            const defId = lastPostedAttributes[n]?.definitionId;
-            const renderIndex = activeDefs.findIndex((d) => d.id === defId);
-            if (renderIndex >= 0) {
-              fieldErrors[`attributes[${renderIndex}].value`] = message;
-              continue;
-            }
-          }
-          fieldErrors[field] = message;
+          return;
         }
-        paint();
-        showError(err);
+        applyFieldErrors(err, lastPostedAttributes);
       }
     })();
   });
