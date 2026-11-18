@@ -1,6 +1,7 @@
 //! API Gateway HTTP shell (T-00-10 … T-00-14, T-00-19).
 
 mod app_json;
+mod brands;
 mod categories;
 mod error;
 mod gateway;
@@ -18,7 +19,7 @@ use axum::{
     response::IntoResponse,
     routing::{get, patch},
 };
-use catalog::CategoryGateway;
+use catalog::{BrandGateway, CategoryGateway};
 use domain::HealthReport;
 
 pub use app_json::AppJson;
@@ -41,6 +42,7 @@ struct AppStateInner {
     media_root: PathBuf,
     version: String,
     categories: Option<Arc<dyn CategoryGateway>>,
+    brands: Option<Arc<dyn BrandGateway>>,
 }
 
 impl AppState {
@@ -60,6 +62,7 @@ impl AppState {
                 media_root: PathBuf::new(),
                 version: env!("CARGO_PKG_VERSION").to_owned(),
                 categories: None,
+                brands: None,
             }),
         }
     }
@@ -105,6 +108,16 @@ impl AppState {
 
     pub(crate) fn categories(&self) -> Option<Arc<dyn CategoryGateway>> {
         self.inner.categories.clone()
+    }
+
+    #[must_use]
+    pub fn with_brands(mut self, brands: Arc<dyn BrandGateway>) -> Self {
+        Arc::make_mut(&mut self.inner).brands = Some(brands);
+        self
+    }
+
+    pub(crate) fn brands(&self) -> Option<Arc<dyn BrandGateway>> {
+        self.inner.brands.clone()
     }
 }
 
@@ -154,6 +167,14 @@ pub fn router_shell(state: AppState) -> Router {
         .route(
             "/api/v1/categories/{category_id}",
             patch(categories::patch_category).delete(categories::delete_category),
+        )
+        .route(
+            "/api/v1/brands",
+            get(brands::list_brands).post(brands::post_brand),
+        )
+        .route(
+            "/api/v1/brands/{brand_id}",
+            patch(brands::patch_brand).delete(brands::delete_brand),
         )
         .fallback(fallback_not_found)
         .layer(middleware::from_fn(metrics::record_http_duration))

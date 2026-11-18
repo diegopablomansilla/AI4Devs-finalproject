@@ -3,10 +3,11 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
-use catalog::{CategoryGateway, CategoryService, ProductionOccupancy};
+use catalog::{BrandGateway, BrandService, CategoryGateway, CategoryService, ProductionOccupancy};
 use domain::{
-    Categoria, CategoriaDraft, CategoryRepo, ConflictCode, DomainError, Id, InvalidInputCode,
-    MAX_DEPTH, NewCategoria, Slug, Timestamp, UpdateCategoria, reject_cycle,
+    BrandRepo, Categoria, CategoriaDraft, CategoryRepo, ConflictCode, DomainError, Id,
+    InvalidInputCode, MAX_DEPTH, Marca, MarcaDraft, NewCategoria, NewMarca, Slug, Timestamp,
+    UpdateCategoria, UpdateMarca, reject_cycle,
 };
 
 const TS: &str = "2026-09-24T21:33:00Z";
@@ -251,4 +252,146 @@ pub fn test_category_gateway() -> Arc<dyn CategoryGateway> {
         FakeCategoryRepo::new(),
         ProductionOccupancy,
     ))
+}
+
+pub struct FakeBrandRepo {
+    inner: Mutex<HashMap<String, Marca>>,
+}
+
+impl FakeBrandRepo {
+    pub fn new() -> Self {
+        Self {
+            inner: Mutex::new(HashMap::new()),
+        }
+    }
+
+    fn slug_taken(map: &HashMap<String, Marca>, slug: &str, except: Option<&Id<Marca>>) -> bool {
+        map.values().any(|m| {
+            if except.is_some_and(|e| e == &m.id) {
+                return false;
+            }
+            m.slug.as_str() == slug
+        })
+    }
+}
+
+impl BrandRepo for FakeBrandRepo {
+    fn create(
+        &self,
+        input: NewMarca,
+    ) -> impl std::future::Future<Output = Result<Marca, DomainError>> + Send {
+        async move {
+            let slug = match input.slug {
+                Some(s) => s,
+                None => Slug::from_nombre(&input.nombre)?,
+            };
+            let nombre = input.nombre.trim().to_string();
+            if nombre.is_empty() {
+                return Err(DomainError::invalid_input(
+                    InvalidInputCode::InvalidInput,
+                    vec![],
+                ));
+            }
+            let map = self.inner.lock().expect("lock");
+            if Self::slug_taken(&map, slug.as_str(), None) {
+                return Err(DomainError::conflict(ConflictCode::DuplicateSlug));
+            }
+            drop(map);
+            let id = Id::<Marca>::generate();
+            let marca = Marca::try_new(MarcaDraft {
+                id: id.clone(),
+                nombre,
+                slug,
+                activo: true,
+                creado_en: ts(),
+                actualizado_en: ts(),
+            })?;
+            self.inner
+                .lock()
+                .expect("lock")
+                .insert(id.to_string(), marca.clone());
+            Ok(marca)
+        }
+    }
+
+    fn get(
+        &self,
+        id: Id<Marca>,
+    ) -> impl std::future::Future<Output = Result<Marca, DomainError>> + Send {
+        async move {
+            self.inner
+                .lock()
+                .expect("lock")
+                .get(&id.to_string())
+                .cloned()
+                .ok_or(DomainError::not_found())
+        }
+    }
+
+    fn list_all(
+        &self,
+    ) -> impl std::future::Future<Output = Result<Vec<Marca>, DomainError>> + Send {
+        async move { Ok(self.inner.lock().expect("lock").values().cloned().collect()) }
+    }
+
+    fn update(
+        &self,
+        input: UpdateMarca,
+    ) -> impl std::future::Future<Output = Result<Marca, DomainError>> + Send {
+        async move {
+            let current = self.get(input.id.clone()).await?;
+            let slug = match input.slug {
+                Some(s) => s,
+                None => Slug::from_nombre(&input.nombre)?,
+            };
+            let nombre = input.nombre.trim().to_string();
+            {
+                let map = self.inner.lock().expect("lock");
+                if Self::slug_taken(&map, slug.as_str(), Some(&input.id)) {
+                    return Err(DomainError::conflict(ConflictCode::DuplicateSlug));
+                }
+            }
+            let marca = Marca::try_new(MarcaDraft {
+                id: input.id.clone(),
+                nombre,
+                slug,
+                activo: current.activo,
+                creado_en: current.creado_en,
+                actualizado_en: current.actualizado_en,
+            })?;
+            self.inner
+                .lock()
+                .expect("lock")
+                .insert(input.id.to_string(), marca.clone());
+            Ok(marca)
+        }
+    }
+
+    fn set_activo(
+        &self,
+        id: Id<Marca>,
+        activo: bool,
+    ) -> impl std::future::Future<Output = Result<Marca, DomainError>> + Send {
+        async move {
+            let mut map = self.inner.lock().expect("lock");
+            let current = map
+                .get(&id.to_string())
+                .cloned()
+                .ok_or(DomainError::not_found())?;
+            let marca = Marca::try_new(MarcaDraft {
+                id: current.id.clone(),
+                nombre: current.nombre.clone(),
+                slug: current.slug.clone(),
+                activo,
+                creado_en: current.creado_en,
+                actualizado_en: current.actualizado_en,
+            })?;
+            map.insert(id.to_string(), marca.clone());
+            Ok(marca)
+        }
+    }
+}
+
+pub fn test_brand_gateway() -> Arc<dyn BrandGateway> {
+    Arc::new(BrandService::new(FakeBrandRepo::new()))
 }

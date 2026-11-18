@@ -159,6 +159,32 @@ impl ApiError {
     }
 
     #[must_use]
+    pub fn invalid_brand_id(instance: String) -> Self {
+        Self::invalid_input_with_fields(
+            vec![FieldProblem {
+                field: "brandId".into(),
+                message: "must be a valid ULID".into(),
+            }],
+            Some("Invalid brand id".into()),
+            Some(instance),
+            "invalid_input",
+        )
+    }
+
+    #[must_use]
+    pub fn invalid_query_q(instance: String) -> Self {
+        Self::invalid_input_with_fields(
+            vec![FieldProblem {
+                field: "q".into(),
+                message: "must be at most 100 characters".into(),
+            }],
+            Some("Invalid query parameter".into()),
+            Some(instance),
+            "invalid_input",
+        )
+    }
+
+    #[must_use]
     pub fn patch_empty(instance: String) -> Self {
         Self::invalid_input_with_fields(
             vec![],
