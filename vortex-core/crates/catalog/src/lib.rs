@@ -4,8 +4,10 @@ pub mod atributo_def;
 pub mod categoria;
 pub mod marca;
 pub mod producto;
+pub mod stock;
 
 pub use atributo_def::{AttributeDefGateway, AttributeDefService, EmptyAttributeUsage};
 pub use categoria::{CategoryGateway, CategoryOccupancy, CategoryService, ProductionOccupancy};
 pub use marca::{BrandGateway, BrandService};
 pub use producto::{PatchProducto, ProductGateway, ProductService};
+pub use stock::{StockGateway, StockService};

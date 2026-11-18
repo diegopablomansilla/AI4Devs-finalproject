@@ -3,10 +3,11 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
+use catalog::stock::testing::InMemoryStockLedger;
 use catalog::{
     AttributeDefGateway, AttributeDefService, BrandGateway, BrandService, CategoryGateway,
     CategoryService, EmptyAttributeUsage, PatchProducto, ProductGateway, ProductService,
-    ProductionOccupancy,
+    ProductionOccupancy, StockGateway, StockService,
 };
 use domain::AttributeUsage;
 use domain::{
@@ -622,6 +623,10 @@ impl FakeProductRepo {
         }
     }
 
+    pub fn product_store(&self) -> Arc<Mutex<HashMap<String, Producto>>> {
+        Arc::clone(&self.inner)
+    }
+
     fn sku_taken(
         map: &HashMap<String, Producto>,
         sku: &str,
@@ -943,6 +948,124 @@ pub async fn test_product_gateway() -> (
         categories: categories_for_seeds,
     };
     (gateway, last_create, seeds)
+}
+
+pub async fn test_stock_gateways() -> (
+    Arc<dyn ProductGateway>,
+    Arc<dyn StockGateway>,
+    ProductTestSeeds,
+) {
+    let categories = FakeCategoryRepo::new();
+    let fijaciones = categories
+        .create(NewCategoria {
+            nombre: "Fijaciones".into(),
+            slug: None,
+            padre: None,
+        })
+        .await
+        .expect("fijaciones");
+    let pernos = categories
+        .create(NewCategoria {
+            nombre: "Pernos".into(),
+            slug: None,
+            padre: Some(fijaciones.id),
+        })
+        .await
+        .expect("pernos");
+    let brands = FakeBrandRepo::new();
+    let marca = brands
+        .create(NewMarca {
+            nombre: "Fixser".into(),
+            slug: None,
+        })
+        .await
+        .expect("marca");
+    let attrs = FakeAttributeDefRepo::new();
+    let medida = attrs
+        .create(NewAtributoDef {
+            clave: "medida".into(),
+            etiqueta: "Medida".into(),
+            tipo: TipoAtributo::Texto,
+            unidad: Some("mm".into()),
+            opciones: None,
+            facetable: false,
+            buscable: true,
+            orden: 0,
+        })
+        .await
+        .expect("medida");
+    let largo = attrs
+        .create(NewAtributoDef {
+            clave: "largo".into(),
+            etiqueta: "Largo".into(),
+            tipo: TipoAtributo::Numero,
+            unidad: Some("mm".into()),
+            opciones: None,
+            facetable: false,
+            buscable: true,
+            orden: 1,
+        })
+        .await
+        .expect("largo");
+    let grado = attrs
+        .create(NewAtributoDef {
+            clave: "grado".into(),
+            etiqueta: "Grado".into(),
+            tipo: TipoAtributo::Enum,
+            unidad: None,
+            opciones: Some(vec!["2".into(), "5".into(), "8".into()]),
+            facetable: true,
+            buscable: true,
+            orden: 2,
+        })
+        .await
+        .expect("grado");
+
+    let categories_for_seeds = categories.clone();
+    let product_repo = FakeProductRepo::new(categories.clone(), brands.clone(), attrs.clone());
+    let product_store = product_repo.product_store();
+    let service = ProductService::new(product_repo, categories, brands, attrs);
+    let last_create = Arc::new(Mutex::new(None));
+    let product_gateway: Arc<dyn ProductGateway> = Arc::new(RecordingProductGateway {
+        inner: service,
+        last_create: Arc::clone(&last_create),
+    });
+    let stock: Arc<dyn StockGateway> =
+        Arc::new(StockService::new(InMemoryStockLedger::new(product_store)));
+    let seeds = ProductTestSeeds {
+        category_id: pernos.id,
+        brand_id: marca.id,
+        medida_id: medida.id,
+        largo_id: largo.id,
+        grado_id: grado.id,
+        categories: categories_for_seeds,
+    };
+    (product_gateway, stock, seeds)
+}
+
+pub fn product_create_json_stock(
+    seeds: &ProductTestSeeds,
+    sku: &str,
+    initial_stock: &str,
+) -> String {
+    format!(
+        r#"{{
+            "sku": "{sku}",
+            "name": "Producto stock test",
+            "productType": "Perno",
+            "brandId": "{}",
+            "categoryId": "{}",
+            "attributes": [
+                {{ "definitionId": "{}", "value": "M8" }},
+                {{ "definitionId": "{}", "value": 40 }},
+                {{ "definitionId": "{}", "value": "5" }}
+            ],
+            "unitOfMeasure": "unit",
+            "price": "10",
+            "initialStock": "{initial_stock}"
+        }}"#,
+        seeds.brand_id, seeds.category_id, seeds.medida_id, seeds.largo_id, seeds.grado_id
+    )
 }
 
 pub fn perno_create_json(seeds: &ProductTestSeeds) -> String {
