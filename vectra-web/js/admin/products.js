@@ -2,6 +2,11 @@
  * Admin: listado de productos (#/admin/productos).
  */
 
+import {
+  readProductCreate,
+  renderCreateProductSheet,
+} from "./product-sheet.js";
+
 /**
  * @param {string} text
  */
@@ -122,6 +127,7 @@ function renderShell(items, categories, brands, filters, nextCursor) {
     nextCursor != null
       ? `<button type="button" data-action="load-more">Cargar más</button>`
       : "";
+  const toolbar = `<div class="vx-product-toolbar"><button type="button" data-action="create">Nuevo producto</button></div>`;
   const rows =
     items.length === 0
       ? ""
@@ -129,6 +135,7 @@ function renderShell(items, categories, brands, filters, nextCursor) {
 
   return `<div class="vx-product-admin">
   <h1 class="vx-product-title">Productos</h1>
+  ${toolbar}
   <div class="vx-product-filters">
     <label class="vx-product-filter">Categoría
       <select data-filter="category">
@@ -190,8 +197,16 @@ export async function mountProducts(el, { request, showError = () => {} }) {
   let brands = [];
   /** @type {{ categoryId: string, brandId: string, active: boolean }} */
   let filters = { categoryId: "", brandId: "", active: true };
+  /** @type {"list" | "create"} */
+  let mode = "list";
+  /** @type {Record<string, string>} */
+  let fieldErrors = {};
 
   const paint = () => {
+    if (mode === "create") {
+      el.innerHTML = renderCreateProductSheet(categories, brands, fieldErrors);
+      return;
+    }
     el.innerHTML = renderShell(
       items,
       categories,
@@ -281,6 +296,20 @@ export async function mountProducts(el, { request, showError = () => {} }) {
       return;
     }
 
+    if (action === "create") {
+      mode = "create";
+      fieldErrors = {};
+      paint();
+      return;
+    }
+
+    if (action === "cancel-sheet") {
+      mode = "list";
+      fieldErrors = {};
+      paint();
+      return;
+    }
+
     if (action === "load-more") {
       void loadMore();
       return;
@@ -320,6 +349,40 @@ export async function mountProducts(el, { request, showError = () => {} }) {
         }
       })();
     }
+  });
+
+  el.addEventListener("submit", (ev) => {
+    const form = ev.target;
+    const formKind = form?.getAttribute?.("data-form");
+    if (formKind !== "create-product") {
+      return;
+    }
+    ev.preventDefault?.();
+
+    const body = readProductCreate(el, form);
+    if (!body) {
+      return;
+    }
+
+    void (async () => {
+      try {
+        await request("POST", "/api/v1/products", { body });
+        mode = "list";
+        fieldErrors = {};
+        await reloadFirstPage();
+      } catch (err) {
+        fieldErrors = {};
+        const list = Array.isArray(err?.errors) ? err.errors : [];
+        for (const item of list) {
+          const field = item?.field;
+          if (field) {
+            fieldErrors[field] = String(item.message ?? "");
+          }
+        }
+        paint();
+        showError(err);
+      }
+    })();
   });
 
   await fetchLookups();
