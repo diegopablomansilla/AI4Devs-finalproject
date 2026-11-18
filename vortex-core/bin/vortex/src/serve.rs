@@ -10,7 +10,9 @@ use axum::serve;
 use catalog::{
     AttributeDefService, BrandService, CategoryService, ProductService, ProductionOccupancy,
 };
-use storage::{AtributoDefRepo, CategoriaRepo, DB_DIR_NAME, Db, MarcaRepo, ProductoRepo};
+use storage::{
+    AtributoDefRepo, CategoriaRepo, DB_DIR_NAME, Db, MarcaRepo, ProductAttributeUsage, ProductoRepo,
+};
 use supervisor::{ComponentId, ComponentStatus, HealthRegistry};
 use tokio::net::TcpListener;
 
@@ -118,9 +120,11 @@ async fn serve_config(config: Config, _logging_guard: LoggingGuard) -> i32 {
     ));
     let brand_gateway: Arc<dyn catalog::BrandGateway> =
         Arc::new(BrandService::new(MarcaRepo::new(Arc::clone(&db))));
-    let attribute_def_gateway: Arc<dyn catalog::AttributeDefGateway> = Arc::new(
-        AttributeDefService::new(AtributoDefRepo::new(Arc::clone(&db))),
-    );
+    let attribute_def_gateway: Arc<dyn catalog::AttributeDefGateway> =
+        Arc::new(AttributeDefService::new(
+            AtributoDefRepo::new(Arc::clone(&db)),
+            ProductAttributeUsage::new(Arc::clone(&db)),
+        ));
     let product_gateway: Arc<dyn catalog::ProductGateway> = Arc::new(ProductService::new(
         ProductoRepo::new(Arc::clone(&db)),
         CategoriaRepo::new(Arc::clone(&db)),

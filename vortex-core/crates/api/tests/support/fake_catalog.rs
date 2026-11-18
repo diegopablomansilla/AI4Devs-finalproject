@@ -5,14 +5,16 @@ use std::sync::{Arc, Mutex};
 
 use catalog::{
     AttributeDefGateway, AttributeDefService, BrandGateway, BrandService, CategoryGateway,
-    CategoryService, PatchProducto, ProductGateway, ProductService, ProductionOccupancy,
+    CategoryService, EmptyAttributeUsage, PatchProducto, ProductGateway, ProductService,
+    ProductionOccupancy,
 };
+use domain::AttributeUsage;
 use domain::{
     AtributoDef, AtributoDefDraft, AtributoFicha, AttributeDefRepo, BrandRepo, Categoria,
     CategoriaDraft, CategoryRepo, ConflictCode, DomainError, FichaProducto, Id, InvalidInputCode,
     MAX_DEPTH, Marca, MarcaDraft, NewAtributoDef, NewCategoria, NewMarca, NewProducto, ProductRepo,
     Producto, Sku, Slug, Timestamp, TipoAtributo, UpdateAtributoDef, UpdateCategoria, UpdateMarca,
-    UpdateProducto, reject_cycle,
+    UpdateProducto, ValorAtributo, reject_cycle,
 };
 
 const TS: &str = "2026-09-24T21:33:00Z";
@@ -550,8 +552,52 @@ impl AttributeDefRepo for FakeAttributeDefRepo {
     }
 }
 
+#[derive(Clone, Default)]
+pub struct FakeAttributeUsage {
+    inner: Arc<Mutex<HashMap<String, Vec<ValorAtributo>>>>,
+}
+
+impl FakeAttributeUsage {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn set(&self, id: Id<AtributoDef>, valores: Vec<ValorAtributo>) {
+        self.inner
+            .lock()
+            .expect("lock")
+            .insert(id.to_string(), valores);
+    }
+}
+
+impl AttributeUsage for FakeAttributeUsage {
+    fn valores(
+        &self,
+        id: Id<AtributoDef>,
+    ) -> impl std::future::Future<Output = Result<Vec<ValorAtributo>, DomainError>> + Send {
+        let inner = Arc::clone(&self.inner);
+        async move {
+            Ok(inner
+                .lock()
+                .expect("lock")
+                .get(&id.to_string())
+                .cloned()
+                .unwrap_or_default())
+        }
+    }
+}
+
 pub fn test_attribute_def_gateway() -> Arc<dyn AttributeDefGateway> {
-    Arc::new(AttributeDefService::new(FakeAttributeDefRepo::new()))
+    Arc::new(AttributeDefService::new(
+        FakeAttributeDefRepo::new(),
+        EmptyAttributeUsage,
+    ))
+}
+
+pub fn test_attribute_def_gateway_with_usage(
+    usage: FakeAttributeUsage,
+) -> Arc<dyn AttributeDefGateway> {
+    Arc::new(AttributeDefService::new(FakeAttributeDefRepo::new(), usage))
 }
 
 #[derive(Clone)]
