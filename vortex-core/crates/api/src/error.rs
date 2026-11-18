@@ -172,6 +172,19 @@ impl ApiError {
     }
 
     #[must_use]
+    pub fn invalid_attribute_id(instance: String) -> Self {
+        Self::invalid_input_with_fields(
+            vec![FieldProblem {
+                field: "attributeId".into(),
+                message: "must be a valid ULID".into(),
+            }],
+            Some("Invalid attribute id".into()),
+            Some(instance),
+            "invalid_input",
+        )
+    }
+
+    #[must_use]
     pub fn invalid_query_q(instance: String) -> Self {
         Self::invalid_input_with_fields(
             vec![FieldProblem {
@@ -355,6 +368,13 @@ fn remap_api_field(field: &str) -> String {
     match field {
         "nombre" => "name".into(),
         "padre" => "parentId".into(),
+        "clave" => "key".into(),
+        "etiqueta" => "label".into(),
+        "tipo" => "type".into(),
+        "opciones" => "options".into(),
+        "unidad" => "unit".into(),
+        "buscable" => "searchable".into(),
+        "orden" => "order".into(),
         other => other.to_string(),
     }
 }

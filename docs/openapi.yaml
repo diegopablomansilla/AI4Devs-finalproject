@@ -433,6 +433,7 @@ paths:
                   items:
                     type: array
                     items: { $ref: '#/components/schemas/AttributeDefinition' }
+        '503': { $ref: '#/components/responses/Unavailable' }
     post:
       tags: [AttributeDefinitions]
       operationId: createAttributeDefinition
@@ -450,6 +451,7 @@ paths:
               schema: { $ref: '#/components/schemas/AttributeDefinition' }
         '400': { $ref: '#/components/responses/BadRequest' }
         '409': { $ref: '#/components/responses/Conflict' }
+        '503': { $ref: '#/components/responses/Unavailable' }
 
   /api/v1/attribute-definitions/{attributeId}:
     parameters:
@@ -478,6 +480,7 @@ paths:
         '400': { $ref: '#/components/responses/BadRequest' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
+        '503': { $ref: '#/components/responses/Unavailable' }
     delete:
       tags: [AttributeDefinitions]
       operationId: deactivateAttributeDefinition
@@ -485,6 +488,7 @@ paths:
       responses:
         '204': { description: Definición dada de baja. }
         '404': { $ref: '#/components/responses/NotFound' }
+        '503': { $ref: '#/components/responses/Unavailable' }
 
   # ───────────────────────────── Search ─────────────────────────────
   /api/v1/search:

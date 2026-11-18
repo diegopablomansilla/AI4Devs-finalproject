@@ -1,6 +1,7 @@
 //! API Gateway HTTP shell (T-00-10 … T-00-14, T-00-19).
 
 mod app_json;
+mod attribute_definitions;
 mod brands;
 mod categories;
 mod error;
@@ -19,7 +20,7 @@ use axum::{
     response::IntoResponse,
     routing::{get, patch},
 };
-use catalog::{BrandGateway, CategoryGateway};
+use catalog::{AttributeDefGateway, BrandGateway, CategoryGateway};
 use domain::HealthReport;
 
 pub use app_json::AppJson;
@@ -43,6 +44,7 @@ struct AppStateInner {
     version: String,
     categories: Option<Arc<dyn CategoryGateway>>,
     brands: Option<Arc<dyn BrandGateway>>,
+    attribute_defs: Option<Arc<dyn AttributeDefGateway>>,
 }
 
 impl AppState {
@@ -63,6 +65,7 @@ impl AppState {
                 version: env!("CARGO_PKG_VERSION").to_owned(),
                 categories: None,
                 brands: None,
+                attribute_defs: None,
             }),
         }
     }
@@ -118,6 +121,16 @@ impl AppState {
 
     pub(crate) fn brands(&self) -> Option<Arc<dyn BrandGateway>> {
         self.inner.brands.clone()
+    }
+
+    #[must_use]
+    pub fn with_attribute_defs(mut self, attribute_defs: Arc<dyn AttributeDefGateway>) -> Self {
+        Arc::make_mut(&mut self.inner).attribute_defs = Some(attribute_defs);
+        self
+    }
+
+    pub(crate) fn attribute_defs(&self) -> Option<Arc<dyn AttributeDefGateway>> {
+        self.inner.attribute_defs.clone()
     }
 }
 
@@ -175,6 +188,16 @@ pub fn router_shell(state: AppState) -> Router {
         .route(
             "/api/v1/brands/{brand_id}",
             patch(brands::patch_brand).delete(brands::delete_brand),
+        )
+        .route(
+            "/api/v1/attribute-definitions",
+            get(attribute_definitions::list_attribute_definitions)
+                .post(attribute_definitions::post_attribute_definition),
+        )
+        .route(
+            "/api/v1/attribute-definitions/{attribute_id}",
+            patch(attribute_definitions::patch_attribute_definition)
+                .delete(attribute_definitions::delete_attribute_definition),
         )
         .fallback(fallback_not_found)
         .layer(middleware::from_fn(metrics::record_http_duration))
