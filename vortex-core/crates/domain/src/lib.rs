@@ -8,6 +8,7 @@ pub mod health;
 pub mod id;
 pub mod marca;
 pub mod outbox;
+pub mod producto;
 pub mod timestamp;
 
 pub use atributo_def::{
@@ -30,4 +31,8 @@ pub use health::{
 pub use id::{Id, InvalidId};
 pub use marca::{BrandRepo, Marca, MarcaDraft, NewMarca, UpdateMarca};
 pub use outbox::{OutboxEntity, OutboxEvent, OutboxEventError, OutboxOp};
+pub use producto::{
+    AtributoValor, Codigo, NewProducto, ProductRepo, Producto, ProductoDraft, Sku, TipoCodigo,
+    Ubicacion, UnidadMedida, ValorAtributo,
+};
 pub use timestamp::{InvalidTimestamp, Timestamp};
