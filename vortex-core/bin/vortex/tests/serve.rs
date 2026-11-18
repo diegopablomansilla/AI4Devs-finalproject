@@ -104,6 +104,43 @@ fn http_get_headers(addr: SocketAddr, path: &str) -> Option<(u16, String, String
     Some((status, ctype, cache, body))
 }
 
+fn http_delete_headers(addr: SocketAddr, path: &str) -> Option<(u16, String, String, String)> {
+    use std::io::{Read, Write};
+    let mut stream = std::net::TcpStream::connect(addr).ok()?;
+    stream.set_read_timeout(Some(Duration::from_secs(2))).ok()?;
+    let host = format!("{}:{}", addr.ip(), addr.port());
+    let request = format!("DELETE {path} HTTP/1.1\r\nHost: {host}\r\nConnection: close\r\n\r\n");
+    stream.write_all(request.as_bytes()).ok()?;
+    let mut buf = vec![0u8; 65536];
+    let n = stream.read(&mut buf).ok()?;
+    let response = String::from_utf8_lossy(&buf[..n]);
+    let status_line = response.lines().next()?;
+    let status: u16 = status_line.split_whitespace().nth(1)?.parse().ok()?;
+    let mut ctype = String::new();
+    let mut cache = String::new();
+    let mut body_start = 0usize;
+    for (i, _) in response.match_indices("\r\n\r\n") {
+        body_start = i + 4;
+        break;
+    }
+    for line in response.lines() {
+        if line.is_empty() {
+            break;
+        }
+        if let Some((name, value)) = line.split_once(':') {
+            let name = name.trim();
+            let value = value.trim();
+            if name.eq_ignore_ascii_case("content-type") {
+                ctype = value.split(';').next().unwrap_or(value).trim().to_string();
+            } else if name.eq_ignore_ascii_case("cache-control") {
+                cache = value.to_string();
+            }
+        }
+    }
+    let body = String::from_utf8_lossy(&buf[body_start..n]).into_owned();
+    Some((status, ctype, cache, body))
+}
+
 fn ephemeral_bind() -> String {
     let listener = TcpListener::bind("127.0.0.1:0").expect("bind ephemeral");
     let addr = listener.local_addr().expect("local_addr");
@@ -525,6 +562,36 @@ fn vortex_serve_get_unknown_product_returns_404() {
     assert!(
         ok,
         "GET unknown product must return 404 not_found (service injected), not 503"
+    );
+}
+
+#[test]
+fn vortex_serve_delete_unknown_product_returns_404() {
+    let bind = ephemeral_bind();
+    let dir = temp_dir();
+    let path = write_config(&dir, &bind);
+    let mut child = spawn_serve_production(&path);
+    let addr: SocketAddr = bind.parse().expect("bind addr");
+    let unknown = "01J9ZK4Q6Y3M2V8W0XAB1CD2EF";
+    let product_path = format!("/api/v1/products/{unknown}");
+    let start = Instant::now();
+    let mut ok = false;
+    while start.elapsed() < BOOT_WAIT {
+        if let Some((status, ctype, _, body)) = http_delete_headers(addr, &product_path) {
+            if status == 404 && ctype == "application/problem+json" {
+                let json: serde_json::Value = serde_json::from_str(&body).expect("problem json");
+                if json.get("code").and_then(|c| c.as_str()) == Some("not_found") {
+                    ok = true;
+                    break;
+                }
+            }
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    terminate_child(&mut child);
+    assert!(
+        ok,
+        "DELETE unknown product must return 404 not_found (service injected), not 503"
     );
 }
 

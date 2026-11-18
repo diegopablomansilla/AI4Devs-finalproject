@@ -455,6 +455,12 @@ pub trait ProductRepo {
         &self,
         input: UpdateProducto,
     ) -> impl Future<Output = Result<FichaProducto, DomainError>> + Send;
+
+    fn set_activo(
+        &self,
+        id: Id<Producto>,
+        activo: bool,
+    ) -> impl Future<Output = Result<FichaProducto, DomainError>> + Send;
 }
 
 fn field_invalid_input(field: &str, message: &str) -> DomainError {
@@ -921,6 +927,22 @@ mod tests {
         ) -> impl Future<Output = Result<FichaProducto, DomainError>> + Send {
             async { Err(DomainError::not_found()) }
         }
+
+        fn set_activo(
+            &self,
+            _id: Id<Producto>,
+            _activo: bool,
+        ) -> impl Future<Output = Result<FichaProducto, DomainError>> + Send {
+            async { Err(DomainError::not_found()) }
+        }
+    }
+
+    #[test]
+    fn product_repo_trait_exposes_set_activo() {
+        fn assert_set_activo<R: ProductRepo>(r: &R) {
+            let _f = r.set_activo(Id::generate(), false);
+        }
+        assert_set_activo(&DummyProductRepo);
     }
 
     #[test]
@@ -957,6 +979,7 @@ mod tests {
                 precio: "0".parse().unwrap(),
                 ubicacion: None,
             });
+            let _f4 = r.set_activo(Id::generate(), true);
         }
         assert_repo(&DummyProductRepo);
     }

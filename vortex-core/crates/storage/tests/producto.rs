@@ -737,3 +737,95 @@ async fn producto_rejects_empty_sku() {
     assert!(!msg.is_empty());
     assert_eq!(db.record_count("producto").await.expect("count"), 0);
 }
+
+#[tokio::test]
+async fn storage_set_activo_false_keeps_ledger_intact() {
+    let db = Arc::new(test_db().await);
+    let categoria = seed_categoria_repo(Arc::clone(&db)).await;
+    let created = product_repo(Arc::clone(&db))
+        .create(new_perno(categoria, "50"))
+        .await
+        .expect("create");
+    let mov_count = db
+        .record_count("movimiento_stock")
+        .await
+        .expect("mov count");
+    assert_eq!(mov_count, 1);
+
+    let deactivated = product_repo(Arc::clone(&db))
+        .set_activo(created.id.clone(), false)
+        .await
+        .expect("deactivate");
+    assert!(!deactivated.producto.activo);
+    assert_eq!(deactivated.producto.stock.to_string(), "50");
+    assert_eq!(deactivated.producto.version, created.version);
+    assert_eq!(
+        db.record_count("movimiento_stock")
+            .await
+            .expect("mov count"),
+        mov_count
+    );
+
+    db.query(&format!(
+        "IF (SELECT VALUE tipo FROM movimiento_stock WHERE producto = type::thing('producto', '{}'))[0] != 'inicial' {{ THROW 'tipo changed'; }};",
+        created.id
+    ))
+    .await
+    .expect("movement tipo");
+
+    db.query(&format!(
+        "IF (SELECT entidad, operacion, motivo FROM outbox WHERE record::id(registro) = '{}')[0].entidad != 'producto' {{ THROW 'outbox entity'; }};",
+        created.id
+    ))
+    .await
+    .expect("outbox producto");
+}
+
+#[tokio::test]
+async fn storage_set_activo_true_reactivates() {
+    let db = Arc::new(test_db().await);
+    let categoria = seed_categoria_repo(Arc::clone(&db)).await;
+    let created = product_repo(Arc::clone(&db))
+        .create(new_perno(categoria, "50"))
+        .await
+        .expect("create");
+    product_repo(Arc::clone(&db))
+        .set_activo(created.id.clone(), false)
+        .await
+        .expect("deactivate");
+    let reactivated = product_repo(Arc::clone(&db))
+        .set_activo(created.id.clone(), true)
+        .await
+        .expect("reactivate");
+    assert!(reactivated.producto.activo);
+    assert_eq!(reactivated.producto.stock.to_string(), "50");
+}
+
+#[tokio::test]
+async fn storage_set_activo_false_is_idempotent() {
+    let db = Arc::new(test_db().await);
+    let categoria = seed_categoria_repo(Arc::clone(&db)).await;
+    let created = product_repo(Arc::clone(&db))
+        .create(new_perno(categoria, "0"))
+        .await
+        .expect("create");
+    product_repo(Arc::clone(&db))
+        .set_activo(created.id.clone(), false)
+        .await
+        .expect("deactivate");
+    let again = product_repo(Arc::clone(&db))
+        .set_activo(created.id, false)
+        .await
+        .expect("deactivate again");
+    assert!(!again.producto.activo);
+}
+
+#[tokio::test]
+async fn storage_set_activo_unknown_id_is_not_found() {
+    let db = Arc::new(test_db().await);
+    let err = product_repo(db)
+        .set_activo(Id::generate(), false)
+        .await
+        .expect_err("not found");
+    assert_eq!(err.code(), DomainCode::NotFound);
+}

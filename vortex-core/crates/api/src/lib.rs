@@ -215,7 +215,9 @@ pub fn router_shell(state: AppState) -> Router {
         .route("/api/v1/products", post(products::post_product))
         .route(
             "/api/v1/products/{product_id}",
-            get(products::get_product).patch(products::patch_product),
+            get(products::get_product)
+                .patch(products::patch_product)
+                .delete(products::delete_product),
         )
         .fallback(fallback_not_found)
         .layer(middleware::from_fn(metrics::record_http_duration))

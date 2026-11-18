@@ -117,6 +117,34 @@ impl ProductRepo for ProductoRepo {
         let db = Arc::clone(&self.db);
         async move { update_impl(db, input).await }
     }
+
+    fn set_activo(
+        &self,
+        id: Id<domain::Producto>,
+        activo: bool,
+    ) -> impl Future<Output = Result<FichaProducto, DomainError>> + Send {
+        let db = Arc::clone(&self.db);
+        async move { set_activo_impl(db, id, activo).await }
+    }
+}
+
+async fn set_activo_impl(
+    db: Arc<Db>,
+    id: Id<domain::Producto>,
+    activo: bool,
+) -> Result<FichaProducto, DomainError> {
+    let _ = fetch_producto(Arc::clone(&db), id.clone()).await?;
+    let id_str = id.to_string();
+    let activo_sql = if activo { "true" } else { "false" };
+    let producto_thing = product_thing_ref(&id_str);
+    let stmt = format!("UPDATE {producto_thing} SET activo = {activo_sql};");
+    let event = OutboxEvent::try_new(OutboxEntity::Producto, OutboxOp::Upsert, &id_str, None)
+        .map_err(|_| DomainError::unavailable(UnavailableCode::Unavailable))?;
+    let mut tx = db.as_ref().tx();
+    tx.run(stmt);
+    tx.emit(event);
+    tx.commit().await?;
+    fetch_ficha(db, id).await
 }
 
 async fn create_impl(db: Arc<Db>, input: NewProducto) -> Result<Producto, DomainError> {

@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Abre SurrealDB embebido con RocksDB en el crate `storage`, selecciona el namespace `vectra` y la base `comercio`, aplica migraciones `.surql` embebidas con registro y checksum SHA-256 (incl. `categoria`, `marca`, `atributo_def`, `producto`, `movimiento_stock`), expone un harness de tests (`storage::testing`) con motor en memoria o RocksDB temporal, ofrece transacciones atómicas dato + outbox con aviso post-commit, e implementa adaptadores de repositorio de catálogo (incl. `ProductRepo` con alta y stock inicial).
+Abre SurrealDB embebido con RocksDB en el crate `storage`, selecciona el namespace `vectra` y la base `comercio`, aplica migraciones `.surql` embebidas con registro y checksum SHA-256 (incl. `categoria`, `marca`, `atributo_def`, `producto`, `movimiento_stock`), expone un harness de tests (`storage::testing`) con motor en memoria o RocksDB temporal, ofrece transacciones atómicas dato + outbox con aviso post-commit, e implementa adaptadores de repositorio de catálogo (incl. `ProductRepo` con alta, stock inicial y baja lógica).
 
 Ticket padre: T-00-08, T-00-09, T-09-02, T-03-01, T-03-02, T-02-01, T-02-03, T-02-08, T-02-11, T-02-14, T-02-15, T-02-18. HU: HU-00-02, HU-09-01, HU-03-01, HU-02-01, HU-02-02, HU-02-03, HU-02-04, HU-02-07.
 
@@ -824,9 +824,51 @@ MUST NOT sembrar filas de ledger. MUST NOT implementar entidad de dominio, regla
 - **THEN** la operación falla
 - **AND** `movimiento_stock` permanece sin esa fila
 
+### Requirement: ProductRepo set_activo conserva historial
+
+El adaptador `ProductRepo` en `storage` MUST implementar `set_activo(id, activo)`. MUST actualizar solo el campo `activo` (y `actualizado_en`) de esa fila `producto` en una `Tx` con un `OutboxEvent` `producto`/`upsert` (`registro` = `id` sin prefijo, `motivo` ausente). MUST NOT hacer `DELETE` físico de la fila `producto`. MUST NOT borrar, alterar ni insertar filas en `movimiento_stock`. MUST NOT borrar aristas de relación ni filas `imagen_producto`. MUST NOT escribir `stock`. MUST NOT incrementar `version`. MUST NOT reindexar Meilisearch (T-03-07).
+
+El resultado de éxito MUST ser la `FichaProducto` rehidratada con el `activo` pedido. `id` desconocido MUST ser `not_found` y MUST NOT emitir outbox. Si el producto ya tiene ese `activo`, `set_activo` MUST ser éxito idempotente (sigue emitiendo el evento de outbox).
+
+#### Scenario: Baja lógica deja el ledger intacto (happy, HU-02-06, Listo cuando)
+
+- **WHEN** existe un producto activo con stock `"50"` y un movimiento `inicial`
+- **AND** se llama `set_activo(id, false)`
+- **THEN** la operación termina sin error
+- **AND** `activo` es falso
+- **AND** `stock` sigue siendo `"50"`
+- **AND** `version` no cambia
+- **AND** el recuento de `movimiento_stock` de ese producto no cambia
+- **AND** el movimiento `inicial` conserva `tipo`, `cantidad` y `stock_resultante`
+- **AND** existe un evento en `outbox` con `entidad` `producto`, `operacion` `upsert` y `motivo` ausente
+
+#### Scenario: Reactivación restaura activo (happy, HU-02-06, Listo cuando)
+
+- **WHEN** un producto está inactivo
+- **AND** se llama `set_activo(id, true)`
+- **THEN** la operación termina sin error
+- **AND** `activo` es verdadero
+- **AND** `stock` y el ledger no cambian
+- **AND** existe un evento en `outbox` con `entidad` `producto` y `operacion` `upsert`
+
+#### Scenario: Baja idempotente (happy)
+
+- **WHEN** un producto ya está inactivo
+- **AND** se llama `set_activo(id, false)`
+- **THEN** la operación termina sin error
+- **AND** `activo` sigue falso
+- **AND** el ledger no cambia
+
+#### Scenario: set_activo id desconocido (unhappy)
+
+- **WHEN** se llama `set_activo` con un `id` que no existe en `producto`
+- **THEN** la operación falla
+- **AND** el error es `DomainError` con `code` `not_found`
+- **AND** no se inserta un evento en `outbox`
+
 ### Requirement: Adaptador ProductRepo
 
-El crate `storage` MUST implementar el puerto `ProductRepo` (`create`, `get`, `update`) contra las tablas `producto` y `movimiento_stock` ya migradas (T-02-14, T-02-15) usando `storage::Tx` (T-03-02). Los `id` MUST ser ULID de 26 caracteres **sin** prefijo de tabla (`producto:`). Los errores MUST ser `DomainError`. MUST NOT mapear a HTTP ni a `problem+json`. MUST NOT reindexar Meilisearch (T-03-07). MUST NOT declarar `set_activo` ni listado (T-02-22, T-02-27). MUST NOT implementar `StockLedger::append` para `ingreso`/`ajuste`/`venta` (T-02-24). MUST NOT comprobar que categoría o marca existan y estén activas más allá de lo que el esquema `record<…>` ya exige (T-02-20). MUST NOT validar valores de atributo contra definiciones cargadas por el caso de uso (T-02-16 / T-02-20). MUST NOT hidratar ni persistir imágenes (T-02-30).
+El crate `storage` MUST implementar el puerto `ProductRepo` (`create`, `get`, `update`, `set_activo`) contra las tablas `producto` y `movimiento_stock` ya migradas (T-02-14, T-02-15) usando `storage::Tx` (T-03-02). Los `id` MUST ser ULID de 26 caracteres **sin** prefijo de tabla (`producto:`). Los errores MUST ser `DomainError`. MUST NOT mapear a HTTP ni a `problem+json`. MUST NOT reindexar Meilisearch (T-03-07). MUST NOT declarar listado (T-02-27). MUST NOT implementar `StockLedger::append` para `ingreso`/`ajuste`/`venta` (T-02-24). MUST NOT comprobar que categoría o marca existan y estén activas más allá de lo que el esquema `record<…>` ya exige (T-02-20). MUST NOT validar valores de atributo contra definiciones cargadas por el caso de uso (T-02-16 / T-02-20). MUST NOT hidratar ni persistir imágenes (T-02-30).
 
 `create` MUST persistir los campos de `NewProducto` en una sola transacción:
 
@@ -844,6 +886,7 @@ Si `stock_inicial < 0`, `create` MUST fallar con `DomainError` `code` `invalid_i
 - `categoria` hidratada con `ruta` (nombres desde la raíz hasta la categoría del producto)
 - `atributos` resueltos: cada par `def`/`valor` MUST incluir `clave`, `etiqueta` y `unidad` de su `AtributoDef`
 - MUST NOT incluir imágenes
+- MUST NOT filtrar por `activo` (GET de ficha admin incluye inactivos)
 
 `update` MUST persistir la ficha de `UpdateProducto` en una sola transacción:
 
@@ -854,6 +897,8 @@ Si `stock_inicial < 0`, `create` MUST fallar con `DomainError` `code` `invalid_i
 5. El resultado de éxito MUST ser la `FichaProducto` rehidratada (marca, ruta, atributos resueltos) con `version` incrementada en 1
 
 Si el `id` no existe, `update` MUST fallar con `DomainError` `code` `not_found` y MUST NOT emitir outbox. Si el `UPDATE` no afecta filas (versión desactualizada), MUST fallar con `DomainError::Conflict` y `code` `version_conflict`, MUST NOT cambiar la fila ni emitir outbox. Una violación del índice único `sku` MUST fallar con `DomainError::Conflict` y `code` `duplicate_sku`. `sku` o `nombre` vacíos MUST ser `invalid_input`.
+
+`set_activo` MUST seguir el requirement «ProductRepo set_activo conserva historial».
 
 #### Scenario: Alta con stock inicial 50 (happy, HU-02-04, Listo cuando)
 

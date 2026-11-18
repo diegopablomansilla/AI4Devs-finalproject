@@ -383,11 +383,8 @@ fn created_response(ficha: FichaProducto) -> Response {
     (StatusCode::CREATED, headers, body).into_response()
 }
 
-fn validate_patch_body(body: &ProductUpdateBody, instance: &str) -> Result<(), ApiError> {
-    if body.active.is_some() {
-        return Err(ApiError::patch_product_active(instance.to_owned()));
-    }
-    let has_field = body.sku.is_some()
+fn patch_has_ficha_fields(body: &ProductUpdateBody) -> bool {
+    body.sku.is_some()
         || body.name.is_some()
         || body.product_type.is_some()
         || body.description.is_some()
@@ -397,8 +394,11 @@ fn validate_patch_body(body: &ProductUpdateBody, instance: &str) -> Result<(), A
         || body.codes.is_some()
         || body.unit_of_measure.is_some()
         || body.price.is_some()
-        || body.location.is_some();
-    if !has_field {
+        || body.location.is_some()
+}
+
+fn validate_patch_body(body: &ProductUpdateBody, instance: &str) -> Result<(), ApiError> {
+    if !patch_has_ficha_fields(body) && body.active.is_none() {
         return Err(ApiError::patch_empty(instance.to_owned()));
     }
     Ok(())
@@ -482,11 +482,47 @@ pub async fn patch_product(
     validate_patch_body(&body, &instance)?;
     let id = parse_product_id(&product_id, &instance)?;
     let gateway = require_gateway(&state, &instance)?;
-    let patch =
-        patch_body_to_domain(id, body).map_err(|e| ApiError::from_domain_product(e, &instance))?;
-    let updated = gateway
-        .update(patch)
+
+    if let Some(active) = body.active {
+        if active {
+            gateway
+                .reactivate(id.clone())
+                .await
+                .map_err(|e| ApiError::from_domain_product(e, instance.clone()))?;
+        } else {
+            gateway
+                .deactivate(id.clone())
+                .await
+                .map_err(|e| ApiError::from_domain_product(e, instance.clone()))?;
+        }
+    }
+
+    let updated = if patch_has_ficha_fields(&body) {
+        let patch = patch_body_to_domain(id, body)
+            .map_err(|e| ApiError::from_domain_product(e, &instance))?;
+        gateway
+            .update(patch)
+            .await
+            .map_err(|e| ApiError::from_domain_product(e, instance))?
+    } else {
+        gateway
+            .get(id)
+            .await
+            .map_err(|e| ApiError::from_domain_product(e, instance))?
+    };
+    Ok((StatusCode::OK, Json(product_response(updated))))
+}
+
+pub async fn delete_product(
+    State(state): State<AppState>,
+    Path(product_id): Path<String>,
+) -> Result<impl IntoResponse, ApiError> {
+    let instance = format!("/api/v1/products/{product_id}");
+    let id = parse_product_id(&product_id, &instance)?;
+    let gateway = require_gateway(&state, &instance)?;
+    gateway
+        .deactivate(id)
         .await
         .map_err(|e| ApiError::from_domain_product(e, instance))?;
-    Ok((StatusCode::OK, Json(product_response(updated))))
+    Ok(StatusCode::NO_CONTENT)
 }
