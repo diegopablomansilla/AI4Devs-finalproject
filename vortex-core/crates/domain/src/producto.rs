@@ -437,6 +437,7 @@ pub struct NewProducto {
     pub precio: Decimal,
     pub ubicacion: Option<Ubicacion>,
     pub stock_inicial: Decimal,
+    pub terminal: Option<String>,
 }
 
 pub trait ProductRepo {
@@ -561,6 +562,32 @@ mod tests {
             let err = UnidadMedida::from_str(bad).expect_err(bad);
             assert_eq!(err.code(), DomainCode::InvalidInput);
         }
+    }
+
+    #[test]
+    fn new_producto_accepts_optional_terminal() {
+        let with_terminal = NewProducto {
+            sku: "PER-M8X40-ZN".into(),
+            nombre: "Perno".into(),
+            tipo: "Perno".into(),
+            descripcion: None,
+            marca: None,
+            categoria: Id::generate(),
+            atributos: vec![],
+            codigos: vec![],
+            unidad_medida: UnidadMedida::Unidad,
+            precio: "0".parse().expect("precio"),
+            ubicacion: None,
+            stock_inicial: "0".parse().expect("stock"),
+            terminal: Some("caja-1".into()),
+        };
+        assert_eq!(with_terminal.terminal.as_deref(), Some("caja-1"));
+
+        let without_terminal = NewProducto {
+            terminal: None,
+            ..with_terminal
+        };
+        assert!(without_terminal.terminal.is_none());
     }
 
     fn draft_perno_base(atributos: Vec<AtributoValor>, defs: &[AtributoDef]) -> ProductoDraft {
@@ -912,6 +939,7 @@ mod tests {
                 precio: "0".parse().unwrap(),
                 ubicacion: None,
                 stock_inicial: "0".parse().unwrap(),
+                terminal: None,
             });
             let _f2 = r.get(Id::generate());
             let _f3 = r.update(UpdateProducto {

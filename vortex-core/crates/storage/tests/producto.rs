@@ -44,6 +44,7 @@ fn new_perno(categoria: Id<Categoria>, stock_inicial: &str) -> NewProducto {
         precio: "120.50".parse().expect("precio"),
         ubicacion: None,
         stock_inicial: stock_inicial.parse().expect("stock"),
+        terminal: None,
     }
 }
 
@@ -263,6 +264,25 @@ async fn product_repo_creates_perno_with_stock_50() {
 }
 
 #[tokio::test]
+async fn storage_create_persists_terminal_on_initial_movement() {
+    let db = Arc::new(test_db().await);
+    let categoria = seed_categoria_repo(Arc::clone(&db)).await;
+    let mut input = new_perno(categoria, "50");
+    input.terminal = Some("caja-1".into());
+    let product = product_repo(Arc::clone(&db))
+        .create(input)
+        .await
+        .expect("create");
+
+    db.query(&format!(
+        "IF (SELECT VALUE terminal FROM movimiento_stock WHERE producto = type::thing('producto', '{}'))[0] != 'caja-1' {{ THROW 'terminal mismatch'; }};",
+        product.id
+    ))
+    .await
+    .expect("terminal on movement");
+}
+
+#[tokio::test]
 async fn product_repo_create_zero_stock_has_no_movimiento() {
     let db = Arc::new(test_db().await);
     let categoria = seed_categoria_repo(Arc::clone(&db)).await;
@@ -456,6 +476,7 @@ fn new_perno_rich(
         precio: "120.50".parse().expect("precio"),
         ubicacion: None,
         stock_inicial: stock_inicial.parse().expect("stock"),
+        terminal: None,
     }
 }
 

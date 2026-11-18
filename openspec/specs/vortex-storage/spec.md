@@ -831,7 +831,7 @@ El crate `storage` MUST implementar el puerto `ProductRepo` (`create`, `get`, `u
 `create` MUST persistir los campos de `NewProducto` en una sola transacción:
 
 1. `CREATE producto` con `activo` verdadero, `version` 1 y `stock` 0 (el DEFAULT del esquema); MUST NOT escribir `stock` distinto de 0 en el `CONTENT` del alta.
-2. Si `stock_inicial > 0`: `CREATE movimiento_stock` con `tipo` `inicial`, `cantidad` = `stock_inicial`, `stock_resultante` = `stock_inicial`, `motivo` y `venta` ausentes, `terminal` ausente; y `UPDATE` del producto con `stock` = `stock_inicial`. MUST NOT incrementar `version`.
+2. Si `stock_inicial > 0`: `CREATE movimiento_stock` con `tipo` `inicial`, `cantidad` = `stock_inicial`, `stock_resultante` = `stock_inicial`, `motivo` y `venta` ausentes, y `terminal` igual a `NewProducto.terminal` (ausente si `None`); y `UPDATE` del producto con `stock` = `stock_inicial`. MUST NOT incrementar `version`.
 3. Si `stock_inicial` es 0: MUST NOT insertar fila en `movimiento_stock`.
 4. MUST emitir en la **misma** transacción un `OutboxEvent` con `entidad` `producto`, `operacion` `upsert` y `registro` igual al `id` del producto creado. Si hubo movimiento `inicial`, `motivo` del evento MUST ser `"stock"`; si `stock_inicial` es 0, `motivo` MUST ser ausente.
 
@@ -864,8 +864,15 @@ Si el `id` no existe, `update` MUST fallar con `DomainError` `code` `not_found` 
 - **AND** `stock` es `"50"`
 - **AND** el `id` no contiene `:`
 - **AND** existe un movimiento `movimiento_stock` con `tipo` `inicial`, `cantidad` `"50"` y `stock_resultante` `"50"`
+- **AND** el movimiento tiene `terminal` ausente
 - **AND** existe un evento en `outbox` con `entidad` `producto`, `operacion` `upsert` y `motivo` `"stock"`
 - **AND** `registro` del evento es el `id` del producto (sin prefijo de tabla)
+
+#### Scenario: Alta con terminal en el movimiento inicial (happy, T-02-21)
+
+- **WHEN** se llama `create` con `stock_inicial` `"50"` y `terminal` `"caja-1"`
+- **THEN** la operación termina sin error
+- **AND** el movimiento `inicial` tiene `terminal` `"caja-1"`
 
 #### Scenario: Alta con stock inicial 0 no crea movimiento (happy)
 
@@ -961,3 +968,4 @@ Si el `id` no existe, `update` MUST fallar con `DomainError` `code` `not_found` 
 - **AND** el error es `DomainError::Conflict` con `code` `duplicate_sku`
 - **AND** el SKU del segundo producto no cambia
 - **AND** no se inserta un evento de outbox para esa edición
+

@@ -10,7 +10,7 @@ Ticket padre: T-02-20. Change: T-02-20. HU: HU-02-04, HU-02-05.
 
 ### Requirement: Crear y obtener ficha de producto
 
-El crate `catalog` MUST exponer casos de uso de producto que delegan en `ProductRepo` y MUST NOT abrir SurrealDB ni mapear a HTTP. Crear MUST aceptar los campos de `NewProducto` (`sku`, `nombre`, `tipo`, `descripcion`, `marca` opcional, `categoria`, `atributos`, `codigos`, `unidad_medida`, `precio`, `ubicacion`, `stock_inicial`).
+El crate `catalog` MUST exponer casos de uso de producto que delegan en `ProductRepo` y MUST NOT abrir SurrealDB ni mapear a HTTP. Crear MUST aceptar los campos de `NewProducto` (`sku`, `nombre`, `tipo`, `descripcion`, `marca` opcional, `categoria`, `atributos`, `codigos`, `unidad_medida`, `precio`, `ubicacion`, `stock_inicial`, `terminal` opcional). MUST reenviar `terminal` al puerto sin transformarlo. MUST NOT validar `maxLength` 64 (Gateway). MUST NOT escribir el ledger.
 
 Antes de llamar a `ProductRepo::create`, el caso de uso MUST:
 
@@ -31,6 +31,12 @@ Los errores del puerto (`duplicate_sku`, `invalid_input`, `not_found`) MUST prop
 - **AND** el producto queda activo con `version` 1
 - **AND** `stock` es 50
 - **AND** la ficha expone marca, `ruta` de categoría y atributos resueltos
+
+#### Scenario: Alta reenvía terminal al puerto (happy, T-02-21)
+
+- **WHEN** el caso de uso crea un producto válido con `terminal` `"caja-1"`
+- **THEN** la operación termina sin error
+- **AND** el puerto `create` recibe `NewProducto.terminal` `"caja-1"`
 
 #### Scenario: Obtener ficha existente (happy)
 

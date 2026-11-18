@@ -8,6 +8,7 @@ mod error;
 mod gateway;
 mod health;
 mod metrics;
+mod products;
 mod static_files;
 
 use std::path::PathBuf;
@@ -18,9 +19,9 @@ use axum::{
     http::{StatusCode, Uri},
     middleware,
     response::IntoResponse,
-    routing::{get, patch},
+    routing::{get, patch, post},
 };
-use catalog::{AttributeDefGateway, BrandGateway, CategoryGateway};
+use catalog::{AttributeDefGateway, BrandGateway, CategoryGateway, ProductGateway};
 use domain::HealthReport;
 
 pub use app_json::AppJson;
@@ -45,6 +46,7 @@ struct AppStateInner {
     categories: Option<Arc<dyn CategoryGateway>>,
     brands: Option<Arc<dyn BrandGateway>>,
     attribute_defs: Option<Arc<dyn AttributeDefGateway>>,
+    products: Option<Arc<dyn ProductGateway>>,
 }
 
 impl AppState {
@@ -66,6 +68,7 @@ impl AppState {
                 categories: None,
                 brands: None,
                 attribute_defs: None,
+                products: None,
             }),
         }
     }
@@ -131,6 +134,16 @@ impl AppState {
 
     pub(crate) fn attribute_defs(&self) -> Option<Arc<dyn AttributeDefGateway>> {
         self.inner.attribute_defs.clone()
+    }
+
+    #[must_use]
+    pub fn with_products(mut self, products: Arc<dyn ProductGateway>) -> Self {
+        Arc::make_mut(&mut self.inner).products = Some(products);
+        self
+    }
+
+    pub(crate) fn products(&self) -> Option<Arc<dyn ProductGateway>> {
+        self.inner.products.clone()
     }
 }
 
@@ -198,6 +211,11 @@ pub fn router_shell(state: AppState) -> Router {
             "/api/v1/attribute-definitions/{attribute_id}",
             patch(attribute_definitions::patch_attribute_definition)
                 .delete(attribute_definitions::delete_attribute_definition),
+        )
+        .route("/api/v1/products", post(products::post_product))
+        .route(
+            "/api/v1/products/{product_id}",
+            get(products::get_product).patch(products::patch_product),
         )
         .fallback(fallback_not_found)
         .layer(middleware::from_fn(metrics::record_http_duration))
