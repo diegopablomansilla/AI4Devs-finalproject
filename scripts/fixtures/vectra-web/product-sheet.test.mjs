@@ -32,6 +32,61 @@ const FIXSER = {
 
 const PERN_SKU = "PER-M8X40-ZN";
 
+const ID_LARGO = "01J9LARGO00000000000001";
+const ID_MEDIDA = "01J9MEDIDA0000000000001";
+const ID_ZINCADO = "01J9ZINCADO00000000001";
+const ID_GRADO = "01J9GRADO000000000001";
+const ID_INACTIVO = "01J9INACTIVO00000000001";
+
+const SAMPLE_ATTR_DEFS = {
+  items: [
+    {
+      id: ID_LARGO,
+      key: "largo",
+      label: "Largo",
+      type: "number",
+      unit: "mm",
+      active: true,
+      order: 10,
+    },
+    {
+      id: ID_MEDIDA,
+      key: "medida",
+      label: "Medida",
+      type: "text",
+      unit: null,
+      active: true,
+      order: 0,
+    },
+    {
+      id: ID_ZINCADO,
+      key: "zincado",
+      label: "Zincado",
+      type: "boolean",
+      unit: null,
+      active: true,
+      order: 20,
+    },
+    {
+      id: ID_GRADO,
+      key: "grado",
+      label: "Grado",
+      type: "enum",
+      options: ["2", "5", "8"],
+      active: true,
+      order: 30,
+    },
+    {
+      id: ID_INACTIVO,
+      key: "obsoleto",
+      label: "Obsoleto",
+      type: "text",
+      active: false,
+      order: 99,
+    },
+  ],
+};
+
 function createCallTracker(responses) {
   /** @type {Array<{ method: string, path: string, body?: unknown }>} */
   const calls = [];
@@ -151,8 +206,13 @@ function createProductFormStub(html) {
     brandId: "",
     unitOfMeasure: "unit",
   };
+  /** @type {Record<string, string>} */
+  const attrSelectBag = {};
   for (const m of html.matchAll(/<vx-field[^>]+name="([^"]+)"/g)) {
     fieldBag[m[1]] = "";
+  }
+  for (const m of html.matchAll(/data-attr-index="(\d+)"/g)) {
+    attrSelectBag[`attr-${m[1]}`] = "";
   }
   return {
     getAttribute(name) {
@@ -170,10 +230,39 @@ function createProductFormStub(html) {
       if (selectMatch) {
         return createSelectStub(selectMatch[1], selectBag);
       }
+      const attrSelectMatch = sel.match(/^select\[data-attr-index="(\d+)"\]$/);
+      if (attrSelectMatch) {
+        return createSelectStub(`attr-${attrSelectMatch[1]}`, attrSelectBag);
+      }
       return null;
+    },
+    querySelectorAll(sel) {
+      if (sel === ".vx-product-attr-row") {
+        /** @type {Array<{ defId: string, type: string }>} */
+        const parsed = [];
+        const re =
+          /class="vx-product-attr-row"[^>]*data-attr-definition-id="([^"]+)"[^>]*data-attr-type="([^"]+)"/g;
+        let m;
+        while ((m = re.exec(html)) !== null) {
+          parsed.push({ defId: m[1], type: m[2] });
+        }
+        return parsed.map((row) => ({
+          getAttribute(name) {
+            if (name === "data-attr-definition-id") {
+              return row.defId;
+            }
+            if (name === "data-attr-type") {
+              return row.type;
+            }
+            return null;
+          },
+        }));
+      }
+      return [];
     },
     fieldBag,
     selectBag,
+    attrSelectBag,
   };
 }
 
@@ -279,13 +368,26 @@ function fillPernoForm(form, categoryId, opts = {}) {
   if (opts.brandId) {
     form.selectBag.brandId = opts.brandId;
   }
+  if (opts.medida != null) {
+    form.fieldBag["attributes[1].value"] = opts.medida;
+  }
+  if (opts.largo != null) {
+    form.fieldBag["attributes[0].value"] = opts.largo;
+  }
+  if (opts.manufacturer != null) {
+    form.fieldBag["codes.manufacturer"] = opts.manufacturer;
+  }
+  if (opts.oem != null) {
+    form.fieldBag["codes.oem"] = opts.oem;
+  }
 }
 
-function defaultMountResponses(extra = []) {
+function defaultMountResponses(extra = [], attrDefs = { items: [] }) {
   return [
     { items: [FIJACIONES] },
     { items: [FIXSER] },
     { items: [], nextCursor: null },
+    attrDefs,
     ...extra,
   ];
 }
@@ -295,6 +397,8 @@ async function openCreateSheet(el, deps) {
   const showError = deps.showError ?? (() => {});
   await mountProducts(el, { request, showError });
   el.dispatchClick(el.querySelector('[data-action="create"]'));
+  await new Promise((r) => setTimeout(r, 0));
+  await new Promise((r) => setTimeout(r, 0));
   return el.querySelector('form[data-form="create-product"]');
 }
 
@@ -352,8 +456,10 @@ describe("sheet_create_perno_posts_product_create", () => {
     assert.equal(post.body.price, "120.50");
     assert.equal(post.body.initialStock, "50");
     assert.equal(post.body.categoryId, FIJACIONES.id);
-    assert.equal(post.body.attributes, undefined);
-    assert.equal(post.body.codes, undefined);
+    const attrs = post.body.attributes;
+    assert.ok(attrs === undefined || (Array.isArray(attrs) && attrs.length === 0));
+    const codes = post.body.codes;
+    assert.ok(codes === undefined || (Array.isArray(codes) && codes.length === 0));
   });
 });
 
@@ -511,32 +617,200 @@ describe("sheet_network_shows_network", () => {
   });
 });
 
-describe("sheet_no_attributes_or_codes", () => {
-  test("sin controles ni payload de atributos", async () => {
+describe("sheet_attribute_controls_match_type_and_unit", () => {
+  test("controles por tipo y unidad", async () => {
+    const { request, calls } = createCallTracker(
+      defaultMountResponses([], SAMPLE_ATTR_DEFS),
+    );
+    const el = createMountEl();
+    await openCreateSheet(el, request);
+    const attrGet = calls.find(
+      (c) => c.method === "GET" && c.path === "/api/v1/attribute-definitions",
+    );
+    assert.ok(attrGet);
+    assert.doesNotMatch(attrGet.path, /includeInactive/);
+    assert.match(el.html, /Largo \(mm\)/);
+    assert.match(el.html, /name="attributes\[1\]\.value"/);
+    assert.match(el.html, /data-attr-type="boolean"/);
+    assert.match(el.html, />2</);
+    assert.match(el.html, />5</);
+    assert.match(el.html, />8</);
+    assert.doesNotMatch(el.html, /<input[^>]+type="number"/i);
+    assert.match(el.html, /name="codes\.manufacturer"/);
+    assert.match(el.html, /name="codes\.oem"/);
+  });
+});
+
+describe("sheet_no_barcode_code", () => {
+  test("sin barcode en UI ni POST", async () => {
     const created = { id: "01J9X", sku: PERN_SKU, version: 1 };
     const { request, calls } = createCallTracker(
-      defaultMountResponses([created, { items: [], nextCursor: null }]),
+      defaultMountResponses(
+        [created, { items: [], nextCursor: null }],
+        SAMPLE_ATTR_DEFS,
+      ),
     );
     const el = createMountEl();
     const form = await openCreateSheet(el, { request, showError: () => {} });
-    fillPernoForm(form, FIJACIONES.id);
+    fillPernoForm(form, FIJACIONES.id, {
+      medida: "M8",
+      largo: "40",
+      manufacturer: "HX-0840Z",
+    });
     el.dispatchSubmit(form);
-
     await new Promise((r) => setTimeout(r, 0));
     await new Promise((r) => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 0));
 
-    assert.doesNotMatch(el.html, /name="attributes/);
-    assert.doesNotMatch(el.html, /codes/);
+    assert.doesNotMatch(el.html, /barcode/i);
+    assert.doesNotMatch(el.html, /código de barras/i);
     const post = calls.find((c) => c.method === "POST");
     assert.ok(post);
-    assert.equal(post.body.attributes, undefined);
-    assert.equal(post.body.codes, undefined);
+    assert.ok(
+      !post.body.codes?.some((c) => c.type === "barcode"),
+    );
+  });
+});
+
+describe("sheet_create_perno_posts_attributes_and_codes", () => {
+  test("POST con medida, largo y fabricante", async () => {
+    const created = { id: "01J9PERNATTR001", sku: PERN_SKU, version: 1 };
+    const { request, calls } = createCallTracker(
+      defaultMountResponses(
+        [created, { items: [], nextCursor: null }],
+        SAMPLE_ATTR_DEFS,
+      ),
+    );
+    const el = createMountEl();
+    const form = await openCreateSheet(el, request);
+    fillPernoForm(form, FIJACIONES.id, {
+      medida: "M8",
+      largo: "40",
+      manufacturer: "HX-0840Z",
+    });
+    el.dispatchSubmit(form);
+    await new Promise((r) => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 0));
+
+    const post = calls.find((c) => c.method === "POST");
+    assert.ok(post);
+    assert.equal(post.body.attributes.length, 2);
+    assert.equal(post.body.attributes[0].definitionId, ID_LARGO);
+    assert.equal(post.body.attributes[0].value, 40);
+    assert.equal(post.body.attributes[1].definitionId, ID_MEDIDA);
+    assert.equal(post.body.attributes[1].value, "M8");
+    assert.deepEqual(post.body.codes, [
+      { type: "manufacturer", value: "HX-0840Z" },
+    ]);
+  });
+});
+
+describe("sheet_empty_attributes_omitted_from_post", () => {
+  test("sin attributes en POST si están vacíos", async () => {
+    const created = { id: "01J9PERNATTR002", sku: PERN_SKU, version: 1 };
+    const { request, calls } = createCallTracker(
+      defaultMountResponses(
+        [created, { items: [], nextCursor: null }],
+        SAMPLE_ATTR_DEFS,
+      ),
+    );
+    const el = createMountEl();
+    const form = await openCreateSheet(el, request);
+    fillPernoForm(form, FIJACIONES.id);
+    el.dispatchSubmit(form);
+    await new Promise((r) => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 0));
+
+    const post = calls.find((c) => c.method === "POST");
+    assert.ok(post);
+    const attrs = post.body.attributes;
+    assert.ok(attrs === undefined || attrs.length === 0);
+  });
+});
+
+describe("sheet_cuarenta_on_largo_sets_attribute_field_error", () => {
+  test("invalid_input en largo", async () => {
+    const errors = [];
+    const { request } = createCallTracker(
+      defaultMountResponses(
+        [
+          {
+            throw: apiError("invalid_input", [
+              {
+                field: "attributes[0].value",
+                message: "expected number value",
+              },
+            ]),
+          },
+        ],
+        { items: [{ ...SAMPLE_ATTR_DEFS.items[0] }] },
+      ),
+    );
+    const el = createMountEl();
+    const root = { querySelector: (s) => el.querySelector(s) };
+    const { showError } = createErrorUi({ root });
+    const form = await openCreateSheet(el, {
+      request,
+      showError: (e) => {
+        errors.push(e.code);
+        showError(e);
+      },
+    });
+    fillPernoForm(form, FIJACIONES.id, { largo: "cuarenta" });
+    el.dispatchSubmit(form);
+    await new Promise((r) => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 0));
+
+    assert.deepEqual(errors, ["invalid_input"]);
+    assert.match(
+      el.html,
+      /name="attributes\[0\]\.value"[^>]*error="expected number value"|error="expected number value"[^>]*name="attributes\[0\]\.value"/,
+    );
+    assert.match(el.html, /data-form="create-product"/);
+  });
+});
+
+describe("sheet_inactive_attribute_defs_are_hidden", () => {
+  test("definición inactiva sin control", async () => {
+    const { request } = createCallTracker(
+      defaultMountResponses([], SAMPLE_ATTR_DEFS),
+    );
+    const el = createMountEl();
+    await openCreateSheet(el, request);
+    assert.doesNotMatch(el.html, /Obsoleto/);
+    assert.doesNotMatch(el.html, new RegExp(ID_INACTIVO));
+  });
+});
+
+describe("sheet_attribute_defs_network_shows_network", () => {
+  test("GET defs con network", async () => {
+    const errors = [];
+    const { request } = createCallTracker([
+      { items: [FIJACIONES] },
+      { items: [FIXSER] },
+      { items: [], nextCursor: null },
+      { throw: apiError("network") },
+    ]);
+    const el = createMountEl();
+    await mountProducts(el, {
+      request,
+      showError: (e) => errors.push(e.code),
+    });
+    el.dispatchClick(el.querySelector('[data-action="create"]'));
+    await new Promise((r) => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 0));
+
+    assert.deepEqual(errors, ["network"]);
+    assert.match(el.html, /data-form="create-product"/);
   });
 });
 
 describe("readProductCreate_unit", () => {
   test("readProductCreate devuelve null sin obligatorios", () => {
-    const html = renderCreateProductSheet([FIJACIONES], [FIXSER]);
+    const html = renderCreateProductSheet([FIJACIONES], [FIXSER], []);
     const form = createProductFormStub(html);
     const root = { querySelector: (s) => form.querySelector(s) };
     assert.equal(readProductCreate(root, form), null);
