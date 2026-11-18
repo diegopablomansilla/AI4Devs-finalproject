@@ -84,6 +84,22 @@ where
         self.products.update(snapshot).await
     }
 
+    pub async fn deactivate(&self, id: Id<domain::Producto>) -> Result<FichaProducto, DomainError> {
+        let current = self.products.get(id.clone()).await?;
+        if !current.producto.activo {
+            return Ok(current);
+        }
+        self.products.set_activo(id, false).await
+    }
+
+    pub async fn reactivate(&self, id: Id<domain::Producto>) -> Result<FichaProducto, DomainError> {
+        let current = self.products.get(id.clone()).await?;
+        if current.producto.activo {
+            return Ok(current);
+        }
+        self.products.set_activo(id, true).await
+    }
+
     async fn load_and_validate_refs(
         &self,
         categoria: &Id<Categoria>,
@@ -260,6 +276,16 @@ pub trait ProductGateway: Send + Sync {
         &self,
         patch: PatchProducto,
     ) -> Pin<Box<dyn Future<Output = Result<FichaProducto, DomainError>> + Send + '_>>;
+
+    fn deactivate(
+        &self,
+        id: Id<domain::Producto>,
+    ) -> Pin<Box<dyn Future<Output = Result<FichaProducto, DomainError>> + Send + '_>>;
+
+    fn reactivate(
+        &self,
+        id: Id<domain::Producto>,
+    ) -> Pin<Box<dyn Future<Output = Result<FichaProducto, DomainError>> + Send + '_>>;
 }
 
 impl<P, C, B, A> ProductGateway for ProductService<P, C, B, A>
@@ -288,6 +314,20 @@ where
         patch: PatchProducto,
     ) -> Pin<Box<dyn Future<Output = Result<FichaProducto, DomainError>> + Send + '_>> {
         Box::pin(ProductService::update(self, patch))
+    }
+
+    fn deactivate(
+        &self,
+        id: Id<domain::Producto>,
+    ) -> Pin<Box<dyn Future<Output = Result<FichaProducto, DomainError>> + Send + '_>> {
+        Box::pin(ProductService::deactivate(self, id))
+    }
+
+    fn reactivate(
+        &self,
+        id: Id<domain::Producto>,
+    ) -> Pin<Box<dyn Future<Output = Result<FichaProducto, DomainError>> + Send + '_>> {
+        Box::pin(ProductService::reactivate(self, id))
     }
 }
 
@@ -474,6 +514,28 @@ pub mod testing {
                     map.insert(input.id.to_string(), built.clone());
                 }
                 self.hydrate_ficha(built).await
+            }
+        }
+
+        fn set_activo(
+            &self,
+            id: Id<domain::Producto>,
+            activo: bool,
+        ) -> impl Future<Output = Result<FichaProducto, DomainError>> + Send {
+            async move {
+                let updated = {
+                    let mut map = self.inner.lock().expect("lock");
+                    let producto = map
+                        .get(&id.to_string())
+                        .cloned()
+                        .ok_or(DomainError::not_found())?;
+                    let mut updated = producto;
+                    updated.activo = activo;
+                    updated.actualizado_en = ts();
+                    map.insert(id.to_string(), updated.clone());
+                    updated
+                };
+                self.hydrate_ficha(updated).await
             }
         }
     }
@@ -1084,6 +1146,92 @@ mod tests {
         ) -> impl Future<Output = Result<FichaProducto, DomainError>> + Send {
             self.inner.update(input)
         }
+
+        fn set_activo(
+            &self,
+            id: Id<domain::Producto>,
+            activo: bool,
+        ) -> impl Future<Output = Result<FichaProducto, DomainError>> + Send {
+            self.inner.set_activo(id, activo)
+        }
+    }
+
+    #[tokio::test]
+    async fn catalog_deactivate_sets_inactive() {
+        let (service, seeds) = seed_active_catalog().await;
+        let created = service
+            .create(perno_new_producto(&seeds))
+            .await
+            .expect("create");
+        let deactivated = service
+            .deactivate(created.producto.id.clone())
+            .await
+            .expect("deactivate");
+        assert!(!deactivated.producto.activo);
+    }
+
+    #[tokio::test]
+    async fn catalog_reactivate_sets_active() {
+        let (service, seeds) = seed_active_catalog().await;
+        let created = service
+            .create(perno_new_producto(&seeds))
+            .await
+            .expect("create");
+        service
+            .deactivate(created.producto.id.clone())
+            .await
+            .expect("deactivate");
+        let reactivated = service
+            .reactivate(created.producto.id)
+            .await
+            .expect("reactivate");
+        assert!(reactivated.producto.activo);
+    }
+
+    #[tokio::test]
+    async fn catalog_deactivate_idempotent_when_already_inactive() {
+        let (service, seeds) = seed_active_catalog().await;
+        let created = service
+            .create(perno_new_producto(&seeds))
+            .await
+            .expect("create");
+        let id = created.producto.id.clone();
+        service.deactivate(id.clone()).await.expect("deactivate");
+        let again = service.deactivate(id).await.expect("deactivate again");
+        assert!(!again.producto.activo);
+    }
+
+    #[tokio::test]
+    async fn catalog_get_inactive_product_returns_ficha() {
+        let (service, seeds) = seed_active_catalog().await;
+        let created = service
+            .create(perno_new_producto(&seeds))
+            .await
+            .expect("create");
+        let id = created.producto.id.clone();
+        service.deactivate(id.clone()).await.expect("deactivate");
+        let got = service.get(id).await.expect("get");
+        assert!(!got.producto.activo);
+    }
+
+    #[tokio::test]
+    async fn catalog_deactivate_unknown_id_is_not_found() {
+        let (service, _) = seed_active_catalog().await;
+        let err = service
+            .deactivate(Id::generate())
+            .await
+            .expect_err("not found");
+        assert_eq!(err.code(), DomainCode::NotFound);
+    }
+
+    #[tokio::test]
+    async fn catalog_reactivate_unknown_id_is_not_found() {
+        let (service, _) = seed_active_catalog().await;
+        let err = service
+            .reactivate(Id::generate())
+            .await
+            .expect_err("not found");
+        assert_eq!(err.code(), DomainCode::NotFound);
     }
 
     #[tokio::test]

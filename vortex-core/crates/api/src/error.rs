@@ -211,19 +211,6 @@ impl ApiError {
     }
 
     #[must_use]
-    pub fn patch_product_active(instance: String) -> Self {
-        Self::invalid_input_with_fields(
-            vec![FieldProblem {
-                field: "active".into(),
-                message: "product active flag cannot be updated via PATCH".into(),
-            }],
-            Some("Revise the request body.".into()),
-            Some(instance),
-            "invalid_input",
-        )
-    }
-
-    #[must_use]
     pub fn from_domain_product(err: DomainError, instance: impl Into<String>) -> Self {
         Self::from(remap_domain_product_errors(err)).with_instance(instance.into())
     }

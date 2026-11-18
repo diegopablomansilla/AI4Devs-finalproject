@@ -719,6 +719,28 @@ impl ProductRepo for FakeProductRepo {
             self.hydrate_ficha(built).await
         }
     }
+
+    fn set_activo(
+        &self,
+        id: Id<Producto>,
+        activo: bool,
+    ) -> impl std::future::Future<Output = Result<FichaProducto, DomainError>> + Send {
+        async move {
+            let updated = {
+                let mut map = self.inner.lock().expect("lock");
+                let producto = map
+                    .get(&id.to_string())
+                    .cloned()
+                    .ok_or(DomainError::not_found())?;
+                let mut updated = producto;
+                updated.activo = activo;
+                updated.actualizado_en = ts();
+                map.insert(id.to_string(), updated.clone());
+                updated
+            };
+            self.hydrate_ficha(updated).await
+        }
+    }
 }
 
 pub struct ProductTestSeeds {
@@ -766,6 +788,24 @@ impl ProductGateway for RecordingProductGateway {
         Box<dyn std::future::Future<Output = Result<FichaProducto, DomainError>> + Send + '_>,
     > {
         Box::pin(self.inner.update(patch))
+    }
+
+    fn deactivate(
+        &self,
+        id: Id<Producto>,
+    ) -> std::pin::Pin<
+        Box<dyn std::future::Future<Output = Result<FichaProducto, DomainError>> + Send + '_>,
+    > {
+        Box::pin(self.inner.deactivate(id))
+    }
+
+    fn reactivate(
+        &self,
+        id: Id<Producto>,
+    ) -> std::pin::Pin<
+        Box<dyn std::future::Future<Output = Result<FichaProducto, DomainError>> + Send + '_>,
+    > {
+        Box::pin(self.inner.reactivate(id))
     }
 }
 

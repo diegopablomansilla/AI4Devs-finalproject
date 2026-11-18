@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Orquesta en el crate `catalog` los casos de uso de producto (crear, obtener ficha y editar) sobre `ProductRepo`, cargando `AtributoDef` para validar valores y exigiendo que categoría y marca existan y estén activas, con tests contra repositorios en memoria y fachada object-safe para el Gateway, sin HTTP ni baja lógica.
+Orquesta en el crate `catalog` los casos de uso de producto (crear, obtener ficha, editar, dar de baja y reactivar) sobre `ProductRepo`, cargando `AtributoDef` para validar valores y exigiendo que categoría y marca existan y estén activas, con tests contra repositorios en memoria y fachada object-safe para el Gateway, sin HTTP.
 
 Ticket padre: T-02-20. Change: T-02-20. HU: HU-02-04, HU-02-05.
 
@@ -20,9 +20,9 @@ Antes de llamar a `ProductRepo::create`, el caso de uso MUST:
 
 El resultado de éxito de crear MUST ser la `FichaProducto` hidratada (marca, `ruta` de categoría, atributos con `clave`/`etiqueta`/`unidad`), con `activo` verdadero, `version` 1 y `stock` igual a `stock_inicial`. MUST NOT escribir `stock` fuera de `stock_inicial` pasado al puerto. MUST NOT crear movimientos de ledger por sí mismo (T-02-18 / T-02-24). MUST NOT incluir imágenes.
 
-Obtener MUST delegar en `ProductRepo::get` y devolver la `FichaProducto` o `not_found`. MUST NOT filtrar por `activo` (la baja es T-02-22).
+Obtener MUST delegar en `ProductRepo::get` y devolver la `FichaProducto` o `not_found`. MUST NOT filtrar por `activo` (la ficha admin incluye inactivos para reactivar).
 
-Los errores del puerto (`duplicate_sku`, `invalid_input`, `not_found`) MUST propagarse sin remapeo. Categoría o marca inexistente o inactiva MUST fallar con `DomainError` `code` `invalid_input` y un `FieldError` cuyo `field` es `categoria` o `marca` respectivamente (T-02-21 remapeará a `categoryId` / `brandId`). `AtributoDef` inexistente MUST ser `invalid_input` con `FieldError.field` `attributes[n].definitionId`. Valor incompatible con el tipo de la definición MUST ser `invalid_input` con `FieldError.field` `attributes[n].value`. MUST NOT reindexar (T-03-07). MUST NOT dar de baja ni reactivar (T-02-22).
+Los errores del puerto (`duplicate_sku`, `invalid_input`, `not_found`) MUST propagarse sin remapeo. Categoría o marca inexistente o inactiva MUST fallar con `DomainError` `code` `invalid_input` y un `FieldError` cuyo `field` es `categoria` o `marca` respectivamente (T-02-21 remapeará a `categoryId` / `brandId`). `AtributoDef` inexistente MUST ser `invalid_input` con `FieldError.field` `attributes[n].definitionId`. Valor incompatible con el tipo de la definición MUST ser `invalid_input` con `FieldError.field` `attributes[n].value`. MUST NOT reindexar (T-03-07).
 
 #### Scenario: Alta completa perno M8 x 40 (happy, HU-02-04)
 
@@ -93,7 +93,7 @@ Los errores del puerto (`duplicate_sku`, `invalid_input`, `not_found`) MUST prop
 
 ### Requirement: Editar ficha con bloqueo optimista
 
-Editar MUST cargar la ficha actual, fusionar los campos de ficha enviados (al menos un campo de ficha además de `version`) y persistir vía `ProductRepo::update` con el snapshot completo y la `version` leída. Arrays `atributos` y `codigos`, si se envían, MUST reemplazarse enteros. MUST NOT escribir `stock`. MUST NOT cambiar `activo` (T-02-22). MUST NOT incluir `stock` ni `activo` en el parche de ficha.
+Editar MUST cargar la ficha actual, fusionar los campos de ficha enviados (al menos un campo de ficha además de `version`) y persistir vía `ProductRepo::update` con el snapshot completo y la `version` leída. Arrays `atributos` y `codigos`, si se envían, MUST reemplazarse enteros. MUST NOT escribir `stock`. MUST NOT cambiar `activo` (usar `deactivate`/`reactivate`). MUST NOT incluir `stock` ni `activo` en el parche de ficha.
 
 Antes de `update`, el caso de uso MUST repetir las mismas comprobaciones de categoría/marca activas y de `AtributoDef` que en el alta, usando los valores **resultantes** del merge. El resultado de éxito MUST ser la `FichaProducto` con `version` incrementada en 1. Una `version` desactualizada MUST ser `DomainError` `code` `version_conflict` (propagada del puerto). `id` desconocido MUST ser `not_found`. MUST NOT mapear a HTTP.
 
@@ -138,9 +138,59 @@ Antes de `update`, el caso de uso MUST repetir las mismas comprobaciones de cate
 - **AND** el `FieldError.field` es `categoria`
 - **AND** la `version` persistida no cambia
 
+### Requirement: Dar de baja y reactivar producto
+
+El crate `catalog` MUST exponer casos de uso `deactivate` y `reactivate` que delegan en `ProductRepo::set_activo` (`false` / `true`). MUST NOT abrir SurrealDB ni mapear a HTTP. MUST NOT borrar ledger, relaciones ni imágenes. MUST NOT reindexar (T-03-07). MUST NOT exigir occupancy ni rechazar la baja por stock, relaciones o imágenes.
+
+`deactivate` MUST dejar `activo` falso. Si el producto ya está inactivo, MUST ser éxito idempotente. `reactivate` MUST dejar `activo` verdadero. El resultado de éxito MUST ser la `FichaProducto`. `id` desconocido MUST ser `not_found`. Obtener MUST seguir devolviendo fichas inactivas (sin filtrar por `activo`).
+
+`PatchProducto` MUST NOT incluir `activo`. Editar ficha MUST NOT cambiar `activo`.
+
+#### Scenario: Baja lógica (happy, HU-02-06)
+
+- **WHEN** existe un producto activo
+- **AND** el caso de uso lo da de baja
+- **THEN** la operación termina sin error
+- **AND** la ficha tiene `activo` falso
+- **AND** `stock` no cambia
+
+#### Scenario: Reactivación (happy, HU-02-06, Listo cuando)
+
+- **WHEN** existe un producto inactivo
+- **AND** el caso de uso lo reactiva
+- **THEN** la operación termina sin error
+- **AND** la ficha tiene `activo` verdadero
+- **AND** `stock` no cambia
+
+#### Scenario: Baja idempotente (happy)
+
+- **WHEN** el producto ya está inactivo
+- **AND** el caso de uso lo da de baja
+- **THEN** la operación termina sin error
+- **AND** `activo` sigue falso
+
+#### Scenario: Obtener ficha inactiva (happy)
+
+- **WHEN** existe un producto inactivo
+- **AND** el caso de uso lo obtiene por `id`
+- **THEN** la operación termina sin error
+- **AND** la ficha tiene `activo` falso
+
+#### Scenario: Baja id desconocido (unhappy)
+
+- **WHEN** el caso de uso da de baja un `id` que el repositorio no tiene
+- **THEN** la operación falla
+- **AND** el error es `DomainError` con `code` `not_found`
+
+#### Scenario: Reactivar id desconocido (unhappy)
+
+- **WHEN** el caso de uso reactiva un `id` que el repositorio no tiene
+- **THEN** la operación falla
+- **AND** el error es `DomainError` con `code` `not_found`
+
 ### Requirement: Tests en memoria de cada caso
 
-Los tests del crate `catalog` MUST usar repositorios en memoria (sin SurrealDB) para producto, categoría, marca y definiciones de atributo. MUST cubrir crear, obtener y editar, incluido el camino no feliz (Listo cuando). El crate `catalog` MUST NOT depender de `storage` ni `surrealdb`. MUST NOT declarar tests de baja o reactivación de producto.
+Los tests del crate `catalog` MUST usar repositorios en memoria (sin SurrealDB) para producto, categoría, marca y definiciones de atributo. MUST cubrir crear, obtener, editar, dar de baja y reactivar, incluido el camino no feliz (Listo cuando). El crate `catalog` MUST NOT depender de `storage` ni `surrealdb`.
 
 | Test | Crate | Tipo |
 |---|---|---|
@@ -157,6 +207,12 @@ Los tests del crate `catalog` MUST usar repositorios en memoria (sin SurrealDB) 
 | `catalog_update_stale_version_is_version_conflict` | `catalog` | unitario (memoria), unhappy, HU-02-05 / Listo cuando |
 | `catalog_update_unknown_id_is_not_found` | `catalog` | unitario (memoria), unhappy |
 | `catalog_update_inactive_categoria_is_invalid_input` | `catalog` | unitario (memoria), unhappy |
+| `catalog_deactivate_sets_inactive` | `catalog` | unitario (memoria), happy, HU-02-06 |
+| `catalog_reactivate_sets_active` | `catalog` | unitario (memoria), happy, HU-02-06 / Listo cuando |
+| `catalog_deactivate_idempotent_when_already_inactive` | `catalog` | unitario (memoria), happy |
+| `catalog_get_inactive_product_returns_ficha` | `catalog` | unitario (memoria), happy |
+| `catalog_deactivate_unknown_id_is_not_found` | `catalog` | unitario (memoria), unhappy |
+| `catalog_reactivate_unknown_id_is_not_found` | `catalog` | unitario (memoria), unhappy |
 
 #### Scenario: Suite en memoria (happy)
 
@@ -166,7 +222,7 @@ Los tests del crate `catalog` MUST usar repositorios en memoria (sin SurrealDB) 
 
 ### Requirement: Fachada object-safe para el Gateway
 
-El crate `catalog` MUST exponer una fachada object-safe (`Send + Sync + 'static`) de los casos de uso de producto (crear, obtener, editar) para que el Gateway la inyecte como `Arc<dyn …>`. El servicio de producto MUST implementar esa fachada. MUST NOT mapear a HTTP ni abrir SurrealDB. MUST NOT exponer baja, reactivación ni listado.
+El crate `catalog` MUST exponer una fachada object-safe (`Send + Sync + 'static`) de los casos de uso de producto (crear, obtener, editar, dar de baja, reactivar) para que el Gateway la inyecte como `Arc<dyn …>`. El servicio de producto MUST implementar esa fachada. MUST NOT mapear a HTTP ni abrir SurrealDB. MUST NOT exponer listado.
 
 #### Scenario: el servicio es inyectable en AppState (happy)
 

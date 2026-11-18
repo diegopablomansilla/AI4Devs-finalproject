@@ -379,16 +379,44 @@ async fn post_product_price_as_json_number_returns_400() {
     assert_eq!(json["code"], "invalid_input");
 }
 
+async fn create_perno_id(
+    addr: std::net::SocketAddr,
+    seeds: &support::fake_catalog::ProductTestSeeds,
+) -> String {
+    let (_, _, body, _) = http_send(
+        addr,
+        "POST",
+        "/api/v1/products",
+        Some(&perno_create_json(seeds)),
+        &[],
+    )
+    .await;
+    json_body(&body)["id"].as_str().unwrap().to_string()
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn patch_product_active_returns_400() {
+async fn delete_product_returns_204() {
     let (addr, handle, seeds, _) = setup_gateway().await;
-    let json_body_str = perno_create_json(&seeds);
-    let (_, _, body, _) =
-        http_send(addr, "POST", "/api/v1/products", Some(&json_body_str), &[]).await;
-    let created = json_body(&body);
-    let id = created["id"].as_str().unwrap();
+    let id = create_perno_id(addr, &seeds).await;
     let path = format!("/api/v1/products/{id}");
-    let (s, _, body, _) = http_send(
+    let (s, _, body, _) = http_send(addr, "DELETE", &path, None, &[]).await;
+    assert_eq!(s, 204);
+    assert!(body.is_empty());
+    let (s2, _, body2, _) = http_send(addr, "GET", &path, None, &[]).await;
+    handle.abort();
+    let json = json_body(&body2);
+    assert_eq!(s2, 200);
+    assert_eq!(json["active"], false);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn patch_product_active_true_reactivates() {
+    let (addr, handle, seeds, _) = setup_gateway().await;
+    let id = create_perno_id(addr, &seeds).await;
+    let path = format!("/api/v1/products/{id}");
+    let (s, _, _, _) = http_send(addr, "DELETE", &path, None, &[]).await;
+    assert_eq!(s, 204);
+    let (s, ct, body, _) = http_send(
         addr,
         "PATCH",
         &path,
@@ -396,6 +424,86 @@ async fn patch_product_active_returns_400() {
         &[],
     )
     .await;
+    handle.abort();
+    let json = json_body(&body);
+    assert_eq!(s, 200);
+    assert_eq!(json["active"], true);
+    assert_eq!(json["version"], 1);
+    assert_conforms(
+        "PATCH",
+        "/api/v1/products/{productId}",
+        200,
+        "application/json",
+        &json,
+    );
+    let _ = ct;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn patch_product_active_false_deactivates() {
+    let (addr, handle, seeds, _) = setup_gateway().await;
+    let id = create_perno_id(addr, &seeds).await;
+    let path = format!("/api/v1/products/{id}");
+    let (s, _, body, _) = http_send(
+        addr,
+        "PATCH",
+        &path,
+        Some(r#"{"version":1,"active":false}"#),
+        &[],
+    )
+    .await;
+    handle.abort();
+    let json = json_body(&body);
+    assert_eq!(s, 200);
+    assert_eq!(json["active"], false);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn get_inactive_product_returns_200() {
+    let (addr, handle, seeds, _) = setup_gateway().await;
+    let id = create_perno_id(addr, &seeds).await;
+    let path = format!("/api/v1/products/{id}");
+    let (s, _, _, _) = http_send(addr, "DELETE", &path, None, &[]).await;
+    assert_eq!(s, 204);
+    let (s, ct, body, _) = http_send(addr, "GET", &path, None, &[]).await;
+    handle.abort();
+    let json = json_body(&body);
+    assert_eq!(s, 200);
+    assert_eq!(json["active"], false);
+    assert_conforms(
+        "GET",
+        "/api/v1/products/{productId}",
+        200,
+        "application/json",
+        &json,
+    );
+    let _ = ct;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn delete_product_unknown_id_returns_404() {
+    let (addr, handle, _, _) = setup_gateway().await;
+    let unknown = "01J9ZK4Q6Y3M2V8W0XAB1CD2EF";
+    let path = format!("/api/v1/products/{unknown}");
+    let (s, ct, body, _) = http_send(addr, "DELETE", &path, None, &[]).await;
+    handle.abort();
+    let json = json_body(&body);
+    assert_eq!(s, 404);
+    assert_eq!(json["code"], "not_found");
+    assert_conforms(
+        "DELETE",
+        "/api/v1/products/{productId}",
+        404,
+        "application/problem+json",
+        &json,
+    );
+    let _ = ct;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn delete_product_invalid_ulid_returns_400() {
+    let (addr, handle, _, _) = setup_gateway().await;
+    let (s, _, body, _) = http_send(addr, "DELETE", "/api/v1/products/not-a-ulid", None, &[]).await;
     handle.abort();
     let json = json_body(&body);
     assert_eq!(s, 400);
@@ -406,7 +514,47 @@ async fn patch_product_active_returns_400() {
         .iter()
         .filter_map(|e| e["field"].as_str())
         .collect();
-    assert!(fields.contains(&"active"));
+    assert!(fields.contains(&"productId"));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn delete_product_without_service_returns_503() {
+    let state = AppState::new();
+    let (addr, handle) = serve(state).await;
+    let unknown = "01J9ZK4Q6Y3M2V8W0XAB1CD2EF";
+    let path = format!("/api/v1/products/{unknown}");
+    let (s, ct, body, _) = http_send(addr, "DELETE", &path, None, &[]).await;
+    handle.abort();
+    let json = json_body(&body);
+    assert_eq!(s, 503);
+    assert_eq!(json["code"], "unavailable");
+    assert_conforms(
+        "DELETE",
+        "/api/v1/products/{productId}",
+        503,
+        "application/problem+json",
+        &json,
+    );
+    let _ = ct;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn patch_product_active_unknown_id_returns_404() {
+    let (addr, handle, _, _) = setup_gateway().await;
+    let unknown = "01J9ZK4Q6Y3M2V8W0XAB1CD2EF";
+    let path = format!("/api/v1/products/{unknown}");
+    let (s, _, body, _) = http_send(
+        addr,
+        "PATCH",
+        &path,
+        Some(r#"{"version":1,"active":true}"#),
+        &[],
+    )
+    .await;
+    handle.abort();
+    let json = json_body(&body);
+    assert_eq!(s, 404);
+    assert_eq!(json["code"], "not_found");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

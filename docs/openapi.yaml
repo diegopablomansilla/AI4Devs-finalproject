@@ -139,6 +139,7 @@ paths:
       responses:
         '204': { description: Producto dado de baja. }
         '404': { $ref: '#/components/responses/NotFound' }
+        '503': { $ref: '#/components/responses/Unavailable' }
 
   /api/v1/search/by-code/{code}:
     get:
