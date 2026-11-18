@@ -6,8 +6,9 @@ use std::str::FromStr;
 
 use domain::{
     AtributoDef, AtributoValor, AttributeDefRepo, BrandRepo, Categoria, CategoryRepo, Codigo,
-    DomainError, FichaProducto, FieldError, Id, InvalidInputCode, Marca, NewProducto, ProductRepo,
-    Producto, ProductoDraft, Timestamp, UnidadMedida, UpdateProducto,
+    DomainError, FichaProducto, FieldError, FiltroProducto, Id, InvalidInputCode, Marca,
+    NewProducto, ProductRepo, Producto, ProductoDraft, ResumenProducto, Timestamp, UnidadMedida,
+    UpdateProducto,
 };
 
 /// Partial product sheet update (application layer; HTTP merge in T-02-21).
@@ -98,6 +99,15 @@ where
             return Ok(current);
         }
         self.products.set_activo(id, true).await
+    }
+
+    pub async fn list(
+        &self,
+        filtro: FiltroProducto,
+        after: Option<Id<domain::Producto>>,
+        take: u32,
+    ) -> Result<Vec<ResumenProducto>, DomainError> {
+        self.products.list(filtro, after, take).await
     }
 
     async fn load_and_validate_refs(
@@ -260,6 +270,18 @@ fn field_invalid_input(field: &str, message: &str) -> DomainError {
     )
 }
 
+pub fn product_matches_categoria_branch(
+    product_categoria: &Id<Categoria>,
+    filter_categoria: &Id<Categoria>,
+    categoria: &Categoria,
+) -> bool {
+    product_categoria == filter_categoria || categoria.ancestros.contains(filter_categoria)
+}
+
+pub fn product_id_after(after: &Id<domain::Producto>, id: &Id<domain::Producto>) -> bool {
+    id.to_string() > after.to_string()
+}
+
 /// Object-safe facade for HTTP injection (`Arc<dyn ProductGateway>`).
 pub trait ProductGateway: Send + Sync {
     fn create(
@@ -286,6 +308,13 @@ pub trait ProductGateway: Send + Sync {
         &self,
         id: Id<domain::Producto>,
     ) -> Pin<Box<dyn Future<Output = Result<FichaProducto, DomainError>> + Send + '_>>;
+
+    fn list(
+        &self,
+        filtro: FiltroProducto,
+        after: Option<Id<domain::Producto>>,
+        take: u32,
+    ) -> Pin<Box<dyn Future<Output = Result<Vec<ResumenProducto>, DomainError>> + Send + '_>>;
 }
 
 impl<P, C, B, A> ProductGateway for ProductService<P, C, B, A>
@@ -328,6 +357,15 @@ where
         id: Id<domain::Producto>,
     ) -> Pin<Box<dyn Future<Output = Result<FichaProducto, DomainError>> + Send + '_>> {
         Box::pin(ProductService::reactivate(self, id))
+    }
+
+    fn list(
+        &self,
+        filtro: FiltroProducto,
+        after: Option<Id<domain::Producto>>,
+        take: u32,
+    ) -> Pin<Box<dyn Future<Output = Result<Vec<ResumenProducto>, DomainError>> + Send + '_>> {
+        Box::pin(ProductService::list(self, filtro, after, take))
     }
 }
 
@@ -383,6 +421,28 @@ pub mod testing {
         B: BrandRepo,
         A: AttributeDefRepo,
     {
+        async fn producto_to_resumen(
+            &self,
+            producto: Producto,
+        ) -> Result<ResumenProducto, DomainError> {
+            let categoria = self.categories.get(producto.categoria.clone()).await?;
+            let marca_nombre = match producto.marca {
+                None => None,
+                Some(ref id) => Some(self.brands.get(id.clone()).await?.nombre),
+            };
+            Ok(ResumenProducto {
+                id: producto.id,
+                sku: producto.sku.as_str().to_string(),
+                nombre: producto.nombre,
+                tipo: producto.tipo,
+                precio: producto.precio,
+                stock: producto.stock,
+                activo: producto.activo,
+                marca_nombre,
+                categoria_ruta: categoria.ruta,
+            })
+        }
+
         async fn hydrate_ficha(&self, producto: Producto) -> Result<FichaProducto, DomainError> {
             let categoria = self.categories.get(producto.categoria.clone()).await?;
             let marca = match producto.marca {
@@ -538,6 +598,44 @@ pub mod testing {
                 self.hydrate_ficha(updated).await
             }
         }
+
+        fn list(
+            &self,
+            filtro: FiltroProducto,
+            after: Option<Id<domain::Producto>>,
+            take: u32,
+        ) -> impl Future<Output = Result<Vec<ResumenProducto>, DomainError>> + Send {
+            async move {
+                let mut items: Vec<Producto> = {
+                    let map = self.inner.lock().expect("lock");
+                    map.values().cloned().collect()
+                };
+                items.retain(|p| p.activo == filtro.activo);
+                if let Some(ref marca) = filtro.marca {
+                    items.retain(|p| p.marca.as_ref() == Some(marca));
+                }
+                if let Some(ref cat_filter) = filtro.categoria {
+                    let mut matched = Vec::with_capacity(items.len());
+                    for p in items {
+                        let cat = self.categories.get(p.categoria.clone()).await?;
+                        if product_matches_categoria_branch(&p.categoria, cat_filter, &cat) {
+                            matched.push(p);
+                        }
+                    }
+                    items = matched;
+                }
+                if let Some(ref after_id) = after {
+                    items.retain(|p| product_id_after(after_id, &p.id));
+                }
+                items.sort_by(|a, b| a.id.to_string().cmp(&b.id.to_string()));
+                items.truncate(take as usize);
+                let mut out = Vec::with_capacity(items.len());
+                for p in items {
+                    out.push(self.producto_to_resumen(p).await?);
+                }
+                Ok(out)
+            }
+        }
     }
 
     use crate::atributo_def::testing::InMemoryAttributeDefRepo;
@@ -676,12 +774,14 @@ mod tests {
     use std::sync::{Arc, Mutex};
 
     struct Seeds {
+        fijaciones_id: Id<Categoria>,
         categoria_id: Id<Categoria>,
         marca_id: Id<Marca>,
         medida_id: Id<AtributoDef>,
         largo_id: Id<AtributoDef>,
         grado_id: Id<AtributoDef>,
         categories: Arc<InMemoryCategoryRepo>,
+        brands: Arc<InMemoryBrandRepo>,
     }
 
     type TestService = ProductService<
@@ -752,6 +852,7 @@ mod tests {
             })
             .await
             .expect("fijaciones");
+        let fijaciones_id = fijaciones.id.clone();
         let pernos = categories
             .create(NewCategoria {
                 nombre: "Pernos".into(),
@@ -818,14 +919,28 @@ mod tests {
         );
         let service = ProductService::new(products, cat_shared, brand_shared, attr_shared);
         let seeds = Seeds {
+            fijaciones_id,
             categoria_id: pernos.id,
             marca_id: marca.id,
             medida_id: medida.id,
             largo_id: largo.id,
             grado_id: grado.id,
             categories,
+            brands,
         };
         (service, seeds)
+    }
+
+    fn new_producto_for_category(
+        seeds: &Seeds,
+        sku: &str,
+        categoria: Id<Categoria>,
+    ) -> NewProducto {
+        let mut input = perno_new_producto(seeds);
+        input.sku = sku.into();
+        input.nombre = format!("Producto {sku}");
+        input.categoria = categoria;
+        input
     }
 
     fn perno_new_producto(seeds: &Seeds) -> NewProducto {
@@ -1095,6 +1210,19 @@ mod tests {
             .await
             .expect("create");
         assert_eq!(ficha.producto.sku.as_str(), "PER-M8X40-ZN");
+        let listed = gateway
+            .list(
+                FiltroProducto {
+                    categoria: None,
+                    marca: None,
+                    activo: true,
+                },
+                None,
+                10,
+            )
+            .await
+            .expect("list");
+        assert!(!listed.is_empty());
     }
 
     struct RecordingProductRepo<C, B, A> {
@@ -1154,6 +1282,206 @@ mod tests {
         ) -> impl Future<Output = Result<FichaProducto, DomainError>> + Send {
             self.inner.set_activo(id, activo)
         }
+
+        fn list(
+            &self,
+            filtro: FiltroProducto,
+            after: Option<Id<domain::Producto>>,
+            take: u32,
+        ) -> impl Future<Output = Result<Vec<ResumenProducto>, DomainError>> + Send {
+            self.inner.list(filtro, after, take)
+        }
+    }
+
+    #[tokio::test]
+    async fn catalog_list_branch_includes_descendants() {
+        let (service, seeds) = seed_active_catalog().await;
+        let other = seeds
+            .categories
+            .create(NewCategoria {
+                nombre: "Tornillería".into(),
+                slug: None,
+                padre: None,
+            })
+            .await
+            .expect("other cat");
+        service
+            .create(new_producto_for_category(
+                &seeds,
+                "SKU-FIJ",
+                seeds.fijaciones_id.clone(),
+            ))
+            .await
+            .expect("fijaciones");
+        service
+            .create(new_producto_for_category(
+                &seeds,
+                "SKU-PER",
+                seeds.categoria_id.clone(),
+            ))
+            .await
+            .expect("pernos");
+        service
+            .create(new_producto_for_category(&seeds, "SKU-OTH", other.id))
+            .await
+            .expect("other");
+        let filtro = FiltroProducto {
+            categoria: Some(seeds.fijaciones_id.clone()),
+            marca: None,
+            activo: true,
+        };
+        let rows = service.list(filtro, None, 50).await.expect("list");
+        assert_eq!(rows.len(), 2);
+        assert!(
+            rows.iter()
+                .all(|r| r.categoria_ruta.first().map(|s| s.as_str()) == Some("Fijaciones"))
+        );
+        let skus: Vec<_> = rows.iter().map(|r| r.sku.as_str()).collect();
+        assert!(skus.contains(&"SKU-FIJ"));
+        assert!(skus.contains(&"SKU-PER"));
+        assert!(!skus.contains(&"SKU-OTH"));
+    }
+
+    #[tokio::test]
+    async fn catalog_list_inactive_only() {
+        let (service, seeds) = seed_active_catalog().await;
+        let active = service
+            .create(perno_new_producto(&seeds))
+            .await
+            .expect("active");
+        let inactive = service
+            .create(new_producto_for_category(
+                &seeds,
+                "SKU-INACT",
+                seeds.categoria_id.clone(),
+            ))
+            .await
+            .expect("inactive");
+        let inactive_id = inactive.producto.id.clone();
+        service
+            .deactivate(inactive_id.clone())
+            .await
+            .expect("deactivate");
+        let filtro = FiltroProducto {
+            categoria: None,
+            marca: None,
+            activo: false,
+        };
+        let rows = service.list(filtro, None, 50).await.expect("list");
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].id, inactive_id);
+        assert!(!rows[0].activo);
+        assert_ne!(rows[0].id, active.producto.id);
+    }
+
+    #[tokio::test]
+    async fn catalog_list_filters_by_brand() {
+        let (service, seeds) = seed_active_catalog().await;
+        let other_marca = seeds
+            .brands
+            .create(NewMarca {
+                nombre: "Otra".into(),
+                slug: None,
+            })
+            .await
+            .expect("other brand");
+        let mut a = perno_new_producto(&seeds);
+        a.sku = "SKU-A".into();
+        service.create(a).await.expect("a");
+        let mut b = perno_new_producto(&seeds);
+        b.sku = "SKU-B".into();
+        service.create(b).await.expect("b");
+        let mut c = perno_new_producto(&seeds);
+        c.sku = "SKU-C".into();
+        c.marca = Some(other_marca.id);
+        service.create(c).await.expect("c");
+        let filtro = FiltroProducto {
+            categoria: None,
+            marca: Some(seeds.marca_id.clone()),
+            activo: true,
+        };
+        let rows = service.list(filtro, None, 50).await.expect("list");
+        assert_eq!(rows.len(), 2);
+        assert!(
+            rows.iter()
+                .all(|r| r.marca_nombre.as_deref() == Some("Fixser"))
+        );
+        let skus: Vec<_> = rows.iter().map(|r| r.sku.as_str()).collect();
+        assert!(skus.contains(&"SKU-A"));
+        assert!(skus.contains(&"SKU-B"));
+        assert!(!skus.contains(&"SKU-C"));
+    }
+
+    #[tokio::test]
+    async fn catalog_list_orders_by_id_and_after() {
+        let (service, seeds) = seed_active_catalog().await;
+        let a = service
+            .create(new_producto_for_category(
+                &seeds,
+                "SKU-A",
+                seeds.categoria_id.clone(),
+            ))
+            .await
+            .expect("a");
+        let b = service
+            .create(new_producto_for_category(
+                &seeds,
+                "SKU-B",
+                seeds.categoria_id.clone(),
+            ))
+            .await
+            .expect("b");
+        let c = service
+            .create(new_producto_for_category(
+                &seeds,
+                "SKU-C",
+                seeds.categoria_id.clone(),
+            ))
+            .await
+            .expect("c");
+        let filtro = FiltroProducto {
+            categoria: None,
+            marca: None,
+            activo: true,
+        };
+        let page1 = service.list(filtro.clone(), None, 2).await.expect("page1");
+        assert_eq!(page1.len(), 2);
+        assert!(
+            page1[0].id.to_string() < page1[1].id.to_string(),
+            "list must be ordered by id ascending"
+        );
+        let after_id = page1[1].id.clone();
+        let page2 = service
+            .list(filtro, Some(after_id), 2)
+            .await
+            .expect("page2");
+        assert_eq!(page2.len(), 1);
+        let mut seen: std::collections::HashSet<_> = page1
+            .iter()
+            .chain(page2.iter())
+            .map(|r| r.id.to_string())
+            .collect();
+        assert_eq!(seen.len(), 3);
+        for id in [a.producto.id, b.producto.id, c.producto.id] {
+            assert!(seen.remove(&id.to_string()));
+        }
+        assert!(page2[0].id.to_string() > page1[1].id.to_string());
+    }
+
+    #[tokio::test]
+    async fn catalog_list_unknown_category_is_empty() {
+        let (service, seeds) = seed_active_catalog().await;
+        service
+            .create(perno_new_producto(&seeds))
+            .await
+            .expect("create");
+        let filtro = FiltroProducto {
+            categoria: Some(Id::generate()),
+            marca: None,
+            activo: true,
+        };
+        let rows = service.list(filtro, None, 50).await.expect("list");
+        assert!(rows.is_empty());
     }
 
     #[tokio::test]

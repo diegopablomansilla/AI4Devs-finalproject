@@ -5,11 +5,11 @@ use std::str::FromStr as _;
 use std::sync::Arc;
 
 use domain::{
-    AtributoDef, AtributoFicha, AtributoValor, AttributeDefRepo, BrandRepo, CategoryRepo, Codigo,
-    ConflictCode, Decimal, DomainError, FichaProducto, Id, InvalidInputCode, Marca,
-    MovimientoStock, NewProducto, OutboxEntity, OutboxEvent, OutboxOp, ProductRepo, Producto,
-    ProductoDraft, Timestamp, TipoCodigo, Ubicacion, UnavailableCode, UnidadMedida, UpdateProducto,
-    ValorAtributo,
+    AtributoDef, AtributoFicha, AtributoValor, AttributeDefRepo, BrandRepo, Categoria,
+    CategoryRepo, Codigo, ConflictCode, Decimal, DomainError, FichaProducto, FiltroProducto, Id,
+    InvalidInputCode, Marca, MovimientoStock, NewProducto, OutboxEntity, OutboxEvent, OutboxOp,
+    ProductRepo, Producto, ProductoDraft, ResumenProducto, Timestamp, TipoCodigo, Ubicacion,
+    UnavailableCode, UnidadMedida, UpdateProducto, ValorAtributo,
 };
 use serde::Deserialize;
 use surrealdb::{RecordId, RecordIdKey};
@@ -126,6 +126,89 @@ impl ProductRepo for ProductoRepo {
         let db = Arc::clone(&self.db);
         async move { set_activo_impl(db, id, activo).await }
     }
+
+    fn list(
+        &self,
+        filtro: FiltroProducto,
+        after: Option<Id<domain::Producto>>,
+        take: u32,
+    ) -> impl Future<Output = Result<Vec<ResumenProducto>, DomainError>> + Send {
+        let db = Arc::clone(&self.db);
+        async move { list_impl(db, filtro, after, take).await }
+    }
+}
+
+async fn list_impl(
+    db: Arc<Db>,
+    filtro: FiltroProducto,
+    after: Option<Id<Producto>>,
+    take: u32,
+) -> Result<Vec<ResumenProducto>, DomainError> {
+    let mut conditions = vec![if filtro.activo {
+        "activo = true".to_string()
+    } else {
+        "activo = false".to_string()
+    }];
+    if let Some(marca) = &filtro.marca {
+        conditions.push(format!("marca = type::thing('marca', '{marca}')"));
+    }
+    if let Some(categoria) = &filtro.categoria {
+        let c = format!("type::thing('categoria', '{categoria}')");
+        conditions.push(format!(
+            "(categoria = {c} OR categoria.ancestros CONTAINS {c})"
+        ));
+    }
+    let where_clause = conditions.join(" AND ");
+    let stmt = format!("SELECT * FROM producto WHERE {where_clause};");
+    let mut rows = query_product_records(db.as_ref(), &stmt).await?;
+    rows.sort_by(|a, b| {
+        let a_id = record_id_to_domain_id::<Producto>(&a.id).expect("product id");
+        let b_id = record_id_to_domain_id::<Producto>(&b.id).expect("product id");
+        a_id.to_string().cmp(&b_id.to_string())
+    });
+    if let Some(after_id) = after {
+        rows.retain(|row| {
+            let id = record_id_to_domain_id::<Producto>(&row.id).expect("product id");
+            id.to_string() > after_id.to_string()
+        });
+    }
+    rows.truncate(take as usize);
+    let mut out = Vec::with_capacity(rows.len());
+    for row in rows {
+        out.push(record_to_resumen(Arc::clone(&db), row).await?);
+    }
+    Ok(out)
+}
+
+async fn record_to_resumen(
+    db: Arc<Db>,
+    row: ProductoRecord,
+) -> Result<ResumenProducto, DomainError> {
+    let id = record_id_to_domain_id(&row.id)?;
+    let categoria_id = record_id_to_domain_id::<Categoria>(&row.categoria)?;
+    let categoria = CategoriaRepo::new(Arc::clone(&db))
+        .get(categoria_id)
+        .await?;
+    let marca_nombre = match &row.marca {
+        None => None,
+        Some(rid) => {
+            let marca_id = record_id_to_domain_id::<Marca>(rid)?;
+            Some(MarcaRepo::new(Arc::clone(&db)).get(marca_id).await?.nombre)
+        }
+    };
+    let precio = surreal_decimal_to_domain(&row.precio)?;
+    let stock = surreal_decimal_to_domain(&row.stock)?;
+    Ok(ResumenProducto {
+        id,
+        sku: row.sku,
+        nombre: row.nombre,
+        tipo: row.tipo,
+        precio,
+        stock,
+        activo: row.activo,
+        marca_nombre,
+        categoria_ruta: categoria.ruta,
+    })
 }
 
 async fn set_activo_impl(

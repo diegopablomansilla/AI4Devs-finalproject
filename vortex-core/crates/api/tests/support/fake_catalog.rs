@@ -7,15 +7,16 @@ use catalog::stock::testing::InMemoryStockLedger;
 use catalog::{
     AttributeDefGateway, AttributeDefService, BrandGateway, BrandService, CategoryGateway,
     CategoryService, EmptyAttributeUsage, PatchProducto, ProductGateway, ProductService,
-    ProductionOccupancy, StockGateway, StockService,
+    ProductionOccupancy, StockGateway, StockService, product_id_after,
+    product_matches_categoria_branch,
 };
 use domain::AttributeUsage;
 use domain::{
     AtributoDef, AtributoDefDraft, AtributoFicha, AttributeDefRepo, BrandRepo, Categoria,
-    CategoriaDraft, CategoryRepo, ConflictCode, DomainError, FichaProducto, Id, InvalidInputCode,
-    MAX_DEPTH, Marca, MarcaDraft, NewAtributoDef, NewCategoria, NewMarca, NewProducto, ProductRepo,
-    Producto, Sku, Slug, Timestamp, TipoAtributo, UpdateAtributoDef, UpdateCategoria, UpdateMarca,
-    UpdateProducto, ValorAtributo, reject_cycle,
+    CategoriaDraft, CategoryRepo, ConflictCode, DomainError, FichaProducto, FiltroProducto, Id,
+    InvalidInputCode, MAX_DEPTH, Marca, MarcaDraft, NewAtributoDef, NewCategoria, NewMarca,
+    NewProducto, ProductRepo, Producto, ResumenProducto, Sku, Slug, Timestamp, TipoAtributo,
+    UpdateAtributoDef, UpdateCategoria, UpdateMarca, UpdateProducto, ValorAtributo, reject_cycle,
 };
 
 const TS: &str = "2026-09-24T21:33:00Z";
@@ -640,6 +641,28 @@ impl FakeProductRepo {
         })
     }
 
+    async fn producto_to_resumen(
+        &self,
+        producto: Producto,
+    ) -> Result<ResumenProducto, DomainError> {
+        let categoria = self.categories.get(producto.categoria.clone()).await?;
+        let marca_nombre = match producto.marca {
+            None => None,
+            Some(ref id) => Some(self.brands.get(id.clone()).await?.nombre),
+        };
+        Ok(ResumenProducto {
+            id: producto.id,
+            sku: producto.sku.as_str().to_string(),
+            nombre: producto.nombre,
+            tipo: producto.tipo,
+            precio: producto.precio,
+            stock: producto.stock,
+            activo: producto.activo,
+            marca_nombre,
+            categoria_ruta: categoria.ruta,
+        })
+    }
+
     async fn hydrate_ficha(&self, producto: Producto) -> Result<FichaProducto, DomainError> {
         let categoria = self.categories.get(producto.categoria.clone()).await?;
         let marca = match producto.marca {
@@ -792,9 +815,48 @@ impl ProductRepo for FakeProductRepo {
             self.hydrate_ficha(updated).await
         }
     }
+
+    fn list(
+        &self,
+        filtro: FiltroProducto,
+        after: Option<Id<Producto>>,
+        take: u32,
+    ) -> impl std::future::Future<Output = Result<Vec<ResumenProducto>, DomainError>> + Send {
+        async move {
+            let mut items: Vec<Producto> = {
+                let map = self.inner.lock().expect("lock");
+                map.values().cloned().collect()
+            };
+            items.retain(|p| p.activo == filtro.activo);
+            if let Some(ref marca) = filtro.marca {
+                items.retain(|p| p.marca.as_ref() == Some(marca));
+            }
+            if let Some(ref cat_filter) = filtro.categoria {
+                let mut matched = Vec::with_capacity(items.len());
+                for p in items {
+                    let cat = self.categories.get(p.categoria.clone()).await?;
+                    if product_matches_categoria_branch(&p.categoria, cat_filter, &cat) {
+                        matched.push(p);
+                    }
+                }
+                items = matched;
+            }
+            if let Some(ref after_id) = after {
+                items.retain(|p| product_id_after(after_id, &p.id));
+            }
+            items.sort_by(|a, b| a.id.to_string().cmp(&b.id.to_string()));
+            items.truncate(take as usize);
+            let mut out = Vec::with_capacity(items.len());
+            for p in items {
+                out.push(self.producto_to_resumen(p).await?);
+            }
+            Ok(out)
+        }
+    }
 }
 
 pub struct ProductTestSeeds {
+    pub fijaciones_id: Id<Categoria>,
     pub category_id: Id<Categoria>,
     pub brand_id: Id<Marca>,
     pub medida_id: Id<AtributoDef>,
@@ -858,6 +920,19 @@ impl ProductGateway for RecordingProductGateway {
     > {
         Box::pin(self.inner.reactivate(id))
     }
+
+    fn list(
+        &self,
+        filtro: FiltroProducto,
+        after: Option<Id<Producto>>,
+        take: u32,
+    ) -> std::pin::Pin<
+        Box<
+            dyn std::future::Future<Output = Result<Vec<ResumenProducto>, DomainError>> + Send + '_,
+        >,
+    > {
+        Box::pin(self.inner.list(filtro, after, take))
+    }
 }
 
 pub async fn test_product_gateway() -> (
@@ -874,6 +949,7 @@ pub async fn test_product_gateway() -> (
         })
         .await
         .expect("fijaciones");
+    let fijaciones_id = fijaciones.id.clone();
     let pernos = categories
         .create(NewCategoria {
             nombre: "Pernos".into(),
@@ -940,6 +1016,7 @@ pub async fn test_product_gateway() -> (
         last_create: Arc::clone(&last_create),
     });
     let seeds = ProductTestSeeds {
+        fijaciones_id,
         category_id: pernos.id,
         brand_id: marca.id,
         medida_id: medida.id,
@@ -964,6 +1041,7 @@ pub async fn test_stock_gateways() -> (
         })
         .await
         .expect("fijaciones");
+    let fijaciones_id = fijaciones.id.clone();
     let pernos = categories
         .create(NewCategoria {
             nombre: "Pernos".into(),
@@ -1033,6 +1111,7 @@ pub async fn test_stock_gateways() -> (
     let stock: Arc<dyn StockGateway> =
         Arc::new(StockService::new(InMemoryStockLedger::new(product_store)));
     let seeds = ProductTestSeeds {
+        fijaciones_id,
         category_id: pernos.id,
         brand_id: marca.id,
         medida_id: medida.id,
@@ -1065,6 +1144,32 @@ pub fn product_create_json_stock(
             "initialStock": "{initial_stock}"
         }}"#,
         seeds.brand_id, seeds.category_id, seeds.medida_id, seeds.largo_id, seeds.grado_id
+    )
+}
+
+pub fn product_create_json(
+    seeds: &ProductTestSeeds,
+    sku: &str,
+    name: &str,
+    category_id: &Id<Categoria>,
+) -> String {
+    format!(
+        r#"{{
+            "sku": "{sku}",
+            "name": "{name}",
+            "productType": "Perno",
+            "brandId": "{}",
+            "categoryId": "{}",
+            "attributes": [
+                {{ "definitionId": "{}", "value": "M8" }},
+                {{ "definitionId": "{}", "value": 40 }},
+                {{ "definitionId": "{}", "value": "5" }}
+            ],
+            "unitOfMeasure": "unit",
+            "price": "10",
+            "initialStock": "0"
+        }}"#,
+        seeds.brand_id, category_id, seeds.medida_id, seeds.largo_id, seeds.grado_id
     )
 }
 

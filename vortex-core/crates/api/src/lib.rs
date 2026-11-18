@@ -230,7 +230,10 @@ pub fn router_shell(state: AppState) -> Router {
             patch(attribute_definitions::patch_attribute_definition)
                 .delete(attribute_definitions::delete_attribute_definition),
         )
-        .route("/api/v1/products", post(products::post_product))
+        .route(
+            "/api/v1/products",
+            get(products::list_products).post(products::post_product),
+        )
         .route(
             "/api/v1/products/{product_id}",
             get(products::get_product)
