@@ -203,6 +203,7 @@ ${navLinks}
  *   request?: (method: string, path: string, options?: object) => Promise<unknown>,
  *   showError?: (err: unknown) => void,
  *   mountCategories?: (el: Element, deps: object) => Promise<void>,
+ *   mountBrands?: (el: Element, deps: object) => Promise<void>,
  * }} opts
  */
 export function startRouter({
@@ -213,6 +214,7 @@ export function startRouter({
   request,
   showError,
   mountCategories,
+  mountBrands,
 }) {
   const resolvedStorage =
     storage ??
@@ -226,18 +228,25 @@ export function startRouter({
       const field = outlet.querySelector('vx-field[name="terminal"]');
       bindTerminalName(field, resolvedStorage);
       const section = route.section ?? "";
+      const region = outlet.querySelector('[data-region="admin-content"]');
+      const deps = {
+        request,
+        showError: showError ?? (() => {}),
+      };
       if (
-        section === "categorias" &&
+        region &&
         typeof request === "function" &&
+        section === "categorias" &&
         typeof mountCategories === "function"
       ) {
-        const region = outlet.querySelector('[data-region="admin-content"]');
-        if (region) {
-          void mountCategories(region, {
-            request,
-            showError: showError ?? (() => {}),
-          });
-        }
+        void mountCategories(region, deps);
+      } else if (
+        region &&
+        typeof request === "function" &&
+        section === "marcas" &&
+        typeof mountBrands === "function"
+      ) {
+        void mountBrands(region, deps);
       }
     }
   };

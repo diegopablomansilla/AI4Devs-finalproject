@@ -3,6 +3,7 @@ import { startRouter } from "./router.js";
 import { request } from "./api.js";
 import { showError } from "./errors.js";
 import { mountCategories } from "./admin/categories.js";
+import { mountBrands } from "./admin/brands.js";
 import { startHealth } from "./health.js";
 import { startSwUpdateWatcher } from "./sw-update.js";
 
@@ -28,6 +29,7 @@ if (outlet) {
     request,
     showError,
     mountCategories,
+    mountBrands,
   });
   startHealth({ fetch: globalThis.fetch.bind(globalThis), window, document });
   registerAppServiceWorker();

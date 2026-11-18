@@ -236,3 +236,84 @@ textarea:focus-visible {
 .vx-category-select-label select {
   width: 100%;
 }
+
+.vx-brand-admin {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vx-space-3);
+}
+
+.vx-brand-title {
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+.vx-brand-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--vx-space-2);
+}
+
+.vx-brand-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vx-space-2);
+  padding: var(--vx-space-3);
+  border-radius: var(--vx-radius-md);
+  background: var(--vx-color-surface-solid);
+}
+
+.vx-brand-form-title {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.vx-brand-form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--vx-space-2);
+}
+
+.vx-brand-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.vx-brand-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--vx-space-2);
+  padding: var(--vx-space-1) 0;
+}
+
+.vx-brand-slug {
+  color: var(--vx-color-text-muted);
+  font-size: 0.875rem;
+}
+
+.vx-brand-inactive {
+  color: var(--vx-color-text-muted);
+  font-size: 0.875rem;
+}
+
+.vx-brand-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--vx-space-1);
+}
+
+.vx-brand-actions button,
+.vx-brand-toolbar button,
+.vx-brand-form button {
+  min-height: var(--vx-touch-min);
+  min-width: var(--vx-touch-min);
+  padding: var(--vx-space-2) var(--vx-space-3);
+  border-radius: var(--vx-radius-sm);
+  border: 1px solid var(--vx-color-text-muted);
+  font: inherit;
+  color: var(--vx-color-text);
+  background: transparent;
+  cursor: pointer;
+}
