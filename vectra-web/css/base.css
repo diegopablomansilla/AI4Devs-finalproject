@@ -462,6 +462,27 @@ textarea:focus-visible {
   cursor: pointer;
 }
 
+.vx-product-attrs,
+.vx-product-codes {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vx-space-2);
+  padding: var(--vx-space-2) 0;
+  border-top: 1px solid var(--vx-color-text-muted);
+}
+
+.vx-product-section-title {
+  margin: 0;
+  font-size: 1rem;
+  color: var(--vx-color-text);
+}
+
+.vx-product-attr-row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vx-space-1);
+}
+
 .vx-attr-admin {
   display: flex;
   flex-direction: column;

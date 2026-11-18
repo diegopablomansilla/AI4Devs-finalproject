@@ -201,10 +201,19 @@ export async function mountProducts(el, { request, showError = () => {} }) {
   let mode = "list";
   /** @type {Record<string, string>} */
   let fieldErrors = {};
+  /** @type {Array<{ id: string, label: string, type: string, unit?: string | null, options?: string[] | null, active?: boolean }>} */
+  let attributeDefs = [];
+  /** @type {Array<{ definitionId: string, value: unknown }>} */
+  let lastPostedAttributes = [];
 
   const paint = () => {
     if (mode === "create") {
-      el.innerHTML = renderCreateProductSheet(categories, brands, fieldErrors);
+      el.innerHTML = renderCreateProductSheet(
+        categories,
+        brands,
+        attributeDefs,
+        fieldErrors,
+      );
       return;
     }
     el.innerHTML = renderShell(
@@ -299,13 +308,24 @@ export async function mountProducts(el, { request, showError = () => {} }) {
     if (action === "create") {
       mode = "create";
       fieldErrors = {};
-      paint();
+      lastPostedAttributes = [];
+      void (async () => {
+        try {
+          const data = await request("GET", "/api/v1/attribute-definitions");
+          attributeDefs = Array.isArray(data?.items) ? data.items : [];
+        } catch (err) {
+          showError(err);
+          attributeDefs = [];
+        }
+        paint();
+      })();
       return;
     }
 
     if (action === "cancel-sheet") {
       mode = "list";
       fieldErrors = {};
+      lastPostedAttributes = [];
       paint();
       return;
     }
@@ -365,19 +385,36 @@ export async function mountProducts(el, { request, showError = () => {} }) {
     }
 
     void (async () => {
+      lastPostedAttributes = Array.isArray(body.attributes)
+        ? body.attributes
+        : [];
       try {
         await request("POST", "/api/v1/products", { body });
         mode = "list";
         fieldErrors = {};
+        lastPostedAttributes = [];
         await reloadFirstPage();
       } catch (err) {
         fieldErrors = {};
+        const activeDefs = attributeDefs.filter((d) => d.active !== false);
         const list = Array.isArray(err?.errors) ? err.errors : [];
         for (const item of list) {
           const field = item?.field;
-          if (field) {
-            fieldErrors[field] = String(item.message ?? "");
+          const message = String(item.message ?? "");
+          if (!field) {
+            continue;
           }
+          const attrMatch = field.match(/^attributes\[(\d+)\]\.value$/);
+          if (attrMatch) {
+            const n = Number(attrMatch[1]);
+            const defId = lastPostedAttributes[n]?.definitionId;
+            const renderIndex = activeDefs.findIndex((d) => d.id === defId);
+            if (renderIndex >= 0) {
+              fieldErrors[`attributes[${renderIndex}].value`] = message;
+              continue;
+            }
+          }
+          fieldErrors[field] = message;
         }
         paint();
         showError(err);
