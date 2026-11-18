@@ -1,5 +1,6 @@
 //! Crate `domain` — entities, ports and domain errors.
 
+pub mod atributo_def;
 pub mod categoria;
 pub mod decimal;
 pub mod error;
@@ -9,6 +10,10 @@ pub mod marca;
 pub mod outbox;
 pub mod timestamp;
 
+pub use atributo_def::{
+    AtributoDef, AtributoDefDraft, AttributeDefRepo, NewAtributoDef, TipoAtributo,
+    UpdateAtributoDef,
+};
 pub use categoria::{
     Categoria, CategoriaDraft, CategoryRepo, MAX_DEPTH, NewCategoria, Slug, UpdateCategoria,
     category_depth, reject_cycle, would_form_cycle,
