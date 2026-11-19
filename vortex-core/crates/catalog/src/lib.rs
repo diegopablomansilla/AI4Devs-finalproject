@@ -4,6 +4,7 @@ pub mod atributo_def;
 pub mod categoria;
 pub mod marca;
 pub mod producto;
+pub mod seed;
 pub mod stock;
 
 pub use atributo_def::{AttributeDefGateway, AttributeDefService, EmptyAttributeUsage};
@@ -13,4 +14,5 @@ pub use producto::{
     PatchProducto, ProductGateway, ProductService, product_id_after,
     product_matches_categoria_branch,
 };
+pub use seed::{SeedIssue, validate_dir};
 pub use stock::{StockGateway, StockService};

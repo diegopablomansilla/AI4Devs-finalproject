@@ -296,6 +296,29 @@ workspace = true
 EOF
 assert_fails_with 'catalog con surrealdb' "${tmp}" 'catalog'
 
+# happy: catalog declares serde and serde_json (T-02-40)
+cp "${REPO_ROOT}/vortex-core/crates/catalog/Cargo.toml" "${tmp}/vortex-core/crates/catalog/Cargo.toml"
+assert_ok 'catalog con serde y serde_json' "${tmp}"
+
+# unhappy: catalog declares clap outside allowlist (T-02-40)
+cat >"${tmp}/vortex-core/crates/catalog/Cargo.toml" <<'EOF'
+[package]
+name = "catalog"
+version = "0.1.0"
+edition.workspace = true
+publish = false
+
+[dependencies]
+domain = { path = "../domain" }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+clap = { workspace = true }
+
+[lints]
+workspace = true
+EOF
+assert_fails_with 'catalog con clap' "${tmp}" 'catalog'
+
 # happy: storage declares surrealdb allowlist
 cp "${REPO_ROOT}/vortex-core/crates/api/Cargo.toml" "${tmp}/vortex-core/crates/api/Cargo.toml"
 cp "${REPO_ROOT}/vortex-core/crates/catalog/Cargo.toml" "${tmp}/vortex-core/crates/catalog/Cargo.toml"

@@ -130,7 +130,7 @@ storage_deps_allowed() {
   return 0
 }
 
-# `catalog` allowlist (T-02-05): [dependencies] path domain only; [dev-dependencies] tokio only.
+# `catalog` allowlist (T-02-05 / T-02-40): domain, serde, serde_json; [dev-dependencies] tokio only.
 catalog_deps_allowed() {
   crate_toml=$1
 
@@ -160,7 +160,7 @@ catalog_deps_allowed() {
       /^\[dependencies\]/ { indeps = 1; next }
       /^\[/ { indeps = 0 }
       indeps && /^[^[:space:]#]/ { print }
-    ' "${crate_toml}" | grep -v -E '^domain[[:space:]]*=' || true
+    ' "${crate_toml}" | grep -v -E '^(domain|serde|serde_json)[[:space:]]*=' || true
   )
   if [ -n "${other_deps}" ]; then
     return 1
@@ -170,6 +170,12 @@ catalog_deps_allowed() {
     grep -E '^domain[[:space:]]*=' "${crate_toml}" | grep -Eq 'path[[:space:]]*=' \
       || return 1
   fi
+  for crate in serde serde_json; do
+    if grep -E "^${crate}[[:space:]]*=" "${crate_toml}" >/dev/null 2>&1; then
+      grep -E "^${crate}[[:space:]]*=" "${crate_toml}" | grep -Eq 'workspace[[:space:]]*=[[:space:]]*true' \
+        || return 1
+    fi
+  done
   return 0
 }
 

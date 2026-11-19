@@ -1,0 +1,3 @@
+{"clave":"medida","etiqueta":"Medida","tipo":"texto","buscable":true}
+{"clave":"largo","etiqueta":"Largo","tipo":"numero","unidad":"mm"}
+{"clave":"grado","etiqueta":"Grado","tipo":"enum","opciones":["5","8","10"]}
