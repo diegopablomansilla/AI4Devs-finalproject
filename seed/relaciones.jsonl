@@ -1,0 +1,3 @@
+{"origen":"PER-M8X40-ZN","destino":"ARA-PERNO-01","tipo":"complementa","nota":"Kit fijación"}
+{"origen":"PER-ACERO-01","destino":"PER-ACERO-02","tipo":"sustituible_por","prioridad":1,"bidireccional":false}
+{"origen":"TOR-AUTO-10X1","destino":"TOR-4-16-AC-001","tipo":"similar_a"}

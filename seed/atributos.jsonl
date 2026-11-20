@@ -1,3 +1,5 @@
 {"clave":"medida","etiqueta":"Medida","tipo":"texto","buscable":true}
 {"clave":"largo","etiqueta":"Largo","tipo":"numero","unidad":"mm"}
 {"clave":"grado","etiqueta":"Grado","tipo":"enum","opciones":["5","8","10"]}
+{"clave":"material","etiqueta":"Material","tipo":"enum","opciones":["acero","zincado","inox"]}
+{"clave":"rosca","etiqueta":"Roscas","tipo":"texto","buscable":true}

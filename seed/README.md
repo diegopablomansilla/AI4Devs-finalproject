@@ -60,6 +60,6 @@ Ejemplo de error (precio no numérico):
 
 → `productos.jsonl`, línea 1, campo `precio`.
 
-## Ejemplo mínimo en este repositorio
+## Dataset de desarrollo en este repositorio
 
-Este árbol incluye un perno de muestra (`PER-M8X40-ZN`). El dataset de desarrollo (~200 SKUs) llegará en el ticket T-02-41.
+Este árbol es el **dataset de desarrollo** del MVP (~200 SKUs, ferretería y repuestos): maestros, productos, relaciones, sinónimos, notas técnicas e imágenes livianas de ejemplo. Conserva el perno ancla `PER-M8X40-ZN` de T-02-40. El catálogo del comercio piloto (2–5 k SKUs) se importará en v2 (T-02-46), mismo formato.

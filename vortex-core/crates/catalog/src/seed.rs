@@ -783,6 +783,46 @@ mod tests {
         dir
     }
 
+    fn repo_seed_dir() -> PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../seed")
+    }
+
+    fn copy_dir_all(src: &Path, dst: &Path) -> std::io::Result<()> {
+        fs::create_dir_all(dst)?;
+        for entry in fs::read_dir(src)? {
+            let entry = entry?;
+            let path = entry.path();
+            let dest = dst.join(entry.file_name());
+            if path.is_dir() {
+                copy_dir_all(&path, &dest)?;
+            } else {
+                fs::copy(&path, &dest)?;
+            }
+        }
+        Ok(())
+    }
+
+    fn read_jsonl_values(path: &Path) -> Vec<Value> {
+        let content = fs::read_to_string(path).unwrap_or_default();
+        content
+            .lines()
+            .filter(|l| !l.trim().is_empty())
+            .filter_map(|line| serde_json::from_str::<Value>(line).ok())
+            .collect()
+    }
+
+    fn product_skus_and_lines(seed_dir: &Path) -> Vec<(String, Value)> {
+        let path = seed_dir.join("productos.jsonl");
+        read_jsonl_values(&path)
+            .into_iter()
+            .filter_map(|v| {
+                v.get("sku")
+                    .and_then(Value::as_str)
+                    .map(|s| (s.to_string(), v.clone()))
+            })
+            .collect()
+    }
+
     fn write_minimal_seed(dir: &Path, productos_line: &str) {
         fs::write(
             dir.join("categorias.jsonl"),
@@ -917,13 +957,237 @@ mod tests {
 
     #[test]
     fn seed_repo_seed_dir_has_no_issues() {
-        let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
-        let seed_dir = manifest.join("../../../seed");
+        let seed_dir = repo_seed_dir();
         let issues = validate_dir(&seed_dir);
         assert!(
             issues.is_empty(),
             "repo seed/ issues (is {:?} present?): {issues:?}",
             seed_dir
         );
+    }
+
+    #[test]
+    fn seed_dev_dataset_has_expected_sku_count() {
+        let seed_dir = repo_seed_dir();
+        let products = product_skus_and_lines(&seed_dir);
+        let unique: std::collections::HashSet<_> =
+            products.iter().map(|(s, _)| s.as_str()).collect();
+        let count = unique.len();
+        assert!(
+            (180..=220).contains(&count),
+            "expected 180–220 SKUs, got {count}"
+        );
+        assert!(unique.contains("PER-M8X40-ZN"));
+    }
+
+    #[test]
+    fn seed_dev_dataset_has_rubro_attributes_oem_and_typo_fixtures() {
+        let seed_dir = repo_seed_dir();
+        let required_attrs = ["medida", "largo", "grado", "material", "rosca"];
+        let defs: std::collections::HashSet<_> =
+            read_jsonl_values(&seed_dir.join("atributos.jsonl"))
+                .into_iter()
+                .filter_map(|v| v.get("clave").and_then(Value::as_str).map(str::to_string))
+                .collect();
+        for key in required_attrs {
+            assert!(defs.contains(key), "missing atributo_def {key}");
+        }
+        let products = product_skus_and_lines(&seed_dir);
+        for key in required_attrs {
+            let used = products.iter().any(|(_, v)| {
+                v.get("atributos")
+                    .and_then(Value::as_array)
+                    .is_some_and(|arr| {
+                        arr.iter()
+                            .any(|a| a.get("clave").and_then(Value::as_str) == Some(key))
+                    })
+            });
+            assert!(used, "no product uses atributo {key}");
+        }
+
+        let mut oem_counts: std::collections::HashMap<String, usize> =
+            std::collections::HashMap::new();
+        for (_, v) in &products {
+            if let Some(codes) = v.get("codigos").and_then(Value::as_array) {
+                for c in codes {
+                    if c.get("tipo").and_then(Value::as_str) == Some("oem") {
+                        if let Some(val) = c.get("valor").and_then(Value::as_str) {
+                            *oem_counts.entry(val.to_string()).or_default() += 1;
+                        }
+                    }
+                }
+            }
+        }
+        assert!(
+            oem_counts.values().any(|&n| n >= 2),
+            "expected shared OEM across two SKUs, counts: {oem_counts:?}"
+        );
+
+        let nombre_has = |needle: &str| {
+            products.iter().any(|(_, v)| {
+                v.get("nombre")
+                    .and_then(Value::as_str)
+                    .is_some_and(|n| n.to_lowercase().contains(needle))
+            })
+        };
+        assert!(nombre_has("tornillo"));
+        assert!(nombre_has("arandela"));
+        assert!(nombre_has("bujía") || nombre_has("bujia"));
+
+        let nombre_exact = |want: &str| {
+            products
+                .iter()
+                .any(|(_, v)| v.get("nombre").and_then(Value::as_str) == Some(want))
+        };
+        assert!(nombre_exact("Tornillo autoperforante 10 x 1"));
+        assert!(nombre_exact("Perno de Acero"));
+        assert!(nombre_exact("Arandela para Perno"));
+
+        let stock = |want: &str| {
+            products
+                .iter()
+                .any(|(_, v)| v.get("stock_inicial").and_then(Value::as_str) == Some(want))
+        };
+        assert!(stock("40"));
+        assert!(stock("3"));
+    }
+
+    #[test]
+    fn seed_dev_dataset_has_relations_synonyms_notes_and_example_images() {
+        let seed_dir = repo_seed_dir();
+        let rel_path = seed_dir.join("relaciones.jsonl");
+        assert!(rel_path.is_file(), "missing relaciones.jsonl");
+        let rels = read_jsonl_values(&rel_path);
+        for tipo in ["similar_a", "sustituible_por", "complementa"] {
+            assert!(
+                rels.iter()
+                    .any(|r| r.get("tipo").and_then(Value::as_str) == Some(tipo)),
+                "missing relacion tipo {tipo}"
+            );
+        }
+
+        let sin_path = seed_dir.join("sinonimos.jsonl");
+        assert!(sin_path.is_file());
+        let sins = read_jsonl_values(&sin_path);
+        assert!(
+            sins.iter()
+                .any(|s| s.get("tipo").and_then(Value::as_str) == Some("mutuo"))
+        );
+        assert!(
+            sins.iter()
+                .any(|s| s.get("tipo").and_then(Value::as_str) == Some("unidireccional"))
+        );
+
+        let notas_path = seed_dir.join("notas.jsonl");
+        assert!(notas_path.is_file());
+        let notas = read_jsonl_values(&notas_path);
+        assert!(
+            (2..=3).contains(&notas.len()),
+            "expected 2–3 notas, got {}",
+            notas.len()
+        );
+
+        let imagenes = seed_dir.join("imagenes");
+        assert!(imagenes.is_dir());
+        let skus: std::collections::HashSet<_> = product_skus_and_lines(&seed_dir)
+            .into_iter()
+            .map(|(s, _)| s)
+            .collect();
+        let mut found_image = false;
+        for entry in fs::read_dir(&imagenes).expect("read imagenes") {
+            let entry = entry.expect("entry");
+            if !entry.file_type().expect("type").is_dir() {
+                continue;
+            }
+            let name = entry.file_name();
+            let sku = name.to_str().expect("sku dir");
+            assert!(skus.contains(sku), "imagen dir {sku} is not a product sku");
+            for file in fs::read_dir(entry.path()).expect("read sku dir") {
+                let file = file.expect("file");
+                let fname = file.file_name();
+                let s = fname.to_string_lossy();
+                if s.ends_with(".png")
+                    || s.ends_with(".jpg")
+                    || s.ends_with(".jpeg")
+                    || s.ends_with(".webp")
+                {
+                    found_image = true;
+                }
+            }
+        }
+        assert!(
+            found_image,
+            "expected at least one image file under imagenes/"
+        );
+    }
+
+    #[test]
+    fn seed_dev_copy_rejects_non_numeric_precio() {
+        let src = repo_seed_dir();
+        let dst = unique_temp_dir();
+        copy_dir_all(&src, &dst).expect("copy seed");
+        let prod_path = dst.join("productos.jsonl");
+        let mut content = fs::read_to_string(&prod_path).expect("read productos");
+        if !content.is_empty() && !content.ends_with('\n') {
+            content.push('\n');
+        }
+        content.push_str(
+            r#"{"sku":"BAD-PRECIO","nombre":"X","tipo":"X","categoria":"pernos","precio":"barato"}
+"#,
+        );
+        fs::write(&prod_path, content).expect("append bad precio");
+        let issues = validate_dir(&dst);
+        assert!(
+            issues
+                .iter()
+                .any(|i| i.archivo == "productos.jsonl" && i.campo == "precio"),
+            "issues: {issues:?}"
+        );
+        assert!(validate_dir(&src).is_empty());
+        let _ = fs::remove_dir_all(&dst);
+    }
+
+    #[test]
+    fn seed_dev_copy_rejects_unknown_relacion_sku() {
+        let src = repo_seed_dir();
+        let dst = unique_temp_dir();
+        copy_dir_all(&src, &dst).expect("copy seed");
+        let rel_path = dst.join("relaciones.jsonl");
+        let mut content = fs::read_to_string(&rel_path).unwrap_or_default();
+        if !content.is_empty() && !content.ends_with('\n') {
+            content.push('\n');
+        }
+        content.push_str(
+            r#"{"origen":"PER-M8X40-ZN","destino":"SKU-INEXISTENTE","tipo":"similar_a"}
+"#,
+        );
+        fs::write(&rel_path, content).expect("append bad relacion");
+        let issues = validate_dir(&dst);
+        assert!(
+            issues
+                .iter()
+                .any(|i| i.archivo == "relaciones.jsonl" && i.campo == "destino"),
+            "issues: {issues:?}"
+        );
+        assert!(validate_dir(&src).is_empty());
+        let _ = fs::remove_dir_all(&dst);
+    }
+
+    #[test]
+    fn seed_dev_copy_rejects_unknown_imagen_sku() {
+        let src = repo_seed_dir();
+        let dst = unique_temp_dir();
+        copy_dir_all(&src, &dst).expect("copy seed");
+        let bad = dst.join("imagenes/SKU-INEXISTENTE");
+        fs::create_dir_all(&bad).expect("bad imagen dir");
+        let issues = validate_dir(&dst);
+        assert!(
+            issues
+                .iter()
+                .any(|i| i.archivo == "imagenes" && i.campo == "SKU-INEXISTENTE"),
+            "issues: {issues:?}"
+        );
+        assert!(validate_dir(&src).is_empty());
+        let _ = fs::remove_dir_all(&dst);
     }
 }

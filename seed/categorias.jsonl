@@ -1,2 +1,8 @@
 {"slug":"fijaciones","nombre":"Fijaciones"}
 {"slug":"pernos","nombre":"Pernos","padre":"fijaciones"}
+{"slug":"tornillos","nombre":"Tornillos","padre":"fijaciones"}
+{"slug":"tuercas","nombre":"Tuercas","padre":"fijaciones"}
+{"slug":"arandelas","nombre":"Arandelas","padre":"fijaciones"}
+{"slug":"automotor","nombre":"Automotor"}
+{"slug":"bujias","nombre":"Bujías","padre":"automotor"}
+{"slug":"filtros","nombre":"Filtros","padre":"automotor"}
