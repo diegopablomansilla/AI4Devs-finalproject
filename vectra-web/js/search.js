@@ -2,6 +2,13 @@ import { bindKeyboardList } from "./keyboard-list.js";
 import { appendSanitizedHtml } from "./highlight.js";
 
 /**
+ * @param {string} q
+ */
+export function looksLikeCode(q) {
+  return q.length >= 1 && q.length <= 64 && /^[A-Za-z0-9-]+$/.test(q);
+}
+
+/**
  * @param {Element} el
  */
 function clearElement(el) {
@@ -56,9 +63,11 @@ export function mountSearch(root, { request, showError }) {
 
   /**
    * @param {Record<string, unknown>} hit
+   * @param {{ useHighlight?: boolean }} [opts]
    * @returns {HTMLElement | null}
    */
-  function createProductCardForHit(hit) {
+  function createProductCardForHit(hit, opts = {}) {
+    const { useHighlight = true } = opts;
     const card = document.createElement("vx-product-card");
     card.setAttribute("variant", "full");
 
@@ -92,7 +101,7 @@ export function mountSearch(root, { request, showError }) {
       card.setAttribute("image-url", asAttrString(imageUrl).trim());
     }
 
-    const highlightName = hit?.highlight?.name;
+    const highlightName = useHighlight ? hit?.highlight?.name : null;
     if (highlightName != null && String(highlightName).trim() !== "") {
       const slot = document.createElement("span");
       slot.setAttribute("slot", "name");
@@ -104,25 +113,55 @@ export function mountSearch(root, { request, showError }) {
   }
 
   /**
-   * @param {Array<{ name?: string, sku?: string, highlight?: { name?: string | null, description?: string | null } | null }>} hits
+   * @param {Array<Record<string, unknown>>} exactItems
+   * @param {Array<Record<string, unknown>>} searchHits
    */
-  function paintHits(hits) {
+  function paintResults(exactItems, searchHits) {
     const results = resultsRegion();
     if (!results) {
       return;
     }
     unbindKeyboard();
     clearElement(results);
-    if (!hits.length) {
-      return;
+
+    const pinnedIds = new Set();
+    for (const item of exactItems) {
+      if (item && typeof item === "object" && item.id != null) {
+        pinnedIds.add(asAttrString(item.id));
+      }
     }
+
+    const cards = [];
+    const hasExact = exactItems.length > 0;
 
     const list = document.createElement("div");
     list.setAttribute("role", "listbox");
     list.setAttribute("tabindex", "0");
-    const items = [];
-    for (const hit of hits) {
+
+    if (hasExact) {
+      const heading = document.createElement("p");
+      heading.className = "vx-search-exact-label";
+      heading.textContent = "Código exacto";
+      list.appendChild(heading);
+      for (const item of exactItems) {
+        if (!item || typeof item !== "object") {
+          continue;
+        }
+        const card = createProductCardForHit(item, { useHighlight: false });
+        if (!card) {
+          continue;
+        }
+        list.appendChild(card);
+        cards.push(card);
+      }
+    }
+
+    for (const hit of searchHits) {
       if (!hit || typeof hit !== "object") {
+        continue;
+      }
+      const id = asAttrString(hit.id);
+      if (id && pinnedIds.has(id)) {
         continue;
       }
       const card = createProductCardForHit(
@@ -132,11 +171,13 @@ export function mountSearch(root, { request, showError }) {
         continue;
       }
       list.appendChild(card);
-      items.push(card);
+      cards.push(card);
     }
-    if (!items.length) {
+
+    if (!cards.length) {
       return;
     }
+
     results.appendChild(list);
 
     const omnibox =
@@ -150,7 +191,7 @@ export function mountSearch(root, { request, showError }) {
     }
     unbindList = bindKeyboardList({
       list,
-      getItems: () => items,
+      getItems: () => cards,
       controllers,
       restoreFocus: omnibox ?? null,
       onOpen: () => {},
@@ -186,18 +227,63 @@ export function mountSearch(root, { request, showError }) {
     const controller = new AbortController();
     inflight = controller;
     const gen = ++generation;
-    const path = `/api/v1/search?q=${encodeURIComponent(q.slice(0, 200))}`;
+    const searchPath = `/api/v1/search?q=${encodeURIComponent(q.slice(0, 200))}`;
+    const codeLike = looksLikeCode(q);
+    const byCodePath = codeLike
+      ? `/api/v1/search/by-code/${encodeURIComponent(q)}`
+      : null;
+
+    /** @type {Promise<unknown>[]} */
+    const requests = [
+      request("GET", searchPath, { signal: controller.signal }),
+    ];
+    if (byCodePath) {
+      requests.push(
+        request("GET", byCodePath, { signal: controller.signal }),
+      );
+    }
 
     try {
-      const data = await request("GET", path, { signal: controller.signal });
+      const settled = await Promise.allSettled(requests);
       if (controller.signal.aborted || gen !== generation) {
         return;
       }
-      const hits = Array.isArray(/** @type {{ hits?: unknown[] }} */ (data).hits)
-        ? /** @type {{ hits: Array<{ name?: string, sku?: string }> }} */ (data)
-            .hits
-        : [];
-      paintHits(hits);
+
+      const searchOutcome = settled[0];
+      const byCodeOutcome = settled[1];
+
+      let exactItems = [];
+      let searchHits = [];
+      let paintedSearch = false;
+      let paintedExact = false;
+
+      if (byCodeOutcome) {
+        if (byCodeOutcome.status === "fulfilled") {
+          const data = /** @type {{ items?: unknown[] }} */ (byCodeOutcome.value);
+          exactItems = Array.isArray(data?.items)
+            ? /** @type {Array<Record<string, unknown>>} */ (data.items)
+            : [];
+          paintedExact = exactItems.length > 0;
+        } else if (byCodeOutcome.reason?.name !== "AbortError") {
+          showError(byCodeOutcome.reason);
+        }
+      }
+
+      if (searchOutcome.status === "fulfilled") {
+        const data = /** @type {{ hits?: unknown[] }} */ (searchOutcome.value);
+        searchHits = Array.isArray(data?.hits)
+          ? /** @type {Array<Record<string, unknown>>} */ (data.hits)
+          : [];
+        paintedSearch = true;
+      } else if (searchOutcome.reason?.name !== "AbortError") {
+        showError(searchOutcome.reason);
+      }
+
+      if (!paintedSearch && !paintedExact) {
+        return;
+      }
+
+      paintResults(exactItems, paintedSearch ? searchHits : []);
     } catch (err) {
       if (err?.name === "AbortError" || controller.signal.aborted) {
         return;

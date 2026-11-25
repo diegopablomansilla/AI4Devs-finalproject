@@ -611,3 +611,11 @@ textarea:focus-visible {
   background: transparent;
   cursor: pointer;
 }
+
+.vx-search-exact-label {
+  margin: 0 0 var(--vx-space-2);
+  padding: 0 var(--vx-space-1);
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--vx-color-text-muted);
+}
