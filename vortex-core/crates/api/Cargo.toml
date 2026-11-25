@@ -8,6 +8,7 @@ publish = false
 axum = { workspace = true }
 catalog = { path = "../catalog" }
 domain = { path = "../domain" }
+search = { path = "../search" }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
@@ -15,6 +16,7 @@ tower-http = { workspace = true, features = ["limit", "timeout", "compression-gz
 tracing = { workspace = true }
 metrics = { workspace = true }
 metrics-exporter-prometheus = { workspace = true }
+tokio = { workspace = true, features = ["time"] }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "net", "io-util", "time", "test-util"] }

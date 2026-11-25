@@ -587,6 +587,31 @@ fn vortex_serve_get_attribute_definitions_returns_items() {
 }
 
 #[test]
+fn vortex_serve_get_search_is_not_404() {
+    let bind = ephemeral_bind();
+    let dir = temp_dir();
+    let path = write_config(&dir, &bind);
+    let mut child = spawn_serve_production(&path);
+    let addr: SocketAddr = bind.parse().expect("bind addr");
+    let start = Instant::now();
+    let mut ok = false;
+    while start.elapsed() < BOOT_WAIT {
+        if let Some((status, _, _, _)) = http_get_headers(addr, "/api/v1/search?q=x") {
+            if status != 404 {
+                ok = true;
+                break;
+            }
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    terminate_child(&mut child);
+    assert!(
+        ok,
+        "GET /api/v1/search must not be 404 (200 or 503 acceptable)"
+    );
+}
+
+#[test]
 fn vortex_serve_get_products_empty_returns_200() {
     let bind = ephemeral_bind();
     let dir = temp_dir();

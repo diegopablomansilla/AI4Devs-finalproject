@@ -227,6 +227,10 @@ assert_ok 'api con allowlist openapi' "${tmp}"
 cp "${REPO_ROOT}/vortex-core/crates/api/Cargo.toml" "${tmp}/vortex-core/crates/api/Cargo.toml"
 assert_ok 'api declara path catalog' "${tmp}"
 
+# happy: api declares path search (T-03-13)
+cp "${REPO_ROOT}/vortex-core/crates/api/Cargo.toml" "${tmp}/vortex-core/crates/api/Cargo.toml"
+assert_ok 'api declara path search' "${tmp}"
+
 # unhappy: api declares jsonschema in runtime dependencies
 cp "${REPO_ROOT}/vortex-core/crates/api/Cargo.toml" "${tmp}/vortex-core/crates/api/Cargo.toml"
 cat >"${tmp}/vortex-core/crates/api/Cargo.toml" <<'EOF'

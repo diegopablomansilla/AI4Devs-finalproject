@@ -10,6 +10,7 @@ mod health;
 mod metrics;
 pub mod pagination;
 mod products;
+mod search;
 mod static_files;
 mod stock;
 mod sync_telemetry;
@@ -17,6 +18,7 @@ mod sync_telemetry;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use ::search::SearchGateway;
 use axum::{
     Router,
     http::{StatusCode, Uri},
@@ -57,6 +59,7 @@ struct AppStateInner {
     attribute_defs: Option<Arc<dyn AttributeDefGateway>>,
     products: Option<Arc<dyn ProductGateway>>,
     stock: Option<Arc<dyn StockGateway>>,
+    search: Option<Arc<dyn SearchGateway>>,
 }
 
 impl AppState {
@@ -80,6 +83,7 @@ impl AppState {
                 attribute_defs: None,
                 products: None,
                 stock: None,
+                search: None,
             }),
         }
     }
@@ -166,6 +170,16 @@ impl AppState {
     pub(crate) fn stock(&self) -> Option<Arc<dyn StockGateway>> {
         self.inner.stock.clone()
     }
+
+    #[must_use]
+    pub fn with_search(mut self, search: Arc<dyn SearchGateway>) -> Self {
+        Arc::make_mut(&mut self.inner).search = Some(search);
+        self
+    }
+
+    pub(crate) fn search(&self) -> Option<Arc<dyn SearchGateway>> {
+        self.inner.search.clone()
+    }
 }
 
 impl Default for AppState {
@@ -247,6 +261,7 @@ pub fn router_shell(state: AppState) -> Router {
             "/api/v1/products/{product_id}/stock-movements",
             post(stock::post_stock_movement),
         )
+        .route("/api/v1/search", get(search::get_search))
         .fallback(fallback_not_found)
         .layer(middleware::from_fn(metrics::record_http_duration))
         .with_state(state)
