@@ -1,11 +1,12 @@
-//! Meilisearch product sync worker (T-03-07, fan-out T-03-08).
+//! Meilisearch product sync worker (T-03-07, fan-out T-03-08, retries T-03-09).
 
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use domain::{
     AtributoDef, AttributeDefRepo, Categoria, DomainCode, DomainError, FiltroProducto, Id,
     IndexUid, InvalidId, Marca, OUTBOX_BATCH_LIMIT, OutboxEntity, OutboxEvent, OutboxRepo,
-    OutboxRow, ProductRepo, Producto, TextSearch, build_search_document, productos_index_settings,
+    OutboxRow, ProductRepo, Producto, SyncTelemetry, TextSearch, Timestamp, build_search_document,
+    productos_index_settings,
 };
 use storage::OutboxNotifier;
 use tokio::time::sleep;
@@ -13,29 +14,44 @@ use tokio::time::sleep;
 /// Default poll interval when `OutboxNotifier` does not fire (ticket: 1 s).
 pub const DEFAULT_POLL_INTERVAL: Duration = Duration::from_secs(1);
 
+/// Cap for exponential backoff on transient Meilisearch errors (T-03-09).
+pub const MAX_TRANSIENT_BACKOFF: Duration = Duration::from_secs(30);
+
+/// Backoff after consecutive transient failures (`n` = 0 → 1 s, capped at 30 s).
+#[must_use]
+pub fn transient_backoff(consecutive_transient_failures: u32) -> Duration {
+    let shift = consecutive_transient_failures.min(31);
+    let secs = 1u64.checked_shl(shift).unwrap_or(u64::MAX);
+    Duration::from_secs(secs).min(MAX_TRANSIENT_BACKOFF)
+}
+
 /// Propagates outbox events to Meilisearch (`producto` + fan-out de maestros).
-pub struct MeiliProductWorker<O, P, A, S> {
+pub struct MeiliProductWorker<O, P, A, S, T> {
     outbox: O,
     products: P,
     attr_defs: A,
     search: S,
+    telemetry: T,
     notifier: OutboxNotifier,
     index: IndexUid,
     poll_interval: Duration,
 }
 
-impl<O, P, A, S> MeiliProductWorker<O, P, A, S>
+impl<O, P, A, S, T> MeiliProductWorker<O, P, A, S, T>
 where
     O: OutboxRepo,
     P: ProductRepo,
     A: AttributeDefRepo,
     S: TextSearch,
+    T: SyncTelemetry,
 {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         outbox: O,
         products: P,
         attr_defs: A,
         search: S,
+        telemetry: T,
         notifier: OutboxNotifier,
         index: IndexUid,
         poll_interval: Duration,
@@ -45,14 +61,31 @@ where
             products,
             attr_defs,
             search,
+            telemetry,
             notifier,
             index,
             poll_interval,
         }
     }
 
-    /// Processes one batch; stops mid-batch if Meilisearch or DB fails (cursor does not advance).
+    fn sync_error_message(err: &DomainError) -> String {
+        err.code().as_str().to_string()
+    }
+
+    fn propagation_seconds_since(creado_en: Timestamp) -> f64 {
+        let (secs, nanos) = creado_en.as_unix();
+        let created = Duration::new(secs.max(0) as u64, nanos);
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or(Duration::ZERO);
+        now.saturating_sub(created).as_secs_f64()
+    }
+
+    /// Processes one batch; transients stop mid-batch; permanents record `outbox_fallo` and advance.
     pub async fn drain_once(&self) -> Result<(), DomainError> {
+        if let Ok(lag) = self.outbox.meilisearch_lag().await {
+            self.telemetry.set_outbox_lag("meilisearch", lag);
+        }
         let cursor = self.outbox.meilisearch_cursor().await?;
         let rows = self.outbox.list_after_meilisearch(cursor).await?;
         if rows.is_empty() {
@@ -60,8 +93,27 @@ where
         }
         let defs = self.attr_defs.list_all().await?;
         for row in rows {
-            self.process_row(&row, &defs).await?;
-            self.outbox.advance_meilisearch_cursor(row.id).await?;
+            match self.process_row(&row, &defs).await {
+                Ok(()) => {
+                    self.outbox.advance_meilisearch_cursor(row.id).await?;
+                    self.telemetry.observe_sync_propagation_seconds(
+                        Self::propagation_seconds_since(row.creado_en),
+                    );
+                }
+                Err(err) if err.code() == DomainCode::InvalidInput => {
+                    let msg = Self::sync_error_message(&err);
+                    self.outbox.record_meilisearch_failure(row.id, &msg).await?;
+                    self.telemetry.inc_outbox_failed();
+                    self.outbox.advance_meilisearch_cursor(row.id).await?;
+                }
+                Err(err)
+                    if err.code() == DomainCode::Unavailable
+                        || err.code() == DomainCode::Timeout =>
+                {
+                    return Err(err);
+                }
+                Err(err) => return Err(err),
+            }
         }
         Ok(())
     }
@@ -71,12 +123,26 @@ where
     where
         F: FnMut() -> bool,
     {
+        let mut consecutive_transient = 0u32;
         while !should_stop() {
-            tokio::select! {
-                () = self.notifier.notified() => {}
-                () = sleep(self.poll_interval) => {}
+            if consecutive_transient > 0 {
+                sleep(transient_backoff(consecutive_transient - 1)).await;
+            } else {
+                tokio::select! {
+                    () = self.notifier.notified() => {}
+                    () = sleep(self.poll_interval) => {}
+                }
             }
-            let _ = self.drain_once().await;
+            match self.drain_once().await {
+                Ok(()) => consecutive_transient = 0,
+                Err(err)
+                    if err.code() == DomainCode::Unavailable
+                        || err.code() == DomainCode::Timeout =>
+                {
+                    consecutive_transient = consecutive_transient.saturating_add(1);
+                }
+                Err(_) => consecutive_transient = 0,
+            }
         }
     }
 
@@ -92,7 +158,7 @@ where
         }
     }
 
-    fn parse_registro<T>(event: &OutboxEvent) -> Result<Id<T>, DomainError> {
+    fn parse_registro<E>(event: &OutboxEvent) -> Result<Id<E>, DomainError> {
         event.registro.parse().map_err(|InvalidId| {
             DomainError::invalid_input(domain::error::InvalidInputCode::InvalidInput, vec![])
         })
@@ -236,6 +302,7 @@ where
 #[cfg(test)]
 mod tests {
     use std::future::Future;
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
     use std::sync::{Arc, Mutex};
 
     use domain::{
@@ -251,6 +318,8 @@ mod tests {
         rows: Vec<OutboxRow>,
         cursor: Arc<Mutex<Option<Id<OutboxRecord>>>>,
         advances: Arc<Mutex<Vec<Id<OutboxRecord>>>>,
+        fallidos: Arc<Mutex<Vec<Id<OutboxRecord>>>>,
+        fail_writes: Arc<Mutex<Vec<Id<OutboxRecord>>>>,
     }
 
     impl FakeOutbox {
@@ -259,6 +328,8 @@ mod tests {
                 rows,
                 cursor: Arc::new(Mutex::new(None)),
                 advances: Arc::new(Mutex::new(Vec::new())),
+                fallidos: Arc::new(Mutex::new(Vec::new())),
+                fail_writes: Arc::new(Mutex::new(Vec::new())),
             }
         }
     }
@@ -300,6 +371,81 @@ mod tests {
                 advances.lock().expect("lock").push(event_id);
                 Ok(())
             }
+        }
+
+        fn record_meilisearch_failure(
+            &self,
+            event_id: Id<OutboxRecord>,
+            _ultimo_error: &str,
+        ) -> impl Future<Output = Result<(), DomainError>> + Send {
+            let rows = self.rows.clone();
+            let fail_writes = Arc::clone(&self.fail_writes);
+            let fallidos = Arc::clone(&self.fallidos);
+            async move {
+                if !rows.iter().any(|r| r.id == event_id) {
+                    return Err(DomainError::not_found());
+                }
+                fail_writes.lock().expect("lock").push(event_id);
+                let mut guard = fallidos.lock().expect("lock");
+                if !guard.contains(&event_id) {
+                    guard.push(event_id);
+                }
+                Ok(())
+            }
+        }
+
+        fn meilisearch_lag(&self) -> impl Future<Output = Result<u64, DomainError>> + Send {
+            let rows = self.rows.clone();
+            let cursor = Arc::clone(&self.cursor);
+            async move {
+                let cur = *cursor.lock().expect("lock");
+                let lag = rows
+                    .iter()
+                    .filter(|r| match cur {
+                        None => true,
+                        Some(c) => r.id.inner_ulid() > c.inner_ulid(),
+                    })
+                    .count() as u64;
+                Ok(lag)
+            }
+        }
+
+        fn meilisearch_failed_count(
+            &self,
+        ) -> impl Future<Output = Result<u64, DomainError>> + Send {
+            let fallidos = Arc::clone(&self.fallidos);
+            async move { Ok(fallidos.lock().expect("lock").len() as u64) }
+        }
+    }
+
+    struct RecordingTelemetry {
+        lag: Arc<Mutex<Option<u64>>>,
+        failed: Arc<Mutex<u32>>,
+        propagation: Arc<Mutex<Vec<f64>>>,
+    }
+
+    impl RecordingTelemetry {
+        fn new() -> Self {
+            Self {
+                lag: Arc::new(Mutex::new(None)),
+                failed: Arc::new(Mutex::new(0)),
+                propagation: Arc::new(Mutex::new(Vec::new())),
+            }
+        }
+    }
+
+    impl SyncTelemetry for RecordingTelemetry {
+        fn set_outbox_lag(&self, consumidor: &str, lag: u64) {
+            assert_eq!(consumidor, "meilisearch");
+            *self.lag.lock().expect("lock") = Some(lag);
+        }
+
+        fn inc_outbox_failed(&self) {
+            *self.failed.lock().expect("lock") += 1;
+        }
+
+        fn observe_sync_propagation_seconds(&self, seconds: f64) {
+            self.propagation.lock().expect("lock").push(seconds);
         }
     }
 
@@ -494,6 +640,8 @@ mod tests {
         upserts: Arc<Mutex<Vec<Vec<Id<Producto>>>>>,
         deletes: Arc<Mutex<Vec<Vec<Id<Producto>>>>>,
         fail_upsert: Arc<Mutex<Option<DomainError>>>,
+        fail_upsert_times: Arc<AtomicUsize>,
+        burst_failures: Arc<AtomicBool>,
         fail_apply: Arc<Mutex<Option<DomainError>>>,
         settings_applied: Arc<Mutex<u32>>,
     }
@@ -504,6 +652,8 @@ mod tests {
                 upserts: Arc::new(Mutex::new(vec![])),
                 deletes: Arc::new(Mutex::new(vec![])),
                 fail_upsert: Arc::new(Mutex::new(None)),
+                fail_upsert_times: Arc::new(AtomicUsize::new(0)),
+                burst_failures: Arc::new(AtomicBool::new(false)),
                 fail_apply: Arc::new(Mutex::new(None)),
                 settings_applied: Arc::new(Mutex::new(0)),
             }
@@ -516,6 +666,20 @@ mod tests {
                 upserts: Arc::new(Mutex::new(vec![])),
                 deletes: Arc::new(Mutex::new(vec![])),
                 fail_upsert: Arc::new(Mutex::new(Some(err))),
+                fail_upsert_times: Arc::new(AtomicUsize::new(0)),
+                burst_failures: Arc::new(AtomicBool::new(false)),
+                fail_apply: Arc::new(Mutex::new(None)),
+                settings_applied: Arc::new(Mutex::new(0)),
+            }
+        }
+
+        fn fail_upsert_n_times(n: usize, err: DomainError) -> Self {
+            Self {
+                upserts: Arc::new(Mutex::new(vec![])),
+                deletes: Arc::new(Mutex::new(vec![])),
+                fail_upsert: Arc::new(Mutex::new(Some(err))),
+                fail_upsert_times: Arc::new(AtomicUsize::new(n)),
+                burst_failures: Arc::new(AtomicBool::new(true)),
                 fail_apply: Arc::new(Mutex::new(None)),
                 settings_applied: Arc::new(Mutex::new(0)),
             }
@@ -526,8 +690,21 @@ mod tests {
                 upserts: Arc::new(Mutex::new(vec![])),
                 deletes: Arc::new(Mutex::new(vec![])),
                 fail_upsert: Arc::new(Mutex::new(None)),
+                fail_upsert_times: Arc::new(AtomicUsize::new(0)),
+                burst_failures: Arc::new(AtomicBool::new(false)),
                 fail_apply: Arc::new(Mutex::new(Some(err))),
                 settings_applied: Arc::new(Mutex::new(0)),
+            }
+        }
+
+        fn upsert_error_code(err: &DomainError) -> DomainError {
+            match err.code() {
+                DomainCode::Timeout => DomainError::timeout(),
+                DomainCode::InvalidInput => DomainError::invalid_input(
+                    domain::error::InvalidInputCode::InvalidInput,
+                    vec![],
+                ),
+                _ => DomainError::unavailable(domain::UnavailableCode::Unavailable),
             }
         }
     }
@@ -539,11 +716,23 @@ mod tests {
             documents: &[SearchDocument],
         ) -> impl Future<Output = Result<(), DomainError>> + Send {
             let ids: Vec<_> = documents.iter().map(|d| d.id.clone()).collect();
-            let fail_upsert = self.fail_upsert.lock().expect("lock").take();
+            let fail_upsert_times = Arc::clone(&self.fail_upsert_times);
+            let fail_upsert = Arc::clone(&self.fail_upsert);
+            let burst_failures = Arc::clone(&self.burst_failures);
             let upserts = Arc::clone(&self.upserts);
             async move {
-                if let Some(err) = fail_upsert {
-                    return Err(err);
+                let remaining = fail_upsert_times.load(Ordering::SeqCst);
+                if remaining > 0 {
+                    fail_upsert_times.fetch_sub(1, Ordering::SeqCst);
+                    let template = fail_upsert.lock().expect("lock");
+                    if let Some(ref err) = *template {
+                        return Err(RecordingSearch::upsert_error_code(err));
+                    }
+                }
+                if !burst_failures.load(Ordering::SeqCst) {
+                    if let Some(err) = fail_upsert.lock().expect("lock").take() {
+                        return Err(err);
+                    }
                 }
                 upserts.lock().expect("lock").push(ids);
                 Ok(())
@@ -556,11 +745,23 @@ mod tests {
             ids: &[Id<Producto>],
         ) -> impl Future<Output = Result<(), DomainError>> + Send {
             let ids = ids.to_vec();
-            let fail_upsert = self.fail_upsert.lock().expect("lock").take();
+            let fail_upsert_times = Arc::clone(&self.fail_upsert_times);
+            let fail_upsert = Arc::clone(&self.fail_upsert);
+            let burst_failures = Arc::clone(&self.burst_failures);
             let deletes = Arc::clone(&self.deletes);
             async move {
-                if let Some(err) = fail_upsert {
-                    return Err(err);
+                let remaining = fail_upsert_times.load(Ordering::SeqCst);
+                if remaining > 0 {
+                    fail_upsert_times.fetch_sub(1, Ordering::SeqCst);
+                    let template = fail_upsert.lock().expect("lock");
+                    if let Some(ref err) = *template {
+                        return Err(RecordingSearch::upsert_error_code(err));
+                    }
+                }
+                if !burst_failures.load(Ordering::SeqCst) {
+                    if let Some(err) = fail_upsert.lock().expect("lock").take() {
+                        return Err(err);
+                    }
                 }
                 deletes.lock().expect("lock").push(ids);
                 Ok(())
@@ -640,11 +841,16 @@ mod tests {
         }
     }
 
+    fn ts() -> Timestamp {
+        "2026-01-01T00:00:00Z".parse().expect("ts")
+    }
+
     fn product_event(registro: &str) -> OutboxRow {
         OutboxRow {
             id: Id::generate(),
             event: OutboxEvent::try_new(OutboxEntity::Producto, OutboxOp::Upsert, registro, None)
                 .expect("ev"),
+            creado_en: ts(),
         }
     }
 
@@ -693,33 +899,57 @@ mod tests {
         }
     }
 
-    fn worker<O, P, A, S>(
+    fn worker<O, P, A, S, T>(
         outbox: O,
         products: P,
         attr_defs: A,
         search: S,
-    ) -> MeiliProductWorker<O, P, A, S>
+        telemetry: T,
+    ) -> MeiliProductWorker<O, P, A, S, T>
     where
         O: OutboxRepo,
         P: ProductRepo,
         A: AttributeDefRepo,
         S: TextSearch,
+        T: SyncTelemetry,
     {
         MeiliProductWorker::new(
             outbox,
             products,
             attr_defs,
             search,
+            telemetry,
             OutboxNotifier::stub(),
             IndexUid::try_new("test-index").expect("uid"),
             Duration::from_millis(10),
         )
     }
 
+    fn worker_noop<O, P, A, S>(
+        outbox: O,
+        products: P,
+        attr_defs: A,
+        search: S,
+    ) -> MeiliProductWorker<O, P, A, S, domain::NoopSyncTelemetry>
+    where
+        O: OutboxRepo,
+        P: ProductRepo,
+        A: AttributeDefRepo,
+        S: TextSearch,
+    {
+        worker(
+            outbox,
+            products,
+            attr_defs,
+            search,
+            domain::NoopSyncTelemetry,
+        )
+    }
+
     #[tokio::test]
     async fn worker_empty_outbox_does_not_call_search() {
         let search = RecordingSearch::default();
-        let w = worker(
+        let w = worker_noop(
             FakeOutbox::with_rows(vec![]),
             FakeProducts { get: None },
             FakeAttrDefs::with_defs(vec![]),
@@ -732,7 +962,7 @@ mod tests {
     async fn worker_deletes_inactive_product() {
         let registro = Id::<Producto>::generate().to_string();
         let search = RecordingSearch::default();
-        let w = worker(
+        let w = worker_noop(
             FakeOutbox::with_rows(vec![product_event(&registro)]),
             FakeProducts {
                 get: Some(Ok(sample_ficha(false))),
@@ -749,7 +979,7 @@ mod tests {
     async fn worker_deletes_missing_product() {
         let registro = Id::<Producto>::generate().to_string();
         let search = RecordingSearch::default();
-        let w = worker(
+        let w = worker_noop(
             FakeOutbox::with_rows(vec![product_event(&registro)]),
             FakeProducts {
                 get: Some(Err(DomainError::not_found())),
@@ -829,6 +1059,7 @@ mod tests {
         OutboxRow {
             id: Id::generate(),
             event: OutboxEvent::try_new(entity, OutboxOp::Upsert, registro, None).expect("ev"),
+            creado_en: ts(),
         }
     }
 
@@ -836,7 +1067,7 @@ mod tests {
     async fn worker_fanout_categoria_reindexes_full_branch() {
         let (root_id, _child_id, on_root, on_child) = branch_fichas();
         let search = RecordingSearch::default();
-        let w = worker(
+        let w = worker_noop(
             FakeOutbox::with_rows(vec![entity_event(
                 OutboxEntity::Categoria,
                 root_id.to_string().as_str(),
@@ -871,7 +1102,7 @@ mod tests {
         };
         let without = sample_ficha(true);
         let search = RecordingSearch::default();
-        let w = worker(
+        let w = worker_noop(
             FakeOutbox::with_rows(vec![entity_event(
                 OutboxEntity::Marca,
                 marca_id.to_string().as_str(),
@@ -910,7 +1141,7 @@ mod tests {
             valor: ValorAtributo::Texto("M8".into()),
         }];
         let search = RecordingSearch::default();
-        let w = worker(
+        let w = worker_noop(
             FakeOutbox::with_rows(vec![entity_event(
                 OutboxEntity::AtributoDef,
                 def_id.to_string().as_str(),
@@ -935,7 +1166,7 @@ mod tests {
         )]);
         let advances = Arc::clone(&outbox.advances);
         let search = RecordingSearch::default();
-        let w = worker(
+        let w = worker_noop(
             outbox,
             CatalogFake::new(vec![]),
             FakeAttrDefs::with_defs(vec![]),
@@ -955,7 +1186,7 @@ mod tests {
         let outbox = FakeOutbox::with_rows(vec![row]);
         let advances = Arc::clone(&outbox.advances);
         let search = RecordingSearch::default();
-        let w = worker(
+        let w = worker_noop(
             outbox,
             CatalogFake::new(vec![]),
             FakeAttrDefs::with_defs(vec![]),
@@ -978,9 +1209,10 @@ mod tests {
                 None,
             )
             .expect("ev"),
+            creado_en: ts(),
         };
         let search = RecordingSearch::default();
-        let w = worker(
+        let w = worker_noop(
             FakeOutbox::with_rows(vec![row]),
             FakeProducts { get: None },
             FakeAttrDefs::with_defs(vec![]),
@@ -999,7 +1231,7 @@ mod tests {
         let search = RecordingSearch::fail_upsert_next(DomainError::unavailable(
             domain::UnavailableCode::Unavailable,
         ));
-        let w = worker(
+        let w = worker_noop(
             outbox,
             FakeProducts {
                 get: Some(Ok(sample_ficha(true))),
@@ -1013,15 +1245,16 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn worker_does_not_advance_cursor_on_invalid_input() {
+    async fn worker_records_fallido_and_advances_on_invalid_input() {
         let registro = Id::<Producto>::generate().to_string();
         let outbox = FakeOutbox::with_rows(vec![product_event(&registro)]);
         let advances = Arc::clone(&outbox.advances);
+        let fail_writes = Arc::clone(&outbox.fail_writes);
         let search = RecordingSearch::fail_upsert_next(DomainError::invalid_input(
             domain::error::InvalidInputCode::InvalidInput,
             vec![],
         ));
-        let w = worker(
+        let w = worker_noop(
             outbox,
             FakeProducts {
                 get: Some(Ok(sample_ficha(true))),
@@ -1029,9 +1262,9 @@ mod tests {
             FakeAttrDefs::with_defs(vec![]),
             search,
         );
-        let err = w.drain_once().await.expect_err("invalid");
-        assert_eq!(err.code(), DomainCode::InvalidInput);
-        assert!(advances.lock().expect("lock").is_empty());
+        w.drain_once().await.expect("drain marks fallido");
+        assert_eq!(advances.lock().expect("lock").len(), 1);
+        assert_eq!(fail_writes.lock().expect("lock").len(), 1);
     }
 
     #[tokio::test]
@@ -1045,7 +1278,7 @@ mod tests {
         let search = RecordingSearch::fail_upsert_next(DomainError::unavailable(
             domain::UnavailableCode::Unavailable,
         ));
-        let w = worker(
+        let w = worker_noop(
             outbox,
             CatalogFake::new(vec![on_root]),
             FakeAttrDefs::with_defs(vec![]),
@@ -1067,7 +1300,7 @@ mod tests {
         let search = RecordingSearch::fail_apply_next(DomainError::unavailable(
             domain::UnavailableCode::Unavailable,
         ));
-        let w = worker(
+        let w = worker_noop(
             outbox,
             CatalogFake::new(vec![]),
             FakeAttrDefs::with_defs(vec![]),
@@ -1079,7 +1312,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn worker_fanout_invalid_registro_does_not_advance() {
+    async fn worker_fanout_invalid_registro_records_fallido_and_advances() {
         let outbox = FakeOutbox::with_rows(vec![OutboxRow {
             id: Id::generate(),
             event: OutboxEvent {
@@ -1088,16 +1321,157 @@ mod tests {
                 operacion: OutboxOp::Upsert,
                 motivo: None,
             },
+            creado_en: ts(),
         }]);
         let advances = Arc::clone(&outbox.advances);
-        let w = worker(
+        let w = worker_noop(
             outbox,
             CatalogFake::new(vec![]),
             FakeAttrDefs::with_defs(vec![]),
             RecordingSearch::default(),
         );
-        let err = w.drain_once().await.expect_err("invalid");
-        assert_eq!(err.code(), DomainCode::InvalidInput);
+        w.drain_once().await.expect("fallido");
+        assert_eq!(advances.lock().expect("lock").len(), 1);
+    }
+
+    #[tokio::test]
+    async fn worker_retries_after_unavailable_and_does_not_lose_events() {
+        let registro = Id::<Producto>::generate().to_string();
+        let outbox = FakeOutbox::with_rows(vec![product_event(&registro)]);
+        let advances = Arc::clone(&outbox.advances);
+        let search = RecordingSearch::fail_upsert_n_times(
+            1,
+            DomainError::unavailable(domain::UnavailableCode::Unavailable),
+        );
+        let w = worker_noop(
+            outbox,
+            FakeProducts {
+                get: Some(Ok(sample_ficha(true))),
+            },
+            FakeAttrDefs::with_defs(vec![]),
+            search.clone(),
+        );
+        let err = w.drain_once().await.expect_err("transient");
+        assert_eq!(err.code(), DomainCode::Unavailable);
         assert!(advances.lock().expect("lock").is_empty());
+        w.drain_once().await.expect("retry ok");
+        assert_eq!(advances.lock().expect("lock").len(), 1);
+        assert!(!search.upserts.lock().expect("lock").is_empty());
+    }
+
+    #[tokio::test]
+    async fn worker_timeout_does_not_advance_cursor() {
+        let registro = Id::<Producto>::generate().to_string();
+        let outbox = FakeOutbox::with_rows(vec![product_event(&registro)]);
+        let advances = Arc::clone(&outbox.advances);
+        let search = RecordingSearch::fail_upsert_next(DomainError::timeout());
+        let w = worker_noop(
+            outbox,
+            FakeProducts {
+                get: Some(Ok(sample_ficha(true))),
+            },
+            FakeAttrDefs::with_defs(vec![]),
+            search,
+        );
+        let err = w.drain_once().await.expect_err("timeout");
+        assert_eq!(err.code(), DomainCode::Timeout);
+        assert!(advances.lock().expect("lock").is_empty());
+    }
+
+    #[tokio::test]
+    async fn worker_does_not_write_fallo_on_unavailable() {
+        let registro = Id::<Producto>::generate().to_string();
+        let outbox = FakeOutbox::with_rows(vec![product_event(&registro)]);
+        let fail_writes = Arc::clone(&outbox.fail_writes);
+        let search = RecordingSearch::fail_upsert_next(DomainError::unavailable(
+            domain::UnavailableCode::Unavailable,
+        ));
+        let w = worker_noop(
+            outbox,
+            FakeProducts {
+                get: Some(Ok(sample_ficha(true))),
+            },
+            FakeAttrDefs::with_defs(vec![]),
+            search,
+        );
+        let _ = w.drain_once().await.expect_err("unavailable");
+        assert!(fail_writes.lock().expect("lock").is_empty());
+    }
+
+    #[test]
+    fn worker_backoff_caps_at_thirty_seconds() {
+        assert_eq!(transient_backoff(0), Duration::from_secs(1));
+        assert_eq!(transient_backoff(4), Duration::from_secs(16));
+        assert_eq!(transient_backoff(10), MAX_TRANSIENT_BACKOFF);
+    }
+
+    #[tokio::test]
+    async fn worker_empty_batch_does_not_backoff() {
+        let w = worker_noop(
+            FakeOutbox::with_rows(vec![]),
+            FakeProducts { get: None },
+            FakeAttrDefs::with_defs(vec![]),
+            RecordingSearch::default(),
+        );
+        w.drain_once().await.expect("empty ok");
+    }
+
+    #[tokio::test]
+    async fn worker_publishes_outbox_lag_after_drain() {
+        let registro = Id::<Producto>::generate().to_string();
+        let telemetry = RecordingTelemetry::new();
+        let lag_probe = Arc::clone(&telemetry.lag);
+        let w = worker(
+            FakeOutbox::with_rows(vec![product_event(&registro)]),
+            FakeProducts {
+                get: Some(Ok(sample_ficha(true))),
+            },
+            FakeAttrDefs::with_defs(vec![]),
+            RecordingSearch::default(),
+            telemetry,
+        );
+        w.drain_once().await.expect("drain");
+        assert_eq!(*lag_probe.lock().expect("lock"), Some(1));
+    }
+
+    #[tokio::test]
+    async fn worker_observes_propagation_on_success() {
+        let registro = Id::<Producto>::generate().to_string();
+        let telemetry = RecordingTelemetry::new();
+        let propagation = Arc::clone(&telemetry.propagation);
+        let w = worker(
+            FakeOutbox::with_rows(vec![product_event(&registro)]),
+            FakeProducts {
+                get: Some(Ok(sample_ficha(true))),
+            },
+            FakeAttrDefs::with_defs(vec![]),
+            RecordingSearch::default(),
+            telemetry,
+        );
+        w.drain_once().await.expect("drain");
+        assert!(!propagation.lock().expect("lock").is_empty());
+    }
+
+    #[tokio::test]
+    async fn worker_invalid_input_continues_remaining_batch() {
+        let bad = product_event(&Id::<Producto>::generate().to_string());
+        let good_reg = Id::<Producto>::generate().to_string();
+        let good = product_event(&good_reg);
+        let outbox = FakeOutbox::with_rows(vec![bad, good]);
+        let advances = Arc::clone(&outbox.advances);
+        let search = RecordingSearch::fail_upsert_n_times(
+            1,
+            DomainError::invalid_input(domain::error::InvalidInputCode::InvalidInput, vec![]),
+        );
+        let w = worker_noop(
+            outbox,
+            FakeProducts {
+                get: Some(Ok(sample_ficha(true))),
+            },
+            FakeAttrDefs::with_defs(vec![]),
+            search,
+        );
+        w.drain_once().await.expect("batch continues");
+        assert_eq!(advances.lock().expect("lock").len(), 2);
     }
 }

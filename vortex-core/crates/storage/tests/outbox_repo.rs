@@ -96,3 +96,69 @@ async fn storage_outbox_repo_advance_unknown_event_is_not_found() {
         .expect_err("missing");
     assert_eq!(err.code(), domain::DomainCode::NotFound);
 }
+
+#[tokio::test]
+async fn storage_outbox_repo_records_fallido() {
+    let db = Arc::new(test_db().await);
+    seed_producto_row(&db).await;
+    let ev0 = Id::<OutboxRecord>::generate();
+    create_outbox(&db, &ev0.to_string()).await;
+    let store = OutboxStore::new(Arc::clone(&db));
+    store
+        .record_meilisearch_failure(ev0.clone(), "invalid document")
+        .await
+        .expect("record");
+    store
+        .record_meilisearch_failure(ev0, "again")
+        .await
+        .expect("idempotent");
+    assert_eq!(store.meilisearch_failed_count().await.expect("count"), 1);
+}
+
+#[tokio::test]
+async fn storage_outbox_repo_lag_counts_pending() {
+    let db = Arc::new(test_db().await);
+    seed_producto_row(&db).await;
+    let (ev0, ev1) = ordered_outbox_ids();
+    create_outbox(&db, &ev0.to_string()).await;
+    create_outbox(&db, &ev1.to_string()).await;
+    let store = OutboxStore::new(Arc::clone(&db));
+    assert_eq!(store.meilisearch_lag().await.expect("lag"), 2);
+    store
+        .advance_meilisearch_cursor(ev0.clone())
+        .await
+        .expect("advance");
+    assert_eq!(store.meilisearch_lag().await.expect("lag"), 1);
+}
+
+#[tokio::test]
+async fn storage_outbox_repo_failed_count() {
+    let db = Arc::new(test_db().await);
+    seed_producto_row(&db).await;
+    let ev0 = Id::<OutboxRecord>::generate();
+    let ev1 = Id::<OutboxRecord>::generate();
+    create_outbox(&db, &ev0.to_string()).await;
+    create_outbox(&db, &ev1.to_string()).await;
+    let store = OutboxStore::new(Arc::clone(&db));
+    store
+        .record_meilisearch_failure(ev0, "a")
+        .await
+        .expect("record");
+    store
+        .record_meilisearch_failure(ev1, "b")
+        .await
+        .expect("record");
+    assert_eq!(store.meilisearch_failed_count().await.expect("count"), 2);
+}
+
+#[tokio::test]
+async fn storage_outbox_repo_record_unknown_event_is_not_found() {
+    let db = Arc::new(test_db().await);
+    let store = OutboxStore::new(Arc::clone(&db));
+    let missing = Id::<OutboxRecord>::generate();
+    let err = store
+        .record_meilisearch_failure(missing, "x")
+        .await
+        .expect_err("missing");
+    assert_eq!(err.code(), domain::DomainCode::NotFound);
+}

@@ -28,12 +28,20 @@ struct ComponentsResponse {
     speech: ComponentResponse,
     #[serde(rename = "textEmbeddings")]
     text_embeddings: ComponentResponse,
-    sync: ComponentResponse,
+    sync: SyncComponentResponse,
 }
 
 #[derive(Serialize)]
 struct ComponentResponse {
     status: &'static str,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SyncComponentResponse {
+    status: &'static str,
+    outbox_lag: u64,
+    failed_events: u64,
 }
 
 fn aggregate_status_str(s: AggregateStatus) -> &'static str {
@@ -77,8 +85,10 @@ fn to_response(snap: HealthSnapshot) -> HealthResponse {
             text_embeddings: ComponentResponse {
                 status: component_status_str(c.text_embeddings.status),
             },
-            sync: ComponentResponse {
+            sync: SyncComponentResponse {
                 status: component_status_str(c.sync.status),
+                outbox_lag: c.sync.outbox_lag,
+                failed_events: c.sync.failed_events,
             },
         },
     }

@@ -33,12 +33,31 @@ pub enum AggregateStatus {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ComponentHealth {
     pub status: ComponentStatus,
+    pub outbox_lag: u64,
+    pub failed_events: u64,
 }
 
 impl ComponentHealth {
     #[must_use]
     pub const fn new(status: ComponentStatus) -> Self {
-        Self { status }
+        Self {
+            status,
+            outbox_lag: 0,
+            failed_events: 0,
+        }
+    }
+
+    #[must_use]
+    pub const fn with_sync_stats(
+        status: ComponentStatus,
+        outbox_lag: u64,
+        failed_events: u64,
+    ) -> Self {
+        Self {
+            status,
+            outbox_lag,
+            failed_events,
+        }
     }
 }
 
@@ -217,5 +236,12 @@ mod tests {
         c.storage = ComponentHealth::new(ComponentStatus::Down);
         c.meilisearch = ComponentHealth::new(ComponentStatus::Starting);
         assert_eq!(aggregate(&c), AggregateStatus::Down);
+    }
+
+    #[test]
+    fn aggregate_ignores_outbox_lag() {
+        let mut c = HealthComponents::all_up();
+        c.sync = ComponentHealth::with_sync_stats(ComponentStatus::Up, 42, 3);
+        assert_eq!(aggregate(&c), AggregateStatus::Ok);
     }
 }

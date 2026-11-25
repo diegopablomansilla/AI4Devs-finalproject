@@ -12,6 +12,7 @@ pub mod pagination;
 mod products;
 mod static_files;
 mod stock;
+mod sync_telemetry;
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -31,11 +32,13 @@ pub use error::ApiError;
 pub use gateway::{DEFAULT_BODY_LIMIT, DEFAULT_REQUEST_TIMEOUT, apply_gateway_layers};
 pub use metrics::{
     BACKUP_FAILURES_TOTAL, OUTBOX_FAILED_TOTAL, OUTBOX_LAG, operation_duration_seconds,
+    prometheus_handle,
 };
 pub use pagination::{
     CursorPage, DEFAULT_PAGE_LIMIT, MAX_PAGE_LIMIT, decode_cursor, encode_cursor, paginate,
     resolve_limit,
 };
+pub use sync_telemetry::{PrometheusSyncTelemetry, SYNC_PROPAGATION_SECONDS};
 
 /// Shared application state for HTTP handlers (`Arc<dyn …>` added in later tickets).
 #[derive(Clone)]

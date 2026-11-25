@@ -30,6 +30,12 @@ fn snapshot_down() -> HealthSnapshot {
     HealthSnapshot::from_components("1.0.0", 0, c)
 }
 
+fn snapshot_sync_stats() -> HealthSnapshot {
+    let mut c = HealthComponents::all_up();
+    c.sync = ComponentHealth::with_sync_stats(ComponentStatus::Up, 5, 2);
+    HealthSnapshot::from_components("1.0.0", 99, c)
+}
+
 async fn http_request(
     addr: SocketAddr,
     method: &str,
@@ -153,6 +159,29 @@ async fn get_health_down_returns_503() {
     assert_eq!(status, 503);
     assert_eq!(ctype, "application/json");
     assert_eq!(json["status"], "down");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn get_health_sync_extras_default_zero() {
+    let state = AppState::with_health(Arc::new(snapshot_ok()));
+    let (addr, handle) = serve(state).await;
+    let (status, _, json, _) = http_request(addr, "GET", "/health", None).await;
+    handle.abort();
+    assert_eq!(status, 200);
+    assert_eq!(json["components"]["sync"]["outboxLag"], 0);
+    assert_eq!(json["components"]["sync"]["failedEvents"], 0);
+    assert!(json["components"]["storage"]["outboxLag"].is_null());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn get_health_sync_extras_reflect_snapshot() {
+    let state = AppState::with_health(Arc::new(snapshot_sync_stats()));
+    let (addr, handle) = serve(state).await;
+    let (_, _, json, _) = http_request(addr, "GET", "/health", None).await;
+    handle.abort();
+    assert_eq!(json["components"]["sync"]["outboxLag"], 5);
+    assert_eq!(json["components"]["sync"]["failedEvents"], 2);
+    assert_eq!(json["status"], "ok");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

@@ -4,7 +4,10 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use domain::producto::Producto;
-use domain::{Id, IndexUid, OutboxRecord, SearchFilters, SearchOrden, SearchQuery, TextSearch};
+use domain::{
+    Id, IndexUid, NoopSyncTelemetry, OutboxRecord, SearchFilters, SearchOrden, SearchQuery,
+    TextSearch,
+};
 use search::MeiliTextSearch;
 use storage::testing::test_db;
 use storage::{AtributoDefRepo, OutboxStore, ProductoRepo};
@@ -90,12 +93,19 @@ fn worker(
     db: Arc<storage::Db>,
     search: MeiliTextSearch,
     index: IndexUid,
-) -> MeiliProductWorker<OutboxStore, ProductoRepo, AtributoDefRepo, MeiliTextSearch> {
+) -> MeiliProductWorker<
+    OutboxStore,
+    ProductoRepo,
+    AtributoDefRepo,
+    MeiliTextSearch,
+    NoopSyncTelemetry,
+> {
     MeiliProductWorker::new(
         OutboxStore::new(Arc::clone(&db)),
         ProductoRepo::new(Arc::clone(&db)),
         AtributoDefRepo::new(Arc::clone(&db)),
         search,
+        NoopSyncTelemetry,
         db.outbox_notifier(),
         index,
         DEFAULT_POLL_INTERVAL,

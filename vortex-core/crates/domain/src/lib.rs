@@ -14,6 +14,7 @@ pub mod outbox_repo;
 pub mod producto;
 pub mod productos_index_settings;
 pub mod search_document;
+pub mod sync_telemetry;
 pub mod text_search;
 pub mod timestamp;
 
@@ -49,6 +50,7 @@ pub use producto::{
 };
 pub use productos_index_settings::productos_index_settings;
 pub use search_document::{CategoriaMeiliLevels, SearchDocument, build_search_document};
+pub use sync_telemetry::{NoopSyncTelemetry, SyncTelemetry};
 pub use text_search::{
     IndexSettings, IndexUid, SearchFacets, SearchFilters, SearchHit, SearchOrden, SearchPage,
     SearchQuery, TextSearch, validate_index_swap,
