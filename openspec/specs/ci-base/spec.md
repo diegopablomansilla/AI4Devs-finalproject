@@ -86,7 +86,7 @@ Sobre un checkout que cumple las specs `cargo-workspace` y `rust-toolchain`, los
 
 ### Requirement: Script de verificación del contrato CI
 
-El repositorio MUST contener `scripts/check-ci.sh`, ejecutable, que comprueba las reglas de este spec sobre el workflow YAML **y** la presencia del job `domain-deps` que ejecuta `scripts/check-domain-deps.sh` (spec `domain-deps`) **y** la presencia del job `openapi-lint` que ejecuta el lint Redocly de `docs/openapi.yaml` (spec `openapi-lint`). La raíz MUST ser `CHECK_ROOT` si está definida, o la raíz del repositorio en caso contrario. El script MUST terminar con código 0 cuando el árbol cumple ese contrato. MUST NOT exigir que GitHub Actions haya corrido: verifica el archivo y, cuando aplique, los comandos cargo en local. MUST NOT tratar la mención de `check-domain-deps`, `redocly` ni `docs/openapi.yaml` como extra fuera de alcance. MUST exigir `redocly.yaml` en la raíz de verificación. MUST seguir rechazando Meilisearch, Ollama, Whisper y un job que ejecute `check-ci.sh` en GitHub.
+El repositorio MUST contener `scripts/check-ci.sh`, ejecutable, que comprueba las reglas de este spec sobre el workflow YAML **y** la presencia del job `domain-deps` que ejecuta `scripts/check-domain-deps.sh` (spec `domain-deps`) **y** la presencia del job `openapi-lint` que ejecuta el lint Redocly de `docs/openapi.yaml` (spec `openapi-lint`) **y** la presencia del job `meilisearch` que levanta Meilisearch y ejecuta los tests ignorados (spec `ci-meilisearch`). La raíz MUST ser `CHECK_ROOT` si está definida, o la raíz del repositorio en caso contrario. El script MUST terminar con código 0 cuando el árbol cumple ese contrato. MUST NOT exigir que GitHub Actions haya corrido: verifica el archivo y, cuando aplique, los comandos cargo en local. MUST NOT tratar la mención de `check-domain-deps`, `redocly`, `docs/openapi.yaml` ni Meilisearch como extra fuera de alcance. MUST exigir `redocly.yaml` y `scripts/meilisearch-version` en la raíz de verificación. MUST seguir rechazando Ollama, Whisper y un job que ejecute `check-ci.sh` en GitHub.
 
 #### Scenario: Script presente
 
@@ -95,7 +95,7 @@ El repositorio MUST contener `scripts/check-ci.sh`, ejecutable, que comprueba la
 
 #### Scenario: Contrato válido
 
-- **WHEN** se ejecuta el script sobre el repositorio con `.github/workflows/ci.yml` correcto (jobs `fmt`, `clippy`, `test`, `domain-deps` y `openapi-lint`) y `redocly.yaml` presente
+- **WHEN** se ejecuta el script sobre el repositorio con `.github/workflows/ci.yml` correcto (jobs `fmt`, `clippy`, `test`, `domain-deps`, `openapi-lint` y `meilisearch`), `redocly.yaml` y `scripts/meilisearch-version` presentes
 - **THEN** termina con código 0
 
 #### Scenario: Falta el job domain-deps
@@ -110,18 +110,25 @@ El repositorio MUST contener `scripts/check-ci.sh`, ejecutable, que comprueba la
 - **THEN** el script termina con código distinto de 0
 - **AND** el mensaje nombra `openapi-lint` o `redocly`
 
-### Requirement: El workflow no incluye motores reales
+#### Scenario: Falta el job meilisearch
 
-`.github/workflows/ci.yml` MUST NOT instalar ni invocar Meilisearch, Ollama ni Whisper. Esos chequeos pertenecen a T-09-05, T-09-13 y T-09-18. El *lint* Redocly de `docs/openapi.yaml` MUST figurar en el workflow (capability `openapi-lint`).
+- **WHEN** `.github/workflows/ci.yml` declara `fmt`, `clippy`, `test`, `domain-deps` y `openapi-lint` pero no el job `meilisearch` (o no invoca `--include-ignored`)
+- **THEN** el script termina con código distinto de 0
+- **AND** el mensaje nombra `meilisearch` o `--include-ignored`
 
-#### Scenario: Workflow sin sidecars
+### Requirement: El workflow no incluye motores v2
+
+`.github/workflows/ci.yml` MUST NOT instalar ni invocar Ollama ni Whisper. Esos chequeos pertenecen a T-09-13 y T-09-18. Meilisearch MUST figurar en el workflow (capability `ci-meilisearch`). El *lint* Redocly de `docs/openapi.yaml` MUST figurar en el workflow (capability `openapi-lint`).
+
+#### Scenario: Workflow con Meilisearch y sin motores v2 (happy)
 
 - **WHEN** se inspecciona `.github/workflows/ci.yml`
-- **THEN** no menciona Meilisearch, Ollama ni Whisper
+- **THEN** menciona Meilisearch
+- **AND** no menciona Ollama ni Whisper
 - **AND** sí menciona Redocly y `docs/openapi.yaml` (job `openapi-lint`)
 
-#### Scenario: Extra de sidecar fuera de alcance
+#### Scenario: Extra de sidecar v2 fuera de alcance (unhappy)
 
-- **WHEN** el workflow declara un paso o job que invoca Meilisearch, Ollama o Whisper
+- **WHEN** el workflow declara un paso o job que invoca Ollama o Whisper
 - **THEN** la verificación del contrato de CI termina con código distinto de 0
 - **AND** el mensaje nombra el extra

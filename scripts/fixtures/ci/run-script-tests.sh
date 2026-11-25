@@ -35,7 +35,10 @@ assert_fails_with "${SCENARIOS}/no-pr-trigger" pull_request
 assert_fails_with "${SCENARIOS}/bad-fmt-command" 'fmt --all'
 assert_fails_with "${SCENARIOS}/missing-domain-deps-job" domain-deps
 assert_fails_with "${SCENARIOS}/missing-openapi-job" openapi-lint
-assert_fails_with "${SCENARIOS}/meilisearch-extra" Meilisearch
+assert_fails_with "${SCENARIOS}/missing-meilisearch-job" meilisearch
+assert_fails_with "${SCENARIOS}/missing-include-ignored" include-ignored
+assert_fails_with "${SCENARIOS}/unpinned-meilisearch" meilisearch-version
+assert_fails_with "${SCENARIOS}/ollama-extra" Ollama
 assert_fails_with "${SCENARIOS}/missing-redocly-yaml" redocly.yaml
 
 CHECK_ROOT="${REPO_ROOT}" "${SCRIPT}"

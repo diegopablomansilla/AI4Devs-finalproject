@@ -1,5 +1,5 @@
 #!/usr/bin/env sh
-# Verifica el contrato de GitHub Actions CI (T-09-01, domain-deps T-00-02, openapi-lint T-09-03).
+# Verifica el contrato de GitHub Actions CI (T-09-01, domain-deps T-00-02, openapi-lint T-09-03, meilisearch T-09-05).
 set -eu
 
 if [ -n "${CHECK_ROOT:-}" ]; then
@@ -71,10 +71,10 @@ if ! grep -q 'cargo test --workspace' "${WORKFLOW}"; then
   fail 'el job test debe ejecutar cargo test --workspace'
 fi
 
-# --- non-goals (sidecars, harness local en GitHub) ---
-for forbidden in Meilisearch meilisearch Ollama Whisper check-ci.sh; do
+# --- non-goals (motores v2, harness local en GitHub) ---
+for forbidden in Ollama Whisper check-ci.sh; do
   if grep -qF "${forbidden}" "${WORKFLOW}"; then
-    fail "el workflow no debe mencionar ${forbidden} (fuera de alcance T-09-01/T-09-03)"
+    fail "el workflow no debe mencionar ${forbidden} (fuera de alcance T-09-13/T-09-18)"
   fi
 done
 
@@ -102,5 +102,35 @@ fi
 
 REDOCLY_CFG="${ROOT}/redocly.yaml"
 [ -f "${REDOCLY_CFG}" ] || fail 'falta redocly.yaml'
+
+# --- job meilisearch (T-09-05) ---
+if ! grep -Eq '^[[:space:]]{2}meilisearch:' "${WORKFLOW}"; then
+  fail 'falta el job: meilisearch'
+fi
+
+if ! grep -q 'include-ignored' "${WORKFLOW}"; then
+  fail 'el job meilisearch debe usar --include-ignored'
+fi
+
+if ! grep -q 'meilisearch-macos-apple-silicon' "${WORKFLOW}"; then
+  fail 'el job meilisearch debe descargar meilisearch-macos-apple-silicon'
+fi
+
+MEILI_PIN="${ROOT}/scripts/meilisearch-version"
+[ -f "${MEILI_PIN}" ] || fail 'falta scripts/meilisearch-version'
+
+MEILI_TAG="$(tr -d '[:space:]' < "${MEILI_PIN}")"
+case "${MEILI_TAG}" in
+  v*.*.*) ;;
+  *) fail 'scripts/meilisearch-version debe ser un tag vX.Y.Z' ;;
+esac
+
+if grep -q 'scripts/meilisearch-version' "${WORKFLOW}"; then
+  : # el tag se lee del pin en runtime (repo canónico)
+else
+  if ! grep -qF "${MEILI_TAG}" "${WORKFLOW}"; then
+    fail 'el workflow debe usar el tag de scripts/meilisearch-version'
+  fi
+fi
 
 exit 0
