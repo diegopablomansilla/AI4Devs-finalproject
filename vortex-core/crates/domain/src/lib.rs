@@ -11,6 +11,7 @@ pub mod marca;
 pub mod movimiento_stock;
 pub mod outbox;
 pub mod producto;
+pub mod text_search;
 pub mod timestamp;
 
 pub use atributo_def::{
@@ -41,5 +42,9 @@ pub use producto::{
     AtributoFicha, AtributoValor, Codigo, FichaProducto, FiltroProducto, NewProducto, ProductRepo,
     Producto, ProductoDraft, ResumenProducto, Sku, TipoCodigo, Ubicacion, UnidadMedida,
     UpdateProducto, ValorAtributo, valor_compatible_con,
+};
+pub use text_search::{
+    IndexSettings, IndexUid, SearchDocument, SearchFacets, SearchFilters, SearchHit, SearchOrden,
+    SearchPage, SearchQuery, TextSearch, validate_index_swap,
 };
 pub use timestamp::{InvalidTimestamp, Timestamp};
