@@ -4,7 +4,8 @@ use std::path::PathBuf;
 
 use storage::{
     Db, MIGRATION_0000_SQL, MIGRATION_0001_SQL, MIGRATION_0002_SQL, MIGRATION_0003_SQL,
-    MIGRATION_0004_SQL, MIGRATION_0005_SQL, MIGRATION_0006_SQL, Migration, checksum_hex,
+    MIGRATION_0004_SQL, MIGRATION_0005_SQL, MIGRATION_0006_SQL, MIGRATION_0007_SQL, Migration,
+    checksum_hex,
 };
 
 fn unique_db_dir(prefix: &str) -> PathBuf {
@@ -24,7 +25,7 @@ async fn migrate_first_install_records_0000() {
     db.migrate().await.expect("first migrate");
 
     let rows = db.list_migrations().await.expect("list migrations");
-    assert_eq!(rows.len(), 7, "expected migrations 0000 through 0006");
+    assert_eq!(rows.len(), 8, "expected migrations 0000 through 0007");
     let row0 = rows.iter().find(|r| r.version == 0).expect("version 0");
     assert_eq!(row0.nombre, "migracion");
     assert_eq!(row0.checksum, checksum_hex(MIGRATION_0000_SQL));
@@ -46,6 +47,9 @@ async fn migrate_first_install_records_0000() {
     let row6 = rows.iter().find(|r| r.version == 6).expect("version 6");
     assert_eq!(row6.nombre, "movimiento_stock");
     assert_eq!(row6.checksum, checksum_hex(MIGRATION_0006_SQL));
+    let row7 = rows.iter().find(|r| r.version == 7).expect("version 7");
+    assert_eq!(row7.nombre, "relaciones");
+    assert_eq!(row7.checksum, checksum_hex(MIGRATION_0007_SQL));
 
     drop(db);
     let _ = std::fs::remove_dir_all(&path);
@@ -59,7 +63,7 @@ async fn migrate_rerun_is_noop() {
     db.migrate().await.expect("second migrate");
 
     let rows = db.list_migrations().await.expect("list migrations");
-    assert_eq!(rows.len(), 7);
+    assert_eq!(rows.len(), 8);
     assert!(rows.iter().any(|r| r.version == 0));
     assert!(rows.iter().any(|r| r.version == 1));
     assert!(rows.iter().any(|r| r.version == 2));
@@ -67,6 +71,7 @@ async fn migrate_rerun_is_noop() {
     assert!(rows.iter().any(|r| r.version == 4));
     assert!(rows.iter().any(|r| r.version == 5));
     assert!(rows.iter().any(|r| r.version == 6));
+    assert!(rows.iter().any(|r| r.version == 7));
 
     drop(db);
     let _ = std::fs::remove_dir_all(&path);

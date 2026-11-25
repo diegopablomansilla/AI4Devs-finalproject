@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use storage::testing::{test_db, test_db_rocks};
 use storage::{
     Db, MIGRATION_0000_SQL, MIGRATION_0001_SQL, MIGRATION_0002_SQL, MIGRATION_0003_SQL,
-    MIGRATION_0004_SQL, MIGRATION_0005_SQL, MIGRATION_0006_SQL, checksum_hex,
+    MIGRATION_0004_SQL, MIGRATION_0005_SQL, MIGRATION_0006_SQL, MIGRATION_0007_SQL, checksum_hex,
 };
 
 fn unique_file_path(prefix: &str) -> PathBuf {
@@ -17,7 +17,7 @@ fn unique_file_path(prefix: &str) -> PathBuf {
 async fn test_db_applies_embedded_migrations() {
     let db = test_db().await;
     let rows = db.list_migrations().await.expect("list migrations");
-    assert_eq!(rows.len(), 7);
+    assert_eq!(rows.len(), 8);
     let row0 = rows.iter().find(|r| r.version == 0).expect("version 0");
     assert_eq!(row0.checksum, checksum_hex(MIGRATION_0000_SQL));
     let row1 = rows.iter().find(|r| r.version == 1).expect("version 1");
@@ -32,6 +32,8 @@ async fn test_db_applies_embedded_migrations() {
     assert_eq!(row5.checksum, checksum_hex(MIGRATION_0005_SQL));
     let row6 = rows.iter().find(|r| r.version == 6).expect("version 6");
     assert_eq!(row6.checksum, checksum_hex(MIGRATION_0006_SQL));
+    let row7 = rows.iter().find(|r| r.version == 7).expect("version 7");
+    assert_eq!(row7.checksum, checksum_hex(MIGRATION_0007_SQL));
 
     let (ns, db_name) = db.session_ns_db().await.expect("session");
     assert_eq!(ns, "vectra");
@@ -43,7 +45,7 @@ async fn test_db_rocks_applies_embedded_migrations() {
     let wrapped = test_db_rocks().await;
     assert!(wrapped.path().exists());
     let rows = wrapped.list_migrations().await.expect("list migrations");
-    assert_eq!(rows.len(), 7);
+    assert_eq!(rows.len(), 8);
     assert!(rows.iter().any(|r| r.version == 0));
     assert!(rows.iter().any(|r| r.version == 1));
     assert!(rows.iter().any(|r| r.version == 2));
@@ -51,6 +53,7 @@ async fn test_db_rocks_applies_embedded_migrations() {
     assert!(rows.iter().any(|r| r.version == 4));
     assert!(rows.iter().any(|r| r.version == 5));
     assert!(rows.iter().any(|r| r.version == 6));
+    assert!(rows.iter().any(|r| r.version == 7));
 }
 
 #[tokio::test]
