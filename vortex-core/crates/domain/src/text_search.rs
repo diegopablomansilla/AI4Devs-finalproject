@@ -85,6 +85,44 @@ pub struct SearchFilters {
     pub atributos: BTreeMap<String, String>,
 }
 
+fn matches_atributo_clave(clave: &str) -> bool {
+    if clave.is_empty() {
+        return false;
+    }
+    let mut chars = clave.chars();
+    let Some(first) = chars.next() else {
+        return false;
+    };
+    if !first.is_ascii_lowercase() {
+        return false;
+    }
+    chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
+}
+
+fn validate_filtro_atributo_clave(clave: &str) -> Result<(), DomainError> {
+    let trimmed = clave.trim();
+    if trimmed.is_empty() {
+        return Err(field_invalid_input("clave", "clave must not be empty"));
+    }
+    if trimmed.starts_with("attr_") {
+        return Err(field_invalid_input(
+            "clave",
+            "clave must not include attr_ prefix",
+        ));
+    }
+    if !matches_atributo_clave(trimmed) {
+        return Err(field_invalid_input("clave", "invalid clave format"));
+    }
+    Ok(())
+}
+
+fn validate_filtros_atributos(atributos: &BTreeMap<String, String>) -> Result<(), DomainError> {
+    for clave in atributos.keys() {
+        validate_filtro_atributo_clave(clave)?;
+    }
+    Ok(())
+}
+
 /// Query input for `search` / `facet_search`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SearchQuery {
@@ -116,6 +154,7 @@ impl SearchQuery {
                 "limit must be between 1 and 50",
             ));
         }
+        validate_filtros_atributos(&filtros.atributos)?;
         Ok(Self {
             q,
             filtros,
@@ -126,10 +165,52 @@ impl SearchQuery {
     }
 }
 
-/// One row in a search result page (T-03-06 enriches fields).
+/// Highlight fragments from Meilisearch `_formatted` (T-03-12).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct SearchHighlight {
+    pub nombre: Option<String>,
+    pub descripcion: Option<String>,
+}
+
+/// One row in a search result page (4.11.1 fields for T-03-13 mapping).
 #[derive(Debug, Clone, PartialEq)]
 pub struct SearchHit {
     pub id: Id<Producto>,
+    pub sku: String,
+    pub nombre: String,
+    pub tipo: String,
+    pub marca: Option<String>,
+    pub codigos: Vec<String>,
+    pub atributos_texto: Vec<String>,
+    pub precio: f64,
+    pub unidad_medida: String,
+    pub stock_disponible: f64,
+    pub con_stock: bool,
+    pub ubicacion: Option<String>,
+    pub imagen: Option<String>,
+    pub resaltado: Option<SearchHighlight>,
+}
+
+impl SearchHit {
+    /// Hit with document defaults; only `id` is required (T-03-04 probes).
+    pub fn from_id(id: Id<Producto>) -> Self {
+        Self {
+            id,
+            sku: String::new(),
+            nombre: String::new(),
+            tipo: String::new(),
+            marca: None,
+            codigos: Vec::new(),
+            atributos_texto: Vec::new(),
+            precio: 0.0,
+            unidad_medida: crate::producto::UnidadMedida::Unidad.as_str().to_string(),
+            stock_disponible: 0.0,
+            con_stock: false,
+            ubicacion: None,
+            imagen: None,
+            resaltado: None,
+        }
+    }
 }
 
 /// Facet distribution placeholder (T-03-18).
@@ -416,7 +497,8 @@ mod tests {
     #[test]
     fn search_page_constructs_hit_without_facets() {
         let id: Id<Producto> = CANONICAL_ULID.parse().expect("ulid");
-        let page = SearchPage::try_new(vec![SearchHit { id }], 1, 0, 20, 0, None).expect("page");
+        let page =
+            SearchPage::try_new(vec![SearchHit::from_id(id)], 1, 0, 20, 0, None).expect("page");
         assert_eq!(page.hits.len(), 1);
         assert!(page.facetas.is_none());
         assert_eq!(page.estimado_total, 1);
@@ -564,5 +646,48 @@ mod tests {
     fn text_search_dummy_upsert_invalid_input() {
         let err = dummy_run_upsert(DummyMode::UpsertInvalid).expect_err("invalid");
         assert_eq!(err.code(), DomainCode::InvalidInput);
+    }
+
+    #[test]
+    fn search_hit_constructs_with_resaltado() {
+        let id: Id<Producto> = CANONICAL_ULID.parse().expect("ulid");
+        let hit = SearchHit {
+            resaltado: Some(SearchHighlight {
+                nombre: Some("<mark>Perno</mark> hexagonal".into()),
+                descripcion: None,
+            }),
+            ..SearchHit::from_id(id)
+        };
+        assert!(hit.resaltado.is_some());
+        let resaltado = hit.resaltado.expect("resaltado");
+        assert!(resaltado.nombre.unwrap().contains("Perno"));
+    }
+
+    #[test]
+    fn search_query_rejects_attr_prefix_clave() {
+        let mut atributos = BTreeMap::new();
+        atributos.insert("attr_medida".into(), "M8".into());
+        let filtros = SearchFilters {
+            atributos,
+            ..SearchFilters::default()
+        };
+        let err = SearchQuery::try_new("perno", filtros, SearchOrden::Relevancia, 0, 20)
+            .expect_err("attr prefix");
+        assert_eq!(err.code(), DomainCode::InvalidInput);
+    }
+
+    #[test]
+    fn search_query_rejects_invalid_atributo_clave() {
+        for bad in ["Medida", "medida-mm", ""] {
+            let mut atributos = BTreeMap::new();
+            atributos.insert(bad.to_string(), "M8".into());
+            let filtros = SearchFilters {
+                atributos,
+                ..SearchFilters::default()
+            };
+            let err = SearchQuery::try_new("perno", filtros, SearchOrden::Relevancia, 0, 20)
+                .expect_err(bad);
+            assert_eq!(err.code(), DomainCode::InvalidInput);
+        }
     }
 }

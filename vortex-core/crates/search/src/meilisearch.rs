@@ -7,20 +7,50 @@ use domain::error::{DomainError, FieldError, InvalidInputCode, UnavailableCode};
 use domain::health::{ComponentHealth, ComponentStatus};
 use domain::producto::Producto;
 use domain::{
-    Id, IndexSettings, IndexUid, SearchDocument, SearchHit, SearchPage, SearchQuery, TextSearch,
-    validate_index_swap,
+    Id, IndexSettings, IndexUid, SearchDocument, SearchHighlight, SearchHit, SearchPage,
+    SearchQuery, TextSearch, validate_index_swap,
+};
+use serde_json::Value;
+
+use crate::query::{
+    MEILI_HIGHLIGHT_ATTRS, MEILI_HIGHLIGHT_POST, MEILI_HIGHLIGHT_PRE, meili_filter, meili_sort,
 };
 use meilisearch_sdk::client::{Client, SwapIndexes};
 use meilisearch_sdk::errors::{Error, ErrorCode, ErrorType};
+use meilisearch_sdk::search::Selectors;
 use meilisearch_sdk::settings::{FilterableAttribute, Settings, TypoToleranceSettings};
 use meilisearch_sdk::task_info::TaskInfo;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
 const DEFAULT_TASK_TIMEOUT: Duration = Duration::from_secs(5);
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct MeiliDocument {
+#[derive(Debug, Clone, Deserialize, Default)]
+struct MeiliHitDocument {
     id: String,
+    #[serde(default)]
+    sku: String,
+    #[serde(default)]
+    nombre: String,
+    #[serde(default)]
+    tipo: String,
+    #[serde(default)]
+    marca: Option<String>,
+    #[serde(default)]
+    codigos: Vec<String>,
+    #[serde(default)]
+    atributos_texto: Vec<String>,
+    #[serde(default)]
+    precio: f64,
+    #[serde(default)]
+    unidad_medida: String,
+    #[serde(default)]
+    stock_disponible: f64,
+    #[serde(default)]
+    con_stock: bool,
+    #[serde(default)]
+    ubicacion: Option<String>,
+    #[serde(default)]
+    imagen: Option<String>,
 }
 
 /// Meilisearch-backed implementation of `TextSearch`.
@@ -93,13 +123,30 @@ impl MeiliTextSearch {
         index: &IndexUid,
         query: SearchQuery,
     ) -> Result<SearchPage, DomainError> {
+        let filter_owned = meili_filter(&query.filtros);
+        let sort_owned = meili_sort(query.orden);
+        let mut sort_refs: Vec<&str> = Vec::new();
+        if let Some(ref sort) = sort_owned {
+            sort_refs = sort.iter().map(String::as_str).collect();
+        }
+
         let idx = self.client.index(index.as_str());
-        let results = idx
-            .search()
+        let mut builder = idx.search();
+        builder
             .with_query(&query.q)
             .with_offset(query.offset as usize)
             .with_limit(query.limit as usize)
-            .execute::<MeiliDocument>()
+            .with_attributes_to_highlight(Selectors::Some(MEILI_HIGHLIGHT_ATTRS))
+            .with_highlight_pre_tag(MEILI_HIGHLIGHT_PRE)
+            .with_highlight_post_tag(MEILI_HIGHLIGHT_POST);
+        if let Some(ref filter) = filter_owned {
+            builder.with_filter(filter);
+        }
+        if !sort_refs.is_empty() {
+            builder.with_sort(&sort_refs);
+        }
+        let results = builder
+            .execute::<MeiliHitDocument>()
             .await
             .map_err(|e| map_meili_error(&e))?;
 
@@ -240,17 +287,49 @@ impl MeiliTextSearch {
     }
 }
 
+fn formatted_field(formatted: &serde_json::Map<String, Value>, key: &str) -> Option<String> {
+    formatted
+        .get(key)
+        .and_then(|v| v.as_str())
+        .map(str::to_string)
+}
+
 fn map_hits(
-    hits: Vec<meilisearch_sdk::search::SearchResult<MeiliDocument>>,
+    hits: Vec<meilisearch_sdk::search::SearchResult<MeiliHitDocument>>,
 ) -> Result<Vec<SearchHit>, DomainError> {
     hits.into_iter()
         .map(|hit| {
-            let id = hit
-                .result
+            let doc = hit.result;
+            let id = doc
                 .id
                 .parse::<Id<Producto>>()
                 .map_err(|_| meili_invalid_input("invalid hit id from meilisearch"))?;
-            Ok(SearchHit { id })
+            let resaltado = hit.formatted_result.as_ref().map(|m| SearchHighlight {
+                nombre: formatted_field(m, "nombre"),
+                descripcion: formatted_field(m, "descripcion"),
+            });
+            let resaltado = resaltado.filter(|h| h.nombre.is_some() || h.descripcion.is_some());
+            let unidad_medida = if doc.unidad_medida.is_empty() {
+                domain::producto::UnidadMedida::Unidad.as_str().to_string()
+            } else {
+                doc.unidad_medida
+            };
+            Ok(SearchHit {
+                id,
+                sku: doc.sku,
+                nombre: doc.nombre,
+                tipo: doc.tipo,
+                marca: doc.marca,
+                codigos: doc.codigos,
+                atributos_texto: doc.atributos_texto,
+                precio: doc.precio,
+                unidad_medida,
+                stock_disponible: doc.stock_disponible,
+                con_stock: doc.con_stock,
+                ubicacion: doc.ubicacion,
+                imagen: doc.imagen,
+                resaltado,
+            })
         })
         .collect()
 }
