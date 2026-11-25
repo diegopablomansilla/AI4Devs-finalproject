@@ -20,12 +20,13 @@ El repositorio MUST contener el directorio `vectra-web/` en la raíz, con al men
 - `vectra-web/js/api.js`
 - `vectra-web/js/errors.js`
 - `vectra-web/js/keyboard-list.js`
+- `vectra-web/js/search.js`
 - `vectra-web/js/health.js`
 - `vectra-web/js/sw-update.js`
 - `vectra-web/js/components/index.js`, `shared.js`, `vx-button.js`, `vx-field.js`, `vx-chip.js`, `vx-modal.js`, `vx-side-panel.js`, `vx-toast.js`, `vx-product-card.js`, `vx-omnibox.js`
 - `vectra-web/dev/components.html`
 
-`index.html` MUST declarar `lang="es"` en el elemento `html`. MUST incluir un *outlet* identificable (p. ej. `id="app"`) donde el *router* pinta la vista. MUST cargar `js/app.js` como ES Module (`type="module"`) con `src` igual a `/static/{{VERSION}}/js/app.js` (el placeholder literal `{{VERSION}}`; el Gateway de T-00-19 lo sustituye al servir). MUST enlazar `css/tokens.css` y `css/base.css` (en ese orden) con `href` `/static/{{VERSION}}/css/tokens.css` y `/static/{{VERSION}}/css/base.css`. MUST enlazar el *manifest* con `href="/manifest.webmanifest"` y MUST declarar `theme-color` `#0A0A0A` (requirement «Manifest PWA de Vectra»). MUST NOT exigir un *bundler*, `package.json` ni dependencias npm para cargar la app. `js/app.js` MUST importar el *router* con `import` de ES Module, MUST importar `js/components/index.js` para registrar `vx-button`, `vx-field`, `vx-chip`, `vx-modal`, `vx-side-panel`, `vx-toast`, `vx-product-card` y `vx-omnibox`, MUST arrancar el *poller* de `js/health.js`, MUST registrar el Service Worker (requirement «Service Worker del app shell»), y MUST arrancar el *watcher* de actualización (requirement «Actualización del Service Worker»). Este change MUST NOT exigir que `app.js` importe `errors.js` ni `keyboard-list.js` (el cableado de resultados llega en T-03-15).
+`index.html` MUST declarar `lang="es"` en el elemento `html`. MUST incluir un *outlet* identificable (p. ej. `id="app"`) donde el *router* pinta la vista. MUST cargar `js/app.js` como ES Module (`type="module"`) con `src` igual a `/static/{{VERSION}}/js/app.js` (el placeholder literal `{{VERSION}}`; el Gateway de T-00-19 lo sustituye al servir). MUST enlazar `css/tokens.css` y `css/base.css` (en ese orden) con `href` `/static/{{VERSION}}/css/tokens.css` y `/static/{{VERSION}}/css/base.css`. MUST enlazar el *manifest* con `href="/manifest.webmanifest"` y MUST declarar `theme-color` `#0A0A0A` (requirement «Manifest PWA de Vectra»). MUST NOT exigir un *bundler*, `package.json` ni dependencias npm para cargar la app. `js/app.js` MUST importar el *router* con `import` de ES Module, MUST importar `js/components/index.js` para registrar `vx-button`, `vx-field`, `vx-chip`, `vx-modal`, `vx-side-panel`, `vx-toast`, `vx-product-card` y `vx-omnibox`, MUST importar el montaje de búsqueda de `js/search.js` y pasarlo al *router* (requirement «Búsqueda mientras se escribe en el Omnibox»), MUST arrancar el *poller* de `js/health.js`, MUST registrar el Service Worker (requirement «Service Worker del app shell»), y MUST arrancar el *watcher* de actualización (requirement «Actualización del Service Worker»). MUST NOT exigir que `app.js` importe `errors.js` ni `keyboard-list.js` (`showError` ya se inyecta; el listbox lo usa el módulo de búsqueda).
 
 #### Scenario: el documento está en español y carga el módulo versionado (happy)
 
@@ -39,7 +40,7 @@ El repositorio MUST contener el directorio `vectra-web/` en la raíz, con al men
 
 - **WHEN** se inspecciona `vectra-web/`
 - **THEN** existen `css/` y `js/components/` como directorios
-- **AND** existen los archivos `js/app.js`, `js/router.js`, `js/api.js`, `js/errors.js`, `js/keyboard-list.js`, `js/health.js` y `js/sw-update.js`
+- **AND** existen los archivos `js/app.js`, `js/router.js`, `js/api.js`, `js/errors.js`, `js/keyboard-list.js`, `js/search.js`, `js/health.js` y `js/sw-update.js`
 - **AND** existen `css/tokens.css` y `css/base.css`
 - **AND** existen `js/components/vx-button.js`, `vx-field.js`, `vx-chip.js`, `vx-modal.js`, `vx-side-panel.js`, `vx-toast.js`, `vx-product-card.js`, `vx-omnibox.js`, `shared.js`, `index.js` y `dev/components.html`
 
@@ -160,6 +161,13 @@ El repositorio MUST contener el directorio `vectra-web/` en la raíz, con al men
 - **AND** se ejecuta `./scripts/check-vectra-web.sh`
 - **THEN** el comando termina con código distinto de 0
 - **AND** el mensaje nombra `sw-update.js`
+
+#### Scenario: falta search.js (unhappy)
+
+- **WHEN** falta `vectra-web/js/search.js`
+- **AND** se ejecuta `./scripts/check-vectra-web.sh`
+- **THEN** el comando termina con código distinto de 0
+- **AND** el mensaje nombra `search.js`
 
 ### Requirement: Router hash Operador y Administración sin recargar
 
@@ -985,7 +993,7 @@ Si se pasa un mapa al que le falta un valor del enum (p. ej. se omite `timeout`)
 Cuando el *router* pinta `data-view="operator"` (`#/`, `#` o hash vacío), el *outlet* MUST incluir, en este orden visual de arriba hacia abajo:
 
 1. Una región `data-region="omnibox"` que contiene exactamente un `vx-omnibox`.
-2. Una región `data-region="results"` reservada para resultados (T-03-15). En este change MUST estar vacía de `vx-product-card` y MUST NOT llamar a `/search`.
+2. Una región `data-region="results"` para la lista de búsqueda (requirement «Búsqueda mientras se escribe en el Omnibox»). Al pintar la vista, MUST estar vacía de hits y de `vx-product-card` (T-03-17). MUST NOT llamar a `/search` hasta un `vx-query` de modo texto con consulta no vacía.
 3. Una región `data-region="side-panel"` que contiene un `vx-side-panel` **sin** atributo `open` (lugar para T-04-08).
 
 MUST conservar el enlace `<a href="#/admin/productos">` (texto en español) de T-01-01. MUST NOT pedir credenciales. Las vistas `data-view="admin"` y `data-view="not-found"` MUST NOT incluir `vx-omnibox`.
@@ -1005,7 +1013,7 @@ MUST conservar el enlace `<a href="#/admin/productos">` (texto en español) de T
 
 - **WHEN** el hash es `#/admin/productos`
 - **THEN** el *outlet* muestra `data-view="admin"`
-- **AND** no hay `vx-omnibox` en el *outlet*
+- **AND** no hay `vx-omnibox` en el *outlet`
 
 ### Requirement: Layout de la vista administración
 
@@ -2976,3 +2984,142 @@ Antes de archive, la suite MUST incluir:
 
 - **WHEN** se inspecciona `product-sheet.test.mjs`
 - **THEN** existen `sheet_stock_inbound_posts_and_shows_resulting_stock`, `sheet_stock_adjustment_without_reason_shows_invalid_input` y `sheet_stock_negative_keeps_stock_and_shows_negative_stock`
+
+### Requirement: Búsqueda mientras se escribe en el Omnibox
+
+Cuando el *router* pinta `data-view="operator"`, MUST montar la búsqueda sobre `data-region="omnibox"` y `data-region="results"`. `vx-omnibox` MUST seguir emitiendo `vx-query` y MUST NOT llamar a `/search` ni importar el cliente HTTP (requirement «Modos del Omnibox»).
+
+En cada `vx-query` con `detail.mode === "text"` y texto recortado no vacío, MUST:
+
+1. Cancelar la petición anterior con `AbortController` (el `signal` MUST reenviarse al cliente HTTP, T-01-06 / [5.7](../../../../../docs/5-contract-api.md#57-búsqueda-search-as-you-type-y-cancelación)).
+2. Invocar `GET /api/v1/search` en el mismo origen con query `q` igual al texto (sin prefijo de API extra; MUST usar `encodeURIComponent` o equivalente). MUST NOT enviar `facets`, `categoryId`, `brandId`, `inStock` ni `attr`. `sort`/`offset`/`limit` MAY omitirse (defaults del contrato: relevancia, 0, 20). Si el texto supera 200 caracteres, MUST recortarlo a 200 antes de enviarlo (`maxLength` de `q` en [docs/openapi.yaml](../../../../../docs/openapi.yaml)).
+3. MUST NOT aplicar *debounce* ni umbral de teclas: una petición por evento de consulta.
+
+MUST pintar en `data-region="results"` **solo** la respuesta cuya petición no fue abortada (Listo cuando). Hits de una petición abortada MUST NOT reemplazar la lista. Si llega un `AbortError`, MUST NOT pintar y MUST NOT invocar `showError`.
+
+Cada hit MUST mostrarse con **nombre** y **SKU** como texto plano (`textContent` o equivalente). La lista MUST ser un `role="listbox"` operable por teclado con el helper de T-01-10 (`aria-activedescendant`, flechas desde el input del Omnibox). MUST NOT insertar `highlight.name` / `highlight.description` como HTML (T-03-16). MUST NOT exigir `vx-product-card` ni pintar marca, precio, stock, ubicación o imagen (**No hace** / T-03-17). MUST NOT abrir ficha ni panel de recomendaciones al activar un hit (T-04-08).
+
+Consulta vacía (incluido Escape que deja el Omnibox vacío, T-01-08) o solo espacios: MUST abortar la petición en curso, MUST vaciar `data-region="results"` de hits y MUST NOT llamar a `/search`.
+
+`vx-query` con `mode` distinto de `"text"` (`ai`, `voice`, `image`): MUST abortar la petición en curso si existe y MUST NOT llamar a `/search`. MUST NOT ejecutar `/ai`, `/speech` ni cámara.
+
+`hits: []` MUST dejar la lista sin opciones (MAY un mensaje en español «Sin resultados»). MUST NOT dejar hits de una consulta anterior.
+
+Errores HTTP o de red que no sean abort (`invalid_input`, `unavailable`, `timeout`, `network`, …): MUST invocar `showError` con el error del cliente y MUST NOT pintar esa respuesta. La lista previa MAY permanecer.
+
+Vistas `data-view="admin"` y `data-view="not-found"` MUST NOT llamar a `/search`. Al dejar la vista operador MUST abortar la petición en curso.
+
+Textos visibles MUST estar en español. `base.css` MAY estilar la lista solo con *tokens* `--vx-*` existentes. MUST NOT agregar *tokens* nuevos ni un Web Component nuevo.
+
+#### Scenario: consulta de texto llama a GET /search con q (happy)
+
+- **WHEN** la vista operador está montada
+- **AND** el Omnibox emite `vx-query` con `mode: "text"` y `text: "perno m8"`
+- **THEN** se envía `GET /api/v1/search` cuyo query incluye `q` con ese texto
+- **AND** no se envían `facets`, `categoryId`, `brandId` ni `inStock`
+
+#### Scenario: escribir rápido cancela la petición anterior y pinta solo la última (happy, Listo cuando)
+
+- **WHEN** la vista operador está montada
+- **AND** llegan `vx-query` de texto `"p"`, luego `"pe"`, luego `"perno m8"` antes de que respondan las anteriores
+- **THEN** cada petición salvo la última queda abortada (`AbortSignal.aborted === true`)
+- **AND** `data-region="results"` muestra los hits de `"perno m8"`
+- **AND** no muestra hits que solo correspondían a `"p"` o `"pe"`
+
+#### Scenario: la lista muestra nombre y SKU como texto (happy)
+
+- **WHEN** `GET /api/v1/search` responde 200 con un hit `name: "Perno de Acero"` y `sku: "PER-STEEL"`
+- **THEN** `data-region="results"` contiene ese nombre y ese SKU visibles
+- **AND** no hay `vx-product-card` en la región
+- **AND** el contenedor tiene `role="listbox"`
+
+#### Scenario: flechas desde el Omnibox recorren los resultados (happy)
+
+- **WHEN** hay al menos un hit pintado
+- **AND** el input del Omnibox tiene el foco
+- **AND** se pulsa ArrowDown
+- **THEN** el primer hit queda activo (`aria-selected="true"` / `aria-activedescendant`)
+- **AND** no se lanza excepción
+
+#### Scenario: la respuesta abortada no se pinta (unhappy)
+
+- **WHEN** una petición de `"p"` se aborta al escribir `"pe"`
+- **AND** después llega el cuerpo de `"p"`
+- **THEN** `data-region="results"` no muestra esos hits
+
+#### Scenario: AbortError no llama a showError (unhappy)
+
+- **WHEN** el cliente HTTP rechaza con `AbortError` al cancelar
+- **THEN** no se invoca `showError`
+- **AND** no se lanza excepción
+
+#### Scenario: modo IA, voz o imagen no llama a search (unhappy)
+
+- **WHEN** llega `vx-query` con `mode: "ai"` y `text: "?hola"`, o `mode: "voice"`, o `mode: "image"`
+- **THEN** no se envía `GET /api/v1/search`
+- **AND** no se llama a `/ai`, `/speech` ni a la cámara
+
+#### Scenario: consulta vacía limpia sin fetch (unhappy)
+
+- **WHEN** hay hits visibles de una consulta previa
+- **AND** llega `vx-query` con `mode: "text"` y `text: ""` (p. ej. Escape en el Omnibox)
+- **THEN** no se envía `GET /api/v1/search`
+- **AND** `data-region="results"` queda sin hits
+
+#### Scenario: error de API muestra toast y no pinta (unhappy)
+
+- **WHEN** `GET /api/v1/search` responde 400, 503 o 504 con `problem+json`, o el cliente lanza error `network`
+- **THEN** se invoca `showError` con ese error
+- **AND** no se pintan hits de esa respuesta
+
+#### Scenario: hits vacíos dejan la lista sin opciones (unhappy)
+
+- **WHEN** la respuesta 200 trae `hits: []` para la consulta vigente
+- **THEN** `data-region="results"` no muestra opciones de producto
+- **AND** no se invoca `showError`
+
+#### Scenario: HTML de highlight se muestra como texto (unhappy)
+
+- **WHEN** un hit trae `highlight.name` con `<mark>` u otro HTML (p. ej. `<img onerror>`)
+- **THEN** ese marcado no se interpreta como HTML en `data-region="results"`
+- **AND** el nombre visible es texto plano (`name` del hit)
+
+#### Scenario: administración no llama a search (unhappy)
+
+- **WHEN** el hash es `#/admin/productos`
+- **THEN** no se envía `GET /api/v1/search`
+
+### Requirement: Tests de búsqueda mientras se escribe
+
+Antes de archive, la suite MUST incluir estos tests (nombres estables). Happy y unhappy path son obligatorios. MUST ejecutarse con `node --test` desde `./scripts/check-vectra-web.sh` (sin jsdom, sin `package.json`, sin dependencias npm). El Listo cuando del ticket (escribir rápido "perno m8" y ver peticiones anteriores canceladas en la pestaña de red) MUST poder ejecutarse contra `vortex serve` + esta UI; la suite automatizada MUST cubrir abort + última respuesta.
+
+| Test | Dónde | Tipo |
+|---|---|---|
+| `search_text_query_calls_get_search_with_q` | `scripts/fixtures/vectra-web/search.test.mjs` | happy |
+| `search_cancels_previous_and_paints_last_only` | `scripts/fixtures/vectra-web/search.test.mjs` | happy, Listo cuando |
+| `search_renders_name_and_sku_as_text` | `scripts/fixtures/vectra-web/search.test.mjs` | happy |
+| `search_arrow_down_from_omnibox_selects_first_hit` | `scripts/fixtures/vectra-web/search.test.mjs` | happy |
+| `search_aborted_response_does_not_paint` | `scripts/fixtures/vectra-web/search.test.mjs` | unhappy |
+| `search_abort_error_does_not_call_showError` | `scripts/fixtures/vectra-web/search.test.mjs` | unhappy |
+| `search_non_text_mode_does_not_call_search` | `scripts/fixtures/vectra-web/search.test.mjs` | unhappy |
+| `search_empty_query_clears_without_fetch` | `scripts/fixtures/vectra-web/search.test.mjs` | unhappy |
+| `search_problem_json_calls_showError` | `scripts/fixtures/vectra-web/search.test.mjs` | unhappy |
+| `search_empty_hits_shows_empty_list` | `scripts/fixtures/vectra-web/search.test.mjs` | unhappy |
+| `search_highlight_html_is_plain_text` | `scripts/fixtures/vectra-web/search.test.mjs` | unhappy |
+| `search_admin_view_does_not_call_search` | `scripts/fixtures/vectra-web/search.test.mjs` | unhappy |
+| `search_missing_module_fails` | `scripts/check-vectra-web.sh` | unhappy (harness) |
+
+`check-vectra-web.sh` MUST fallar si falta `vectra-web/js/search.js`. MUST NOT exigir Playwright. `cargo fmt --all -- --check`, `cargo clippy --workspace -- -D warnings` y `cargo test --workspace` en `vortex-core/` MUST seguir en verde ([docs/desarrollo-git-openspec.md](../../../../../docs/desarrollo-git-openspec.md) §5).
+
+#### Scenario: la suite de búsqueda pasa en check-vectra-web (happy)
+
+- **WHEN** se ejecuta `./scripts/check-vectra-web.sh`
+- **THEN** termina con código 0
+- **AND** corre `search.test.mjs`
+
+#### Scenario: falta search.js (unhappy)
+
+- **WHEN** falta `vectra-web/js/search.js`
+- **AND** se ejecuta `./scripts/check-vectra-web.sh`
+- **THEN** el comando termina con código distinto de 0
+- **AND** el mensaje nombra `search.js`

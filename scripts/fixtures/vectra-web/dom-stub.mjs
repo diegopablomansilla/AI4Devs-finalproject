@@ -180,6 +180,11 @@ class FakeNode extends EventTargetStub {
     this._text = String(value ?? "");
   }
 
+  get lastChild() {
+    const kids = this._children ?? [];
+    return kids.length > 0 ? kids[kids.length - 1] : null;
+  }
+
   focus() {
     if (globalThis.document?._setActiveElement) {
       globalThis.document._setActiveElement(this);
@@ -286,11 +291,46 @@ class FakeNode extends EventTargetStub {
     }
   }
 
+  _descendants() {
+    /** @type {FakeNode[]} */
+    const out = [];
+    const walk = (node) => {
+      const kids = node._children ?? [];
+      for (const child of kids) {
+        out.push(child);
+        walk(child);
+      }
+    };
+    walk(this);
+    return out;
+  }
+
   querySelector(selector) {
     const sel = String(selector);
     if (sel === '[slot="name"]') {
       const kids = this._children ?? [];
       return kids.find((c) => c.getAttribute("slot") === "name") ?? null;
+    }
+    const regionMatch = sel.match(/^\[data-region="([^"]+)"\]$/);
+    if (regionMatch) {
+      return (
+        this._descendants().find(
+          (n) => n.getAttribute("data-region") === regionMatch[1],
+        ) ?? null
+      );
+    }
+    if (sel === "vx-omnibox") {
+      return (
+        this._descendants().find((n) => n.localName === "vx-omnibox") ?? null
+      );
+    }
+    const roleMatch = sel.match(/^\[role="([^"]+)"\]$/);
+    if (roleMatch) {
+      return (
+        this._descendants().find(
+          (n) => n.getAttribute("role") === roleMatch[1],
+        ) ?? null
+      );
     }
     return null;
   }
