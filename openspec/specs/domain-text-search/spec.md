@@ -116,7 +116,9 @@ Construir `SearchQuery` con `q` de más de 200 caracteres, `offset` > 1000, `lim
 
 ### Requirement: Identificador de índice y documento
 
-El crate `domain` MUST validar el identificador de índice: MUST ser no vacío tras recortar espacios. Construir un identificador vacío o solo espacios MUST fallar con `DomainError` `code` `invalid_input`. `swap_indexes` con origen igual a destino MUST fallar con `DomainError` `code` `invalid_input`. El `id` de documento MUST ser un ULID Crockford de 26 caracteres **sin** `:` (mismas reglas que `Id<T>`). Un id con prefijo de tabla o vacío MUST fallar con `DomainError` `code` `invalid_input` y MUST NOT producir el documento. `IndexSettings` MUST poder construirse vacío (la configuración 4.11.2 es T-03-05). MUST NOT hablar con Meilisearch.
+El crate `domain` MUST validar el identificador de índice: MUST ser no vacío tras recortar espacios. Construir un identificador vacío o solo espacios MUST fallar con `DomainError` `code` `invalid_input`. `swap_indexes` con origen igual a destino MUST fallar con `DomainError` `code` `invalid_input`. El `id` de documento MUST ser un ULID Crockford de 26 caracteres **sin** `:` (mismas reglas que `Id<T>`). Un id con prefijo de tabla o vacío MUST fallar con `DomainError` `code` `invalid_input` y MUST NOT producir el documento.
+
+`IndexSettings` MUST poder construirse vacío (payload no-op para `apply_settings`). MUST poder construirse con las listas de settings: `searchableAttributes`, `rankingRules`, `filterableAttributes`, `sortableAttributes` y `typoTolerance.disableOnAttributes` (vectores de string). MUST NOT incluir `synonyms` ni `attributesToHighlight` (resaltado es T-03-12). MUST NOT hablar con Meilisearch. MUST NOT depender de `meilisearch-sdk`. El perfil 4.11.2 + H-03/H-04 (constantes y `attr_<clave>`) MUST vivir en el crate `search`, no en `domain`.
 
 #### Scenario: índice productos (happy)
 
@@ -134,6 +136,14 @@ El crate `domain` MUST validar el identificador de índice: MUST ser no vacío t
 
 - **WHEN** se construye un `IndexSettings` sin campos de 4.11.2
 - **THEN** la construcción termina sin error
+- **AND** el payload se considera vacío (no-op)
+
+#### Scenario: IndexSettings con listas (happy)
+
+- **WHEN** se construye un `IndexSettings` con `searchableAttributes` `["nombre"]` y `filterableAttributes` `["marca_id"]`
+- **THEN** la construcción termina sin error
+- **AND** las listas expuestas coinciden con esos valores
+- **AND** el payload no se considera vacío
 
 #### Scenario: índice vacío (unhappy)
 
@@ -185,6 +195,7 @@ Antes de archive, la suite MUST incluir estos tests (nombres estables). Happy y 
 | `index_uid_constructs_productos` | `vortex-core/crates/domain/` (unidad) | happy |
 | `search_document_constructs_ulid` | `vortex-core/crates/domain/` (unidad) | happy |
 | `index_settings_constructs_empty` | `vortex-core/crates/domain/` (unidad) | happy |
+| `index_settings_constructs_with_lists` | `vortex-core/crates/domain/` (unidad) | happy |
 | `search_query_rejects_q_too_long` | `vortex-core/crates/domain/` (unidad) | unhappy |
 | `search_query_rejects_offset_or_limit_out_of_range` | `vortex-core/crates/domain/` (unidad) | unhappy |
 | `search_query_rejects_english_or_unknown_orden` | `vortex-core/crates/domain/` (unidad) | unhappy |
@@ -201,5 +212,5 @@ Antes de archive, la suite MUST incluir estos tests (nombres estables). Happy y 
 
 - **WHEN** se ejecuta `cargo test -p domain` en `vortex-core/`
 - **THEN** corren los tests de la tabla
-- **AND** los de construcción válida, dummy `search`/`health` y el *trait* pasan
+- **AND** los de construcción válida, dummy `search`/`health`, el *trait* e `IndexSettings` con listas pasan
 - **AND** los de query inválida, dummy `Unavailable`/`Timeout`/`InvalidInput`, índice vacío, swap idéntico y prefijo de tabla pasan

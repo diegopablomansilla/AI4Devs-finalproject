@@ -3,8 +3,11 @@
 use domain::error::DomainCode;
 use domain::health::ComponentStatus;
 use domain::producto::Producto;
-use domain::{Id, IndexUid, SearchDocument, SearchFilters, SearchOrden, SearchQuery, TextSearch};
-use search::MeiliTextSearch;
+use domain::{
+    Id, IndexSettings, IndexUid, SearchDocument, SearchFilters, SearchOrden, SearchQuery,
+    TextSearch,
+};
+use search::{MeiliTextSearch, productos_index_settings};
 
 fn meilisearch_url() -> String {
     std::env::var("MEILISEARCH_URL").unwrap_or_else(|_| "http://127.0.0.1:7700".to_string())
@@ -12,6 +15,11 @@ fn meilisearch_url() -> String {
 
 fn ephemeral_index_uid() -> IndexUid {
     let name = format!("t0304-{}", Id::<Producto>::generate());
+    IndexUid::try_new(&name).expect("index uid")
+}
+
+fn ephemeral_index_uid_t0305() -> IndexUid {
+    let name = format!("t0305-{}", Id::<Producto>::generate());
     IndexUid::try_new(&name).expect("index uid")
 }
 
@@ -108,5 +116,57 @@ async fn meilisearch_adapter_unavailable_when_unreachable() {
     let adapter =
         MeiliTextSearch::new("http://127.0.0.1:1", None::<String>).expect("client for dead port");
     let err = adapter.health().await.expect_err("health must fail");
+    assert_eq!(err.code(), DomainCode::Unavailable);
+}
+
+#[tokio::test]
+#[ignore = "meilisearch"]
+async fn meilisearch_apply_productos_settings_matches_expected() {
+    let adapter = adapter();
+    let index = ephemeral_index_uid_t0305();
+    adapter.create_index(&index).await.expect("create_index");
+
+    let expected = productos_index_settings(["medida"]).expect("profile");
+    adapter
+        .apply_settings(&index, expected.clone())
+        .await
+        .expect("apply_settings");
+
+    let (got, synonyms_present) = adapter
+        .test_read_index_settings(&index)
+        .await
+        .expect("read settings");
+
+    assert_eq!(got.searchable_attributes, expected.searchable_attributes);
+    assert_eq!(got.ranking_rules, expected.ranking_rules);
+    assert_eq!(got.sortable_attributes, expected.sortable_attributes);
+    assert_eq!(
+        got.typo_disable_on_attributes,
+        expected.typo_disable_on_attributes
+    );
+
+    let mut got_filterable = got.filterable_attributes;
+    let mut expected_filterable = expected.filterable_attributes;
+    expected_filterable.sort();
+    got_filterable.sort();
+    assert_eq!(got_filterable, expected_filterable);
+    assert!(!synonyms_present);
+
+    cleanup_index(&adapter, &index).await;
+}
+
+#[tokio::test]
+async fn meilisearch_apply_settings_unavailable_when_unreachable() {
+    let adapter =
+        MeiliTextSearch::new("http://127.0.0.1:1", None::<String>).expect("client for dead port");
+    let index = IndexUid::try_new("t0305-unreachable").expect("index uid");
+    let settings = IndexSettings {
+        searchable_attributes: vec!["nombre".into()],
+        ..IndexSettings::default()
+    };
+    let err = adapter
+        .apply_settings(&index, settings)
+        .await
+        .expect_err("apply_settings must fail");
     assert_eq!(err.code(), DomainCode::Unavailable);
 }
