@@ -21,12 +21,13 @@ El repositorio MUST contener el directorio `vectra-web/` en la raíz, con al men
 - `vectra-web/js/errors.js`
 - `vectra-web/js/keyboard-list.js`
 - `vectra-web/js/search.js`
+- `vectra-web/js/highlight.js`
 - `vectra-web/js/health.js`
 - `vectra-web/js/sw-update.js`
 - `vectra-web/js/components/index.js`, `shared.js`, `vx-button.js`, `vx-field.js`, `vx-chip.js`, `vx-modal.js`, `vx-side-panel.js`, `vx-toast.js`, `vx-product-card.js`, `vx-omnibox.js`
 - `vectra-web/dev/components.html`
 
-`index.html` MUST declarar `lang="es"` en el elemento `html`. MUST incluir un *outlet* identificable (p. ej. `id="app"`) donde el *router* pinta la vista. MUST cargar `js/app.js` como ES Module (`type="module"`) con `src` igual a `/static/{{VERSION}}/js/app.js` (el placeholder literal `{{VERSION}}`; el Gateway de T-00-19 lo sustituye al servir). MUST enlazar `css/tokens.css` y `css/base.css` (en ese orden) con `href` `/static/{{VERSION}}/css/tokens.css` y `/static/{{VERSION}}/css/base.css`. MUST enlazar el *manifest* con `href="/manifest.webmanifest"` y MUST declarar `theme-color` `#0A0A0A` (requirement «Manifest PWA de Vectra»). MUST NOT exigir un *bundler*, `package.json` ni dependencias npm para cargar la app. `js/app.js` MUST importar el *router* con `import` de ES Module, MUST importar `js/components/index.js` para registrar `vx-button`, `vx-field`, `vx-chip`, `vx-modal`, `vx-side-panel`, `vx-toast`, `vx-product-card` y `vx-omnibox`, MUST importar el montaje de búsqueda de `js/search.js` y pasarlo al *router* (requirement «Búsqueda mientras se escribe en el Omnibox»), MUST arrancar el *poller* de `js/health.js`, MUST registrar el Service Worker (requirement «Service Worker del app shell»), y MUST arrancar el *watcher* de actualización (requirement «Actualización del Service Worker»). MUST NOT exigir que `app.js` importe `errors.js` ni `keyboard-list.js` (`showError` ya se inyecta; el listbox lo usa el módulo de búsqueda).
+`index.html` MUST declarar `lang="es"` en el elemento `html`. MUST incluir un *outlet* identificable (p. ej. `id="app"`) donde el *router* pinta la vista. MUST cargar `js/app.js` como ES Module (`type="module"`) con `src` igual a `/static/{{VERSION}}/js/app.js` (el placeholder literal `{{VERSION}}`; el Gateway de T-00-19 lo sustituye al servir). MUST enlazar `css/tokens.css` y `css/base.css` (en ese orden) con `href` `/static/{{VERSION}}/css/tokens.css` y `/static/{{VERSION}}/css/base.css`. MUST enlazar el *manifest* con `href="/manifest.webmanifest"` y MUST declarar `theme-color` `#0A0A0A` (requirement «Manifest PWA de Vectra»). MUST NOT exigir un *bundler*, `package.json` ni dependencias npm para cargar la app. `js/app.js` MUST importar el *router* con `import` de ES Module, MUST importar `js/components/index.js` para registrar `vx-button`, `vx-field`, `vx-chip`, `vx-modal`, `vx-side-panel`, `vx-toast`, `vx-product-card` y `vx-omnibox`, MUST importar el montaje de búsqueda de `js/search.js` y pasarlo al *router* (requirement «Búsqueda mientras se escribe en el Omnibox»), MUST arrancar el *poller* de `js/health.js`, MUST registrar el Service Worker (requirement «Service Worker del app shell»), y MUST arrancar el *watcher* de actualización (requirement «Actualización del Service Worker»). MUST NOT exigir que `app.js` importe `errors.js` ni `keyboard-list.js` (`showError` ya se inyecta; el listbox lo usa el módulo de búsqueda). `js/search.js` MUST importar `js/highlight.js`.
 
 #### Scenario: el documento está en español y carga el módulo versionado (happy)
 
@@ -40,7 +41,7 @@ El repositorio MUST contener el directorio `vectra-web/` en la raíz, con al men
 
 - **WHEN** se inspecciona `vectra-web/`
 - **THEN** existen `css/` y `js/components/` como directorios
-- **AND** existen los archivos `js/app.js`, `js/router.js`, `js/api.js`, `js/errors.js`, `js/keyboard-list.js`, `js/search.js`, `js/health.js` y `js/sw-update.js`
+- **AND** existen los archivos `js/app.js`, `js/router.js`, `js/api.js`, `js/errors.js`, `js/keyboard-list.js`, `js/search.js`, `js/highlight.js`, `js/health.js` y `js/sw-update.js`
 - **AND** existen `css/tokens.css` y `css/base.css`
 - **AND** existen `js/components/vx-button.js`, `vx-field.js`, `vx-chip.js`, `vx-modal.js`, `vx-side-panel.js`, `vx-toast.js`, `vx-product-card.js`, `vx-omnibox.js`, `shared.js`, `index.js` y `dev/components.html`
 
@@ -2997,7 +2998,7 @@ En cada `vx-query` con `detail.mode === "text"` y texto recortado no vacío, MUS
 
 MUST pintar en `data-region="results"` **solo** la respuesta cuya petición no fue abortada (Listo cuando). Hits de una petición abortada MUST NOT reemplazar la lista. Si llega un `AbortError`, MUST NOT pintar y MUST NOT invocar `showError`.
 
-Cada hit MUST mostrarse con **nombre** y **SKU** como texto plano (`textContent` o equivalente). La lista MUST ser un `role="listbox"` operable por teclado con el helper de T-01-10 (`aria-activedescendant`, flechas desde el input del Omnibox). MUST NOT insertar `highlight.name` / `highlight.description` como HTML (T-03-16). MUST NOT exigir `vx-product-card` ni pintar marca, precio, stock, ubicación o imagen (**No hace** / T-03-17). MUST NOT abrir ficha ni panel de recomendaciones al activar un hit (T-04-08).
+Cada hit MUST mostrarse con **nombre** (desde `highlight.name` sanitizado vía `appendSanitizedHtml` si existe, si no `name` en texto plano) y **SKU** como texto plano. MAY mostrar `highlight.description` sanitizado. La lista MUST ser un `role="listbox"` operable por teclado con el helper de T-01-10. MUST NOT usar `innerHTML` del payload sin `highlight.js`. MUST NOT exigir `vx-product-card` ni pintar marca, precio, stock, ubicación o imagen (**No hace** / T-03-17). MUST NOT abrir ficha ni panel de recomendaciones al activar un hit (T-04-08).
 
 Consulta vacía (incluido Escape que deja el Omnibox vacío, T-01-08) o solo espacios: MUST abortar la petición en curso, MUST vaciar `data-region="results"` de hits y MUST NOT llamar a `/search`.
 
@@ -3028,8 +3029,9 @@ Textos visibles MUST estar en español. `base.css` MAY estilar la lista solo con
 
 #### Scenario: la lista muestra nombre y SKU como texto (happy)
 
-- **WHEN** `GET /api/v1/search` responde 200 con un hit `name: "Perno de Acero"` y `sku: "PER-STEEL"`
+- **WHEN** `GET /api/v1/search` responde 200 con un hit `name: "Perno de Acero"` y `sku: "PER-STEEL"`, o con `highlight.name: "<mark>Perno</mark> de Acero"`
 - **THEN** `data-region="results"` contiene ese nombre y ese SKU visibles
+- **AND** si hay `highlight.name` con `<mark>`, existe un elemento `mark` en la fila
 - **AND** no hay `vx-product-card` en la región
 - **AND** el contenedor tiene `role="listbox"`
 
@@ -3081,8 +3083,9 @@ Textos visibles MUST estar en español. `base.css` MAY estilar la lista solo con
 #### Scenario: HTML de highlight se muestra como texto (unhappy)
 
 - **WHEN** un hit trae `highlight.name` con `<mark>` u otro HTML (p. ej. `<img onerror>`)
-- **THEN** ese marcado no se interpreta como HTML en `data-region="results"`
-- **AND** el nombre visible es texto plano (`name` del hit)
+- **THEN** solo `<mark>` se interpreta como elemento (vía `highlight.js`)
+- **AND** no hay descendiente `img` ni otro tag fuera de `mark`
+- **AND** el payload peligroso permanece como texto escapado
 
 #### Scenario: administración no llama a search (unhappy)
 
@@ -3091,25 +3094,26 @@ Textos visibles MUST estar en español. `base.css` MAY estilar la lista solo con
 
 ### Requirement: Tests de búsqueda mientras se escribe
 
-Antes de archive, la suite MUST incluir estos tests (nombres estables). Happy y unhappy path son obligatorios. MUST ejecutarse con `node --test` desde `./scripts/check-vectra-web.sh` (sin jsdom, sin `package.json`, sin dependencias npm). El Listo cuando del ticket (escribir rápido "perno m8" y ver peticiones anteriores canceladas en la pestaña de red) MUST poder ejecutarse contra `vortex serve` + esta UI; la suite automatizada MUST cubrir abort + última respuesta.
+Antes de archive, la suite MUST incluir estos tests (nombres estables). Happy y unhappy path son obligatorios. MUST ejecutarse con `node --test` desde `./scripts/check-vectra-web.sh` (sin jsdom, sin `package.json`, sin dependencias npm).
 
 | Test | Dónde | Tipo |
 |---|---|---|
-| `search_text_query_calls_get_search_with_q` | `scripts/fixtures/vectra-web/search.test.mjs` | happy |
-| `search_cancels_previous_and_paints_last_only` | `scripts/fixtures/vectra-web/search.test.mjs` | happy, Listo cuando |
-| `search_renders_name_and_sku_as_text` | `scripts/fixtures/vectra-web/search.test.mjs` | happy |
-| `search_arrow_down_from_omnibox_selects_first_hit` | `scripts/fixtures/vectra-web/search.test.mjs` | happy |
-| `search_aborted_response_does_not_paint` | `scripts/fixtures/vectra-web/search.test.mjs` | unhappy |
-| `search_abort_error_does_not_call_showError` | `scripts/fixtures/vectra-web/search.test.mjs` | unhappy |
-| `search_non_text_mode_does_not_call_search` | `scripts/fixtures/vectra-web/search.test.mjs` | unhappy |
-| `search_empty_query_clears_without_fetch` | `scripts/fixtures/vectra-web/search.test.mjs` | unhappy |
-| `search_problem_json_calls_showError` | `scripts/fixtures/vectra-web/search.test.mjs` | unhappy |
-| `search_empty_hits_shows_empty_list` | `scripts/fixtures/vectra-web/search.test.mjs` | unhappy |
-| `search_highlight_html_is_plain_text` | `scripts/fixtures/vectra-web/search.test.mjs` | unhappy |
-| `search_admin_view_does_not_call_search` | `scripts/fixtures/vectra-web/search.test.mjs` | unhappy |
-| `search_missing_module_fails` | `scripts/check-vectra-web.sh` | unhappy (harness) |
-
-`check-vectra-web.sh` MUST fallar si falta `vectra-web/js/search.js`. MUST NOT exigir Playwright. `cargo fmt --all -- --check`, `cargo clippy --workspace -- -D warnings` y `cargo test --workspace` en `vortex-core/` MUST seguir en verde ([docs/desarrollo-git-openspec.md](../../../../../docs/desarrollo-git-openspec.md) §5).
+| `search_text_query_calls_get_search_with_q` | `search.test.mjs` | happy |
+| `search_cancels_previous_and_paints_last_only` | `search.test.mjs` | happy, Listo cuando |
+| `search_renders_name_and_sku_as_text` | `search.test.mjs` | happy |
+| `search_arrow_down_from_omnibox_selects_first_hit` | `search.test.mjs` | happy |
+| `search_aborted_response_does_not_paint` | `search.test.mjs` | unhappy |
+| `search_abort_error_does_not_call_showError` | `search.test.mjs` | unhappy |
+| `search_non_text_mode_does_not_call_search` | `search.test.mjs` | unhappy |
+| `search_empty_query_clears_without_fetch` | `search.test.mjs` | unhappy |
+| `search_problem_json_calls_showError` | `search.test.mjs` | unhappy |
+| `search_empty_hits_shows_empty_list` | `search.test.mjs` | unhappy |
+| `search_highlight_name_paints_mark` | `search.test.mjs` | happy |
+| `search_highlight_description_paints_mark` | `search.test.mjs` | happy |
+| `search_highlight_null_falls_back_to_name` | `search.test.mjs` | happy |
+| `search_highlight_img_onerror_no_img_element` | `search.test.mjs` | unhappy |
+| `search_admin_view_does_not_call_search` | `search.test.mjs` | unhappy |
+| `search_missing_module_fails` | `check-vectra-web.sh` | unhappy |
 
 #### Scenario: la suite de búsqueda pasa en check-vectra-web (happy)
 
@@ -3123,3 +3127,58 @@ Antes de archive, la suite MUST incluir estos tests (nombres estables). Happy y 
 - **AND** se ejecuta `./scripts/check-vectra-web.sh`
 - **THEN** el comando termina con código distinto de 0
 - **AND** el mensaje nombra `search.js`
+
+### Requirement: Resaltado seguro (`highlight.js`)
+
+El repositorio MUST contener `vectra-web/js/highlight.js` exportando al menos `sanitizeHighlight` y `appendSanitizedHtml`.
+
+`sanitizeHighlight(html)` MUST escapar `&`, `<`, `>`, `"` y `'`, MUST restaurar únicamente las secuencias `<mark>` y `</mark>` (sin atributos) y MUST NOT restaurar ningún otro tag.
+
+`appendSanitizedHtml(parent, html)` MUST invocar `sanitizeHighlight`, MUST construir hijos con `createTextNode` y `createElement('mark')` con `textContent`, y MUST NOT asignar el fragmento crudo a `innerHTML`.
+
+#### Scenario: mark legítimo produce elemento mark (happy)
+
+- **WHEN** `appendSanitizedHtml` recibe `<mark>Perno</mark> hexagonal`
+- **THEN** el contenedor tiene un descendiente `mark` con texto `Perno`
+- **AND** el texto restante incluye `hexagonal`
+
+#### Scenario: img onerror se muestra como texto (unhappy, Listo cuando)
+
+- **WHEN** el fragmento incluye `<img onerror="alert(1)">`
+- **THEN** no se crea descendiente `img`
+- **AND** el texto visible incluye la secuencia escapada del tag
+
+#### Scenario: em y mark con atributos no se restauran (unhappy)
+
+- **WHEN** el fragmento es `<em>x</em>` o `<mark onclick="x">y</mark>`
+- **THEN** no hay elemento `em`
+- **AND** no hay elemento `mark`
+
+### Requirement: Tests de resaltado seguro
+
+| Test | Dónde | Tipo |
+|---|---|---|
+| `highlight_restores_mark_around_match` | `highlight.test.mjs` | happy |
+| `highlight_img_onerror_is_plain_text` | `highlight.test.mjs` | unhappy |
+| `highlight_script_tag_is_plain_text` | `highlight.test.mjs` | unhappy |
+| `highlight_em_not_restored` | `highlight.test.mjs` | unhappy |
+| `highlight_mark_with_attributes_not_restored` | `highlight.test.mjs` | unhappy |
+| `search_highlight_name_paints_mark` | `search.test.mjs` | happy |
+| `search_highlight_description_paints_mark` | `search.test.mjs` | happy |
+| `search_highlight_null_falls_back_to_name` | `search.test.mjs` | happy |
+| `search_highlight_img_onerror_no_img_element` | `search.test.mjs` | unhappy |
+| `highlight_missing_module_fails` | `check-vectra-web.sh` | unhappy |
+
+`check-vectra-web.sh` MUST exigir `highlight.js` y ejecutar `highlight.test.mjs`.
+
+#### Scenario: la suite de highlight pasa en check-vectra-web (happy)
+
+- **WHEN** se ejecuta `./scripts/check-vectra-web.sh`
+- **THEN** corre `highlight.test.mjs` y termina con código 0 respecto a highlight
+
+#### Scenario: falta highlight.js (unhappy)
+
+- **WHEN** falta `vectra-web/js/highlight.js`
+- **AND** se ejecuta `./scripts/check-vectra-web.sh`
+- **THEN** el comando termina con código distinto de 0
+- **AND** el mensaje nombra `highlight.js`

@@ -1,4 +1,5 @@
 import { bindKeyboardList } from "./keyboard-list.js";
+import { appendSanitizedHtml } from "./highlight.js";
 
 /**
  * @param {Element} el
@@ -43,7 +44,7 @@ export function mountSearch(root, { request, showError }) {
   }
 
   /**
-   * @param {Array<{ name?: string, sku?: string }>} hits
+   * @param {Array<{ name?: string, sku?: string, highlight?: { name?: string | null, description?: string | null } | null }>} hits
    */
   function paintHits(hits) {
     const results = resultsRegion();
@@ -62,9 +63,22 @@ export function mountSearch(root, { request, showError }) {
     const items = [];
     for (const hit of hits) {
       const row = document.createElement("div");
-      const name = hit?.name ?? "";
-      const sku = hit?.sku ?? "";
-      row.textContent = `${name} · ${sku}`;
+      const nameWrap = document.createElement("span");
+      const highlightName = hit?.highlight?.name;
+      if (highlightName != null && String(highlightName).trim() !== "") {
+        appendSanitizedHtml(nameWrap, highlightName);
+      } else {
+        nameWrap.textContent = hit?.name ?? "";
+      }
+      row.appendChild(nameWrap);
+      row.appendChild(document.createTextNode(" · "));
+      row.appendChild(document.createTextNode(hit?.sku ?? ""));
+      const highlightDesc = hit?.highlight?.description;
+      if (highlightDesc != null && String(highlightDesc).trim() !== "") {
+        const descWrap = document.createElement("div");
+        appendSanitizedHtml(descWrap, highlightDesc);
+        row.appendChild(descWrap);
+      }
       list.appendChild(row);
       items.push(row);
     }

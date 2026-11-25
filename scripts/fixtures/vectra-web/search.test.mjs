@@ -360,7 +360,68 @@ describe("search", () => {
     unmount();
   });
 
-  test("search_highlight_html_is_plain_text", async () => {
+  test("search_highlight_name_paints_mark", async () => {
+    const { root, results } = await buildOperator({ withOmnibox: false });
+    const unmount = searchMod.mountSearch(root, {
+      request: async () =>
+        searchPayload("perno", [
+          {
+            name: "Perno M8",
+            sku: "PER-M8",
+            highlight: { name: "<mark>Perno</mark> M8", description: null },
+          },
+        ]),
+      showError: () => {},
+    });
+    dispatchTextQuery(root, "perno");
+    await waitTick();
+    const list = results.querySelector('[role="listbox"]');
+    assert.ok(list);
+    assert.ok(list.querySelector("mark"));
+    assert.match(resultsItemText(results), /PER-M8/);
+    unmount();
+  });
+
+  test("search_highlight_description_paints_mark", async () => {
+    const { root, results } = await buildOperator({ withOmnibox: false });
+    const unmount = searchMod.mountSearch(root, {
+      request: async () =>
+        searchPayload("zinc", [
+          {
+            name: "Perno",
+            sku: "P-1",
+            highlight: {
+              name: null,
+              description: "<mark>zincado</mark>",
+            },
+          },
+        ]),
+      showError: () => {},
+    });
+    dispatchTextQuery(root, "zinc");
+    await waitTick();
+    const list = results.querySelector('[role="listbox"]');
+    assert.ok(list?.querySelector("mark"));
+    unmount();
+  });
+
+  test("search_highlight_null_falls_back_to_name", async () => {
+    const { root, results } = await buildOperator({ withOmnibox: false });
+    const unmount = searchMod.mountSearch(root, {
+      request: async () =>
+        searchPayload("x", [
+          { name: "Arandela", sku: "A-1", highlight: null },
+        ]),
+      showError: () => {},
+    });
+    dispatchTextQuery(root, "x");
+    await waitTick();
+    assert.match(resultsItemText(results), /Arandela/);
+    assert.equal(results.querySelector("mark"), null);
+    unmount();
+  });
+
+  test("search_highlight_img_onerror_no_img_element", async () => {
     const { root, results } = await buildOperator({ withOmnibox: false });
     const unmount = searchMod.mountSearch(root, {
       request: async () =>
@@ -378,9 +439,10 @@ describe("search", () => {
     });
     dispatchTextQuery(root, "x");
     await waitTick();
-    const painted = resultsItemText(results);
-    assert.match(painted, /Safe product/);
-    assert.doesNotMatch(painted, /<img/);
+    const list = results.querySelector('[role="listbox"]');
+    assert.ok(list);
+    assert.equal(list.querySelector("img"), null);
+    assert.match(resultsItemText(results), /&lt;img/);
     unmount();
   });
 

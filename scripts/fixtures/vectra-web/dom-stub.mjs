@@ -173,11 +173,18 @@ class FakeNode extends EventTargetStub {
   }
 
   get textContent() {
-    return this._text;
+    const kids = this._children ?? [];
+    if (kids.length > 0) {
+      return kids.map((c) => c.textContent ?? "").join("");
+    }
+    return this._text ?? "";
   }
 
   set textContent(value) {
     this._text = String(value ?? "");
+    if (this._children) {
+      this._children = [];
+    }
   }
 
   get lastChild() {
@@ -332,6 +339,11 @@ class FakeNode extends EventTargetStub {
         ) ?? null
       );
     }
+    if (sel === "mark" || sel === "img" || sel === "em" || sel === "script") {
+      return (
+        this._descendants().find((n) => n.localName === sel) ?? null
+      );
+    }
     return null;
   }
 }
@@ -388,6 +400,13 @@ class DocumentStub extends EventTargetStub {
     return node;
   }
 
+  createTextNode(data) {
+    const node = new FakeNode("#TEXT");
+    node.localName = "#text";
+    node._text = String(data ?? "");
+    return node;
+  }
+
   _setActiveElement(el) {
     this.activeElement = el;
   }
@@ -426,6 +445,9 @@ class DocumentStub extends EventTargetStub {
     }
     if (sel === "vx-omnibox") {
       return node.localName === "vx-omnibox";
+    }
+    if (sel === "mark" || sel === "img" || sel === "em" || sel === "script") {
+      return node.localName === sel;
     }
     return false;
   }
