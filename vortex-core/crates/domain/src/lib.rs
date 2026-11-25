@@ -52,7 +52,7 @@ pub use productos_index_settings::productos_index_settings;
 pub use search_document::{CategoriaMeiliLevels, SearchDocument, build_search_document};
 pub use sync_telemetry::{NoopSyncTelemetry, SyncTelemetry};
 pub use text_search::{
-    IndexSettings, IndexUid, SearchFacets, SearchFilters, SearchHit, SearchOrden, SearchPage,
-    SearchQuery, TextSearch, validate_index_swap,
+    IndexSettings, IndexUid, SearchFacets, SearchFilters, SearchHighlight, SearchHit, SearchOrden,
+    SearchPage, SearchQuery, TextSearch, validate_index_swap,
 };
 pub use timestamp::{InvalidTimestamp, Timestamp};
