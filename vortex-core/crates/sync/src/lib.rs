@@ -2,4 +2,6 @@
 
 mod meili_product_worker;
 
-pub use meili_product_worker::{DEFAULT_POLL_INTERVAL, MeiliProductWorker};
+pub use meili_product_worker::{
+    DEFAULT_POLL_INTERVAL, MAX_TRANSIENT_BACKOFF, MeiliProductWorker, transient_backoff,
+};

@@ -13,12 +13,12 @@ Ticket padre: T-03-07, T-03-08. HU: HU-03-01, HU-02-01.
 El crate `sync` MUST exponer una tarea en segundo plano (Index Sync Worker de Meilisearch) que:
 
 1. Lee el outbox desde `sync_cursor:meilisearch` en lotes de a lo sumo 200 filas, ordenadas por id de evento (ULID), con `id` estrictamente mayor que el cursor actual (`ultimo_evento` vacío = desde el origen).
-2. Se despierta cuando `OutboxNotifier` señala un *commit* de outbox, y MUST también reintentar la lectura al menos cada 1 segundo como respaldo (por si el waiter llegó tarde).
+2. Se despierta cuando `OutboxNotifier` señala un *commit* de outbox, y MUST también reintentar la lectura al menos cada 1 segundo como respaldo (por si el waiter llegó tarde), salvo cuando aplica el *backoff* del requirement «Backoff exponencial en errores transitorios».
 3. Para cada evento `entidad = producto`: relee el estado actual del producto (fuente de verdad). Si existe y `activo` es verdadero, MUST construir el documento [4.11.1](../../../../../docs/4-modelo.md#4111-documento) con `build_search_document` y hacer *upsert* en el índice inyectado. Si no existe (`not_found`) o `activo` es falso, MUST *delete* ese id del índice. MUST NOT usar el payload del evento como documento.
-4. MUST esperar la *task* de Meilisearch y solo entonces avanzar `sync_cursor:meilisearch.ultimo_evento` al id de ese evento. Si el *upsert*/*delete* (o el *fan-out* del evento) falla, MUST NOT avanzar el cursor de ese evento ni de los posteriores del lote.
-5. MUST procesar los eventos del lote **en orden**. MAY agrupar escrituras al motor pero el cursor MUST quedar en el último evento cuya *task* confirmó.
+4. MUST esperar la *task* de Meilisearch y solo entonces avanzar `sync_cursor:meilisearch.ultimo_evento` al id de ese evento cuando la operación confirma. Si el *upsert*/*delete* (o el *fan-out*) falla con `unavailable` o `timeout`, MUST NOT avanzar el cursor de ese evento ni de los posteriores del lote. Si falla con `invalid_input`, MUST registrar `outbox_fallo` y avanzar según el requirement «Error permanente registra outbox_fallo y avanza».
+5. MUST procesar los eventos del lote **en orden**. MAY agrupar escrituras al motor pero el cursor MUST quedar en el último evento confirmado o marcado `fallido`.
 
-El worker MUST recibir por inyección el puerto `TextSearch`, los repositorios (`OutboxRepo`, `ProductRepo`, `AttributeDefRepo`) y un `IndexUid` (los tests usan un uid efímero distinto de `productos`; el uid `productos` lo cablea T-00-27). MUST NOT instanciar el adaptador Meilisearch ni abrir SurrealDB. MUST NOT engancharse en `bin/vortex` (T-00-27). MUST implementar *fan-out* de `categoria`, `marca` y `atributo_def` según el requirement «Fan-out de categoría, marca y atributo_def». MUST NOT implementar *backoff* ni `outbox_fallo` (T-03-09). MUST NOT aplicar `synonyms` (T-03-27).
+El worker MUST recibir por inyección el puerto `TextSearch`, los repositorios (`OutboxRepo`, `ProductRepo`, `AttributeDefRepo`), un `IndexUid` (los tests usan un uid efímero distinto de `productos`; el uid `productos` lo cablea T-00-27) y un puerto de telemetría (requirement «Telemetría de sync»). MUST NOT instanciar el adaptador Meilisearch ni abrir SurrealDB. MUST NOT engancharse en `bin/vortex` (T-00-27). MUST implementar *fan-out* de `categoria`, `marca` y `atributo_def` según el requirement «Fan-out de categoría, marca y atributo_def». MUST implementar *backoff* y `outbox_fallo` según los requirements de T-03-09. MUST NOT aplicar `synonyms` (T-03-27). MUST NOT reprocesar a mano filas `fallido`.
 
 `imagen` del documento MUST permanecer `null` (T-02-28 / T-03-06).
 
@@ -74,7 +74,7 @@ Procesar el mismo evento de producto dos veces MUST dejar el índice en el mismo
 
 ### Requirement: Cursor no avanza si Meilisearch falla (unhappy)
 
-Si `upsert_documents` o `delete_documents` falla con `DomainError` (`unavailable`, `timeout` o `invalid_input`), el worker MUST dejar `sync_cursor:meilisearch.ultimo_evento` en el valor previo a ese evento. MUST NOT escribir `outbox_fallo` ni aplicar *backoff* exponencial (T-03-09). El siguiente ciclo (notifier o poll 1 s) MUST volver a leer ese evento.
+Si `upsert_documents`, `delete_documents` o `apply_settings` falla con `DomainError` `code` `unavailable` o `timeout`, el worker MUST dejar `sync_cursor:meilisearch.ultimo_evento` en el valor previo a ese evento. MUST NOT escribir `outbox_fallo`. El siguiente ciclo (tras *backoff*) MUST volver a leer ese evento. El caso `invalid_input` MUST seguir el requirement «Error permanente registra outbox_fallo y avanza», no este.
 
 #### Scenario: Motor inalcanzable no pierde el evento (unhappy)
 
@@ -86,8 +86,9 @@ Si `upsert_documents` o `delete_documents` falla con `DomainError` (`unavailable
 #### Scenario: Error permanente no se registra aún (unhappy, non-goal T-03-09)
 
 - **WHEN** el worker procesa un evento `producto` y `TextSearch` falla con `code` `invalid_input`
-- **THEN** el cursor **no** avanza
-- **AND** no se inserta fila en `outbox_fallo`
+- **THEN** se registra `outbox_fallo` con `estado` `fallido` y `consumidor` `meilisearch` (T-03-09: este escenario deja de ser non-goal)
+- **AND** el cursor **avanza**
+- **AND** el detalle vive en el requirement «Error permanente registra outbox_fallo y avanza»
 
 ### Requirement: Tests del worker Meilisearch productos
 
@@ -108,14 +109,12 @@ Antes de archive, la suite MUST incluir estos tests (nombres estables). Happy y 
 | `worker_advances_cursor_on_imagen_producto_without_mutating_index` | `vortex-core/crates/sync/` | happy | unidad |
 | `worker_empty_outbox_does_not_call_search` | `vortex-core/crates/sync/` | happy | unidad |
 | `worker_does_not_advance_cursor_when_search_unavailable` | `vortex-core/crates/sync/` | unhappy | unidad |
-| `worker_does_not_advance_cursor_on_invalid_input` | `vortex-core/crates/sync/` | unhappy | unidad |
 | `worker_fanout_does_not_advance_cursor_when_search_unavailable` | `vortex-core/crates/sync/` | unhappy | unidad |
 | `worker_fanout_does_not_advance_cursor_when_apply_settings_unavailable` | `vortex-core/crates/sync/` | unhappy | unidad |
-| `worker_fanout_invalid_registro_does_not_advance` | `vortex-core/crates/sync/` | unhappy | unidad |
 
 Los tests `#[ignore = "meilisearch"]` MUST usar `MEILISEARCH_URL` (defecto `http://127.0.0.1:7700`) y un uid de índice de prueba distinto de `productos`. `cargo test --workspace` **sin** `--include-ignored` MUST terminar con código 0 aunque el sidecar no esté levantado. `cargo test --workspace -- --include-ignored meilisearch` MUST ejecutar los ignore de esta tabla **y** los ya existentes de `search` / T-09-05.
 
-MUST NOT conservar `worker_skips_categoria_without_fanout` (reemplazado por los tests `worker_fanout_*`).
+MUST NOT conservar `worker_does_not_advance_cursor_on_invalid_input` ni `worker_fanout_invalid_registro_does_not_advance` (reemplazados por los tests T-03-09). Los tests de reintentos/fallos/telemetría están en el requirement «Tests de reintentos, fallos y telemetría (T-03-09)».
 
 #### Scenario: Listo cuando contra el motor (happy)
 
@@ -126,7 +125,8 @@ MUST NOT conservar `worker_skips_categoria_without_fanout` (reemplazado por los 
 #### Scenario: Unhappy de cursor sin sidecar (unhappy)
 
 - **WHEN** se ejecuta `cargo test -p sync worker_does_not_advance_cursor` **sin** `--include-ignored`
-- **THEN** los tests `worker_does_not_advance_cursor_when_search_unavailable`, `worker_does_not_advance_cursor_on_invalid_input`, `worker_fanout_does_not_advance_cursor_when_search_unavailable` y `worker_fanout_does_not_advance_cursor_when_apply_settings_unavailable` corren y terminan con código 0
+- **THEN** los tests `worker_does_not_advance_cursor_when_search_unavailable`, `worker_fanout_does_not_advance_cursor_when_search_unavailable` y `worker_fanout_does_not_advance_cursor_when_apply_settings_unavailable` corren y terminan con código 0
+- **AND** `worker_does_not_advance_cursor_on_invalid_input` ya no existe (reemplazado por `worker_records_fallido_and_advances_on_invalid_input`)
 
 ### Requirement: Fan-out de categoría, marca y atributo_def
 
@@ -140,11 +140,11 @@ Cuando el worker procesa un evento cuyo `entidad` es `categoria`, `marca` o `atr
 
 1. Leer `AttributeDefRepo::list_all`.
 2. Construir el perfil `productos` con las `clave` de las definiciones que tienen `facetable = true` y `activo = true`.
-3. Llamar `apply_settings` en el índice inyectado (actualiza `filterableAttributes` con `attr_<clave>`). Si `apply_settings` falla, MUST NOT reindexar ni avanzar el cursor.
+3. Llamar `apply_settings` en el índice inyectado (actualiza `filterableAttributes` con `attr_<clave>`). Si `apply_settings` falla con `unavailable` o `timeout`, MUST NOT reindexar ni avanzar el cursor.
 
 Luego MUST reindexar los productos activos que **usan** esa definición (`atributos[*].def` = `registro`). En el MVP el worker MAY descubrirlos paginando `ProductRepo::list` (activos) y `get`. Cero productos MUST igual aplicar settings y avanzar el cursor.
 
-El cursor MUST avanzar solo cuando **todas** las *tasks* de ese evento (settings + documentos) confirmaron. Si un *upsert*/*delete* falla a mitad del *fan-out*, MUST NOT avanzar el cursor. Un `registro` que no es ULID de 26 caracteres MUST fallar con `DomainError` `code` `invalid_input` y MUST NOT avanzar el cursor.
+El cursor MUST avanzar solo cuando **todas** las *tasks* de ese evento (settings + documentos) confirmaron, **salvo** `invalid_input` (requirement «Error permanente registra outbox_fallo y avanza»). Si un *upsert*/*delete* falla a mitad del *fan-out* con `unavailable` o `timeout`, MUST NOT avanzar el cursor. Un `registro` que no es ULID de 26 caracteres MUST tratarse como `invalid_input` permanente (fila `fallido` + avance).
 
 El *fan-out* MUST ser idempotente: reprocesar el mismo evento deja el índice y los settings en el mismo estado observable.
 
@@ -204,6 +204,122 @@ El *fan-out* MUST ser idempotente: reprocesar el mismo evento deja el índice y 
 #### Scenario: registro inválido en fan-out (unhappy)
 
 - **WHEN** el worker procesa un evento `categoria`, `marca` o `atributo_def` cuyo `registro` no es un ULID de 26 caracteres
-- **THEN** la operación falla
-- **AND** el error es `DomainError` con `code` `invalid_input`
-- **AND** el cursor **no** avanza
+- **THEN** se registra `outbox_fallo` con `estado` `fallido` y `consumidor` `meilisearch`
+- **AND** el cursor **avanza**
+
+### Requirement: Backoff exponencial en errores transitorios
+
+Cuando `drain` de un lote falla con `DomainError` `code` `unavailable` o `timeout`, el loop del worker MUST esperar un *backoff* exponencial antes del siguiente intento: `min(30s, 1s × 2^n)` donde `n` es el número de fallos transitorios consecutivos ya observados (n = 0 → 1 s; tope 30 s). MUST NOT avanzar el cursor. MUST NOT escribir `outbox_fallo`. Durante el *backoff* MUST NOT acortar la espera por `OutboxNotifier` (evita martillar Meilisearch caído). Un `drain` que termina `Ok` (lote vacío o eventos confirmados / permanentes ya registrados) MUST reiniciar `n` a 0 y volver al poll de 1 s + notifier. Otros `DomainError` (p. ej. `not_found` de Storage) MUST NOT clasificarse como permanentes ni transitorios de Meilisearch: MUST NOT avanzar el cursor de ese evento y MUST NOT escribir `outbox_fallo`.
+
+#### Scenario: Meilisearch caído no pierde eventos y al volver se aplican (happy, Listo cuando HU-03-01)
+
+- **WHEN** el worker procesa un evento `producto` y `TextSearch` falla con `code` `unavailable`
+- **AND** el cursor no avanza
+- **AND** un `drain` posterior ve el mismo evento con `TextSearch` ya disponible
+- **THEN** el documento queda visible en el índice
+- **AND** el cursor avanza
+- **AND** no se inserta fila en `outbox_fallo`
+
+#### Scenario: Timeout no avanza el cursor (unhappy)
+
+- **WHEN** el worker procesa un evento `producto` y `TextSearch` falla con `code` `timeout`
+- **THEN** el cursor **no** avanza
+- **AND** no se inserta fila en `outbox_fallo`
+- **AND** el evento sigue pendiente
+
+#### Scenario: Backoff se acota a 30 s (happy)
+
+- **WHEN** el worker acumula fallos transitorios consecutivos suficientes para superar 30 s en la fórmula
+- **THEN** la espera entre intentos es 30 segundos
+- **AND** no supera 30 segundos
+
+#### Scenario: Lote vacío no entra en backoff (happy)
+
+- **WHEN** no hay eventos posteriores al cursor
+- **THEN** el ciclo termina `Ok`
+- **AND** el intervalo de poll sigue siendo 1 s (no *backoff*)
+
+### Requirement: Error permanente registra outbox_fallo y avanza
+
+Cuando el procesamiento de un evento (producto o *fan-out*) falla con `DomainError` `code` `invalid_input`, el worker MUST:
+
+1. Escribir (o actualizar) una fila en `outbox_fallo` con `consumidor` `meilisearch`, `estado` `fallido`, `ultimo_error` no vacío y `evento` = id de la fila de outbox.
+2. Avanzar `sync_cursor:meilisearch` a ese evento.
+3. Continuar con el siguiente evento del lote (MUST NOT abortar el lote ni aplicar *backoff*).
+4. Incrementar la telemetría `outbox_failed_total`.
+
+MUST NOT dejar el cursor detrás de un `invalid_input` ya registrado. Un segundo `invalid_input` del mismo `(evento, consumidor)` MUST ser idempotente (índice único; no duplica filas). MUST NOT implementar reproceso manual de fallidos.
+
+#### Scenario: Error permanente de HU-03-01 (unhappy, Listo cuando)
+
+- **WHEN** el worker procesa un evento `producto` y `TextSearch` falla con `code` `invalid_input`
+- **THEN** existe una fila `outbox_fallo` con `estado` `fallido` y `consumidor` `meilisearch` para ese evento
+- **AND** el cursor **avanza**
+- **AND** `outbox_failed_total` se incrementa
+- **AND** el evento **no** queda pendiente para el siguiente ciclo
+
+#### Scenario: registro inválido en fan-out se marca fallido (unhappy)
+
+- **WHEN** el worker procesa un evento `categoria`, `marca` o `atributo_def` cuyo `registro` no es un ULID de 26 caracteres
+- **THEN** se registra `outbox_fallo` `fallido`
+- **AND** el cursor avanza
+- **AND** el lote no se estanca
+
+#### Scenario: InvalidInput no aborta el resto del lote (happy)
+
+- **WHEN** un lote tiene un evento que falla con `invalid_input` y un evento posterior procesable
+- **THEN** el primero queda `fallido` y su cursor avanza
+- **AND** el segundo se procesa en el mismo `drain`
+
+### Requirement: Telemetría de sync
+
+El worker MUST publicar, vía un puerto de telemetría inyectado (el crate `sync` MUST NOT depender de `api` ni del recorder Prometheus):
+
+| Nombre | Tipo | Labels | Cuándo |
+|---|---|---|---|
+| `outbox_lag` | gauge | `consumidor` = `meilisearch` | Tras cada `drain` (éxito o error): eventos de `outbox` con id > cursor `meilisearch` |
+| `outbox_failed_total` | counter | — | Al registrar un `fallido` |
+| `sync_propagation_seconds` | histogram | — | Al confirmar un evento (avance de cursor por éxito, no por `fallido`): segundos entre `creado_en` del outbox y la confirmación |
+
+`outbox_lag` MUST NOT usar el consumidor `vectores` (T-05-08). Un doble de prueba MUST registrar las llamadas; la implementación Prometheus vive en `api` (`prometheus-metrics`).
+
+#### Scenario: Lag se publica tras un drain (happy)
+
+- **WHEN** hay eventos pendientes detrás del cursor `meilisearch` y el worker ejecuta un `drain`
+- **THEN** la telemetría recibe `outbox_lag` con label `consumidor` `meilisearch` igual a esa cantidad
+
+#### Scenario: Propagación se observa en éxito (happy)
+
+- **WHEN** el worker confirma un evento `producto` con Meilisearch disponible
+- **THEN** observa `sync_propagation_seconds` ≥ 0
+- **AND** no incrementa `outbox_failed_total`
+
+#### Scenario: Lag no incluye vectores (happy)
+
+- **WHEN** el worker publica `outbox_lag`
+- **THEN** la label `consumidor` es `meilisearch`
+- **AND** no publica lag del cursor `vectores`
+
+### Requirement: Tests de reintentos, fallos y telemetría (T-03-09)
+
+Antes de archive, la suite MUST incluir estos tests (nombres estables). Happy y unhappy path son obligatorios.
+
+| Test | Ubicación | Tipo | Motor |
+|---|---|---|---|
+| `worker_retries_after_unavailable_and_does_not_lose_events` | `vortex-core/crates/sync/` | happy, Listo cuando HU-03-01 | unidad (`TextSearch` falso: falla → recupera) |
+| `worker_timeout_does_not_advance_cursor` | `vortex-core/crates/sync/` | unhappy | unidad |
+| `worker_backoff_caps_at_thirty_seconds` | `vortex-core/crates/sync/` | happy | unidad (función de delay, sin sleep real de 30 s) |
+| `worker_empty_batch_does_not_backoff` | `vortex-core/crates/sync/` | happy | unidad |
+| `worker_records_fallido_and_advances_on_invalid_input` | `vortex-core/crates/sync/` | unhappy, Listo cuando HU-03-01 | unidad |
+| `worker_fanout_invalid_registro_records_fallido_and_advances` | `vortex-core/crates/sync/` | unhappy | unidad |
+| `worker_invalid_input_continues_remaining_batch` | `vortex-core/crates/sync/` | happy | unidad |
+| `worker_does_not_write_fallo_on_unavailable` | `vortex-core/crates/sync/` | unhappy | unidad |
+| `worker_publishes_outbox_lag_after_drain` | `vortex-core/crates/sync/` | happy | unidad |
+| `worker_observes_propagation_on_success` | `vortex-core/crates/sync/` | happy | unidad |
+
+MUST NOT conservar `worker_does_not_advance_cursor_on_invalid_input` ni `worker_fanout_invalid_registro_does_not_advance` (reemplazados). `cargo test --workspace` **sin** `--include-ignored` MUST ejecutar los de esta tabla y terminar 0.
+
+#### Scenario: Listo cuando HU-03-01 (happy + unhappy)
+
+- **WHEN** se ejecuta `cargo test -p sync worker_retries_after_unavailable worker_records_fallido`
+- **THEN** `worker_retries_after_unavailable_and_does_not_lose_events` y `worker_records_fallido_and_advances_on_invalid_input` corren y terminan con código 0

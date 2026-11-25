@@ -32,8 +32,18 @@ impl HealthRegistry {
             ComponentId::Llm => guard.llm = ch,
             ComponentId::Speech => guard.speech = ch,
             ComponentId::TextEmbeddings => guard.text_embeddings = ch,
-            ComponentId::Sync => guard.sync = ch,
+            ComponentId::Sync => {
+                let lag = guard.sync.outbox_lag;
+                let failed = guard.sync.failed_events;
+                guard.sync = ComponentHealth::with_sync_stats(status, lag, failed);
+            }
         }
+    }
+
+    pub fn set_sync_stats(&self, outbox_lag: u64, failed_events: u64) {
+        let mut guard = self.components.write().expect("health registry lock");
+        let status = guard.sync.status;
+        guard.sync = ComponentHealth::with_sync_stats(status, outbox_lag, failed_events);
     }
 }
 
@@ -79,6 +89,26 @@ mod tests {
             ComponentStatus::Disabled
         );
         assert_eq!(snap.components.sync.status, ComponentStatus::Disabled);
+        assert_eq!(snap.components.sync.outbox_lag, 0);
+        assert_eq!(snap.components.sync.failed_events, 0);
+    }
+
+    #[test]
+    fn registry_new_sync_stats_are_zero() {
+        let reg = HealthRegistry::new("0.1.0");
+        let snap = reg.snapshot();
+        assert_eq!(snap.components.sync.outbox_lag, 0);
+        assert_eq!(snap.components.sync.failed_events, 0);
+    }
+
+    #[test]
+    fn registry_set_sync_stats_are_reflected() {
+        let reg = HealthRegistry::new("0.1.0");
+        reg.set_sync_stats(5, 2);
+        let snap = reg.snapshot();
+        assert_eq!(snap.components.sync.outbox_lag, 5);
+        assert_eq!(snap.components.sync.failed_events, 2);
+        assert_eq!(snap.status, AggregateStatus::Ok);
     }
 
     #[test]

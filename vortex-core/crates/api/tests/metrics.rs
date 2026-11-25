@@ -1,8 +1,8 @@
 use std::net::SocketAddr;
 use std::sync::Arc;
 
-use api::{AppState, build_router};
-use domain::HealthSnapshot;
+use api::{AppState, PrometheusSyncTelemetry, build_router, prometheus_handle};
+use domain::{HealthSnapshot, SyncTelemetry};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 async fn http_request_text(
@@ -103,13 +103,36 @@ async fn unmatched_route_uses_unmatched_label() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn scrape_does_not_emit_domain_series() {
+async fn scrape_includes_outbox_lag_after_telemetry() {
+    let _ = prometheus_handle();
+    PrometheusSyncTelemetry.set_outbox_lag("meilisearch", 3);
     let (addr, handle) = serve().await;
-    let (_, _, _, _) = http_request_text(addr, "GET", "/health", None).await;
     let (_, _, body, _) = http_request_text(addr, "GET", "/metrics", None).await;
     handle.abort();
-    assert!(!body.contains("outbox_lag"));
-    assert!(!body.contains("outbox_failed_total"));
+    assert!(body.contains("outbox_lag"));
+    assert!(
+        body.contains(r#"consumidor="meilisearch""#)
+            || body.contains(r#"consumidor=\"meilisearch\""#)
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn scrape_includes_outbox_failed_total_after_increment() {
+    let _ = prometheus_handle();
+    PrometheusSyncTelemetry.inc_outbox_failed();
+    let (addr, handle) = serve().await;
+    let (_, _, body, _) = http_request_text(addr, "GET", "/metrics", None).await;
+    handle.abort();
+    assert!(body.contains("outbox_failed_total"));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn scrape_does_not_emit_vectores_lag_or_backup_failures() {
+    let _ = prometheus_handle();
+    let (addr, handle) = serve().await;
+    let (_, _, body, _) = http_request_text(addr, "GET", "/metrics", None).await;
+    handle.abort();
+    assert!(!body.contains(r#"consumidor="vectores""#));
     assert!(!body.contains("backup_failures_total"));
 }
 

@@ -42,6 +42,7 @@ pub fn prometheus_handle() -> &'static PrometheusHandle {
             Unit::Seconds,
             "HTTP request latency"
         );
+        super::sync_telemetry::describe_sync_metrics();
         PrometheusBuilder::new()
             .set_buckets(HTTP_DURATION_BUCKETS)
             .expect("valid HTTP duration histogram buckets")
