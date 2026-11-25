@@ -48,6 +48,21 @@ Cada línea es un objeto JSON UTF-8. Las líneas en blanco se ignoran. Los nombr
 - `precio` y `stock_inicial` son **strings decimales** (ej. `"120.50"`), no números JSON
 - `marca` (slug o `null`), `descripcion`, `atributos` (`[{ "clave", "valor" }]`), `codigos`, `unidad_medida`, `ubicacion`, `stock_inicial` (opcionales)
 
+### Importación (`vortex seed`)
+
+Con el **servidor detenido** (no puede haber otro proceso con la base abierta):
+
+```bash
+vortex --config /ruta/vortex.toml seed [DIR]
+```
+
+- `DIR`: directorio del dataset; por defecto `seed` (relativo al directorio de trabajo).
+- Requiere `--config` o la variable `VORTEX_CONFIG` (igual que `vortex serve`).
+- En el MVP importa **solo maestros**: `categorias.jsonl`, `marcas.jsonl` y `atributos.jsonl` (idempotente por slug/clave).
+- **No** importa `productos.jsonl`, imágenes, relaciones, sinónimos ni notas (tickets T-02-43 y posteriores).
+
+Para comprobar el formato sin escribir en la base, use `catalog::validate_dir` en tests o herramientas de desarrollo.
+
 ### Validación
 
 El validador (`catalog::validate_dir`) recorre un directorio y devuelve hallazgos con **archivo**, **línea** y **campo**, sin importar a SurrealDB.

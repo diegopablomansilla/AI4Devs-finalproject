@@ -409,6 +409,9 @@ assert_ok 'vortex con path storage' "${tmp}"
 cp "${REPO_ROOT}/vortex-core/bin/vortex/Cargo.toml" "${tmp}/vortex-core/bin/vortex/Cargo.toml"
 assert_ok 'vortex declara path catalog' "${tmp}"
 
+# happy: vortex dev-dependencies tokio for seed integration tests (T-02-42)
+assert_ok 'vortex dev-dependencies tokio' "${tmp}"
+
 # unhappy: vortex declares metrics
 cat >"${tmp}/vortex-core/bin/vortex/Cargo.toml" <<'EOF'
 [package]
