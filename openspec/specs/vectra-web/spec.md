@@ -2988,17 +2988,33 @@ Antes de archive, la suite MUST incluir:
 
 ### Requirement: Búsqueda mientras se escribe en el Omnibox
 
-Cuando el *router* pinta `data-view="operator"`, MUST montar la búsqueda sobre `data-region="omnibox"` y `data-region="results"`. `vx-omnibox` MUST seguir emitiendo `vx-query` y MUST NOT llamar a `/search` ni importar el cliente HTTP (requirement «Modos del Omnibox»).
+Cuando el *router* pinta `data-view="operator"`, MUST montar la búsqueda sobre `data-region="omnibox"` y `data-region="results"`. `vx-omnibox` MUST seguir emitiendo `vx-query` y MUST NOT llamar a `/search` ni a `/search/by-code` ni importar el cliente HTTP (requirement «Modos del Omnibox»).
 
 En cada `vx-query` con `detail.mode === "text"` y texto recortado no vacío, MUST:
 
-1. Cancelar la petición anterior con `AbortController` (el `signal` MUST reenviarse al cliente HTTP, T-01-06 / [5.7](../../../../../docs/5-contract-api.md#57-búsqueda-search-as-you-type-y-cancelación)).
+1. Cancelar las peticiones anteriores (`/search` y, si existían, `by-code`) con `AbortController` (el `signal` MUST reenviarse al cliente HTTP, T-01-06 / [5.7](../../../../../docs/5-contract-api.md#57-búsqueda-search-as-you-type-y-cancelación)). Ambas peticiones de la misma consulta MUST compartir el mismo `AbortController` (o abortarse juntas).
 2. Invocar `GET /api/v1/search` en el mismo origen con query `q` igual al texto (sin prefijo de API extra; MUST usar `encodeURIComponent` o equivalente). MUST NOT enviar `facets`, `categoryId`, `brandId`, `inStock` ni `attr`. `sort`/`offset`/`limit` MAY omitirse (defaults del contrato: relevancia, 0, 20). Si el texto supera 200 caracteres, MUST recortarlo a 200 antes de enviarlo (`maxLength` de `q` en [docs/openapi.yaml](../../../../../docs/openapi.yaml)).
-3. MUST NOT aplicar *debounce* ni umbral de teclas: una petición por evento de consulta.
+3. MUST NOT aplicar *debounce* ni umbral de teclas: una ronda de peticiones por evento de consulta.
+4. Si el texto recortado **parece un código** — sin espacios en blanco, longitud 1..=64, y compuesto solo de letras ASCII, dígitos o guiones (`[A-Za-z0-9-]+`) — MUST invocar **en paralelo** `GET /api/v1/search/by-code/{code}` con `{code}` igual a ese texto (`encodeURIComponent` en el segmento de path). MUST NOT recortar a 200 para `by-code`: si la longitud supera 64, MUST NOT llamar a `by-code`. Si el texto **no** parece un código, MUST NOT llamar a `by-code`.
 
-MUST pintar en `data-region="results"` **solo** la respuesta cuya petición no fue abortada. Hits de una petición abortada MUST NOT reemplazar la lista. Si llega un `AbortError`, MUST NOT pintar y MUST NOT invocar `showError`.
+MUST pintar en `data-region="results"` **solo** las respuestas cuya ronda no fue abortada. Hits de una petición abortada MUST NOT reemplazar la lista. Si llega un `AbortError` (en `/search`, en `by-code` o en ambos), MUST NOT pintar esa ronda y MUST NOT invocar `showError` por el abort.
 
-Cada hit MUST renderizarse como un `vx-product-card` con variante `full` (atributo `variant="full"` o omitido; default del componente). MUST mapear el `SearchHit` de [docs/openapi.yaml](../../../../../docs/openapi.yaml) a atributos de la tarjeta:
+Si `by-code` responde 200 con `items` no vacío, MUST fijar esas coincidencias **arriba** de la lista, con la etiqueta visible **"Código exacto"** (español, no interactiva: MUST NOT usar `vx-chip` ni un control que reciba foco de teclado). Cada ítem de `by-code` MUST pintarse como `vx-product-card` `full` mapeando `ProductSummary`:
+
+| ProductSummary | Atributo `vx-product-card` |
+|---|---|
+| `sku` | `sku` |
+| `name` | `name` |
+| `brand` | `brand` (omitir o vacío si `null`) |
+| `price` | `price` |
+| `stock` | `stock` |
+| `imageUrl` | `image-url` (omitir si `null` o vacío) |
+
+`ProductSummary` no trae `location` ni `highlight`: las tarjetas exactas MUST omitir ubicación y MUST NOT inventar `<mark>`. Si `stock` es cero, MUST aplicar el estado «Sin stock» de T-03-17.
+
+Los `hits` de `/search` MUST pintarse **después** del grupo exacto. Un hit cuyo `id` coincide con un ítem ya pinneado MUST NOT repetirse. `items: []` (o `by-code` ausente porque no parece código) MUST NOT mostrar la etiqueta «Código exacto».
+
+Cada hit de `/search` MUST renderizarse como un `vx-product-card` con variante `full` (atributo `variant="full"` o omitido; default del componente). MUST mapear el `SearchHit` de [docs/openapi.yaml](../../../../../docs/openapi.yaml) a atributos de la tarjeta:
 
 | SearchHit | Atributo `vx-product-card` |
 |---|---|
@@ -3010,27 +3026,32 @@ Cada hit MUST renderizarse como un `vx-product-card` con variante `full` (atribu
 | `location` | `location` (omitir o vacío si `null`) |
 | `imageUrl` | `image-url` (omitir si `null` o vacío) |
 
-El **nombre** MUST preferir `highlight.name` sanitizado vía `appendSanitizedHtml` en un hijo `slot="name"` cuando ese campo existe y no está vacío; si `highlight` es `null` o `highlight.name` falta, MUST usar `name` como texto plano (atributo `name` y/o texto del slot). SKU, marca, precio, stock y ubicación MUST ir como atributos (la tarjeta los pinta con `textContent`). MUST NOT asignar el payload crudo a `innerHTML`. MUST NOT pintar `highlight.description` (la tarjeta no tiene ese campo).
+El **nombre** de un hit de `/search` MUST preferir `highlight.name` sanitizado vía `appendSanitizedHtml` en un hijo `slot="name"` cuando ese campo existe y no está vacío; si `highlight` es `null` o `highlight.name` falta, MUST usar `name` como texto plano (atributo `name` y/o texto del slot). SKU, marca, precio, stock y ubicación MUST ir como atributos (la tarjeta los pinta con `textContent`). MUST NOT asignar el payload crudo a `innerHTML`. MUST NOT pintar `highlight.description` (la tarjeta no tiene ese campo).
 
 Si `imageUrl` está ausente o vacío, la tarjeta MUST mostrar el *placeholder* de imagen del componente (HU-03-05 MVP parcial: sin foto principal). Si `imageUrl` tiene valor, MUST pasarlo a `image-url`.
 
 Si `stock` representa cero, la tarjeta MUST exponer el estado visual «sin stock» del componente (`data-out-of-stock` y texto «Sin stock»). MUST NOT indicar falta de stock solo con color.
 
-La lista MUST ser un `role="listbox"` operable por teclado con el helper de T-01-10; cada tarjeta MUST ser una opción de esa lista. MUST NOT abrir ficha ni panel de recomendaciones al activar un hit (T-04-08). MUST NOT usar la variante `compact` en esta lista.
+La lista MUST ser un `role="listbox"` operable por teclado con el helper de T-01-10; cada tarjeta MUST ser una opción de esa lista (la etiqueta «Código exacto» MUST NOT ser una opción). El primer `ArrowDown` desde el Omnibox MUST activar la primera coincidencia exacta si existe, si no el primer hit de `/search`. MUST NOT abrir ficha ni panel de recomendaciones al activar un hit (T-04-08). MUST NOT usar la variante `compact` en esta lista. MUST NOT invocar un lector de código de barras.
 
-Consulta vacía (incluido Escape que deja el Omnibox vacío, T-01-08) o solo espacios: MUST abortar la petición en curso, MUST vaciar `data-region="results"` de hits y de `vx-product-card` y MUST NOT llamar a `/search`.
+Consulta vacía (incluido Escape que deja el Omnibox vacío, T-01-08) o solo espacios: MUST abortar las peticiones en curso, MUST vaciar `data-region="results"` de hits, de `vx-product-card` y de la etiqueta «Código exacto», y MUST NOT llamar a `/search` ni a `by-code`.
 
-`vx-query` con `mode` distinto de `"text"` (`ai`, `voice`, `image`): MUST abortar la petición en curso si existe y MUST NOT llamar a `/search`. MUST NOT ejecutar `/ai`, `/speech` ni cámara.
+`vx-query` con `mode` distinto de `"text"` (`ai`, `voice`, `image`): MUST abortar las peticiones en curso si existen y MUST NOT llamar a `/search` ni a `by-code`. MUST NOT ejecutar `/ai`, `/speech` ni cámara.
 
-`hits: []` MUST dejar la lista sin opciones ni `vx-product-card` (MAY un mensaje en español «Sin resultados»). MUST NOT dejar hits de una consulta anterior.
+`hits: []` y `items` de `by-code` vacío MUST dejar la lista sin opciones ni `vx-product-card` ni etiqueta «Código exacto» (MAY un mensaje en español «Sin resultados»). MUST NOT dejar hits de una consulta anterior.
 
-Un hit que no es un objeto, o al que le faltan campos, MUST NOT lanzar: MUST omitir ese hit o pintarlo con los campos presentes vacíos.
+Un hit o ítem que no es un objeto, o al que le faltan campos, MUST NOT lanzar: MUST omitir ese elemento o pintarlo con los campos presentes vacíos.
 
-Errores HTTP o de red que no sean abort (`invalid_input`, `unavailable`, `timeout`, `network`, …): MUST invocar `showError` con el error del cliente y MUST NOT pintar esa respuesta. La lista previa MAY permanecer.
+Las dos peticiones fallan de forma **independiente** (no abort):
 
-Vistas `data-view="admin"` y `data-view="not-found"` MUST NOT llamar a `/search`. Al dejar la vista operador MUST abortar la petición en curso.
+- `/search` falla y `by-code` 200: MUST pintar el grupo exacto (si hay `items`) y MUST invocar `showError` con el error de `/search`.
+- `by-code` falla y `/search` 200: MUST pintar los hits de `/search` **sin** etiqueta «Código exacto» y MUST invocar `showError` con el error de `by-code`.
+- ambas fallan: MUST invocar `showError` al menos una vez y MUST NOT pintar esa ronda.
+- lista previa MAY permanecer si no hay nada que pintar.
 
-Textos visibles MUST estar en español. `base.css` MAY estilar la lista solo con *tokens* `--vx-*` existentes. MUST NOT agregar *tokens* nuevos ni un Web Component nuevo.
+Vistas `data-view="admin"` y `data-view="not-found"` MUST NOT llamar a `/search` ni a `by-code`. Al dejar la vista operador MUST abortar las peticiones en curso.
+
+Textos visibles MUST estar en español. `base.css` MAY estilar el grupo «Código exacto» solo con *tokens* `--vx-*` existentes. MUST NOT agregar *tokens* nuevos ni un Web Component nuevo.
 
 #### Scenario: consulta de texto llama a GET /search con q (happy)
 
@@ -3038,12 +3059,29 @@ Textos visibles MUST estar en español. `base.css` MAY estilar la lista solo con
 - **AND** el Omnibox emite `vx-query` con `mode: "text"` y `text: "perno m8"`
 - **THEN** se envía `GET /api/v1/search` cuyo query incluye `q` con ese texto
 - **AND** no se envían `facets`, `categoryId`, `brandId` ni `inStock`
+- **AND** no se envía `GET /api/v1/search/by-code/{code}`
+
+#### Scenario: consulta que parece código llama a by-code en paralelo (happy)
+
+- **WHEN** la vista operador está montada
+- **AND** el Omnibox emite `vx-query` con `mode: "text"` y `text: "OEM-PER-8840"`
+- **THEN** se envía `GET /api/v1/search?q=OEM-PER-8840`
+- **AND** se envía `GET /api/v1/search/by-code/OEM-PER-8840` (path con el código; MAY ir percent-encoded)
+- **AND** ambas peticiones se disparan antes de que responda cualquiera de las dos
+
+#### Scenario: OEM compartido pinta ambas piezas primero (happy, Listo cuando)
+
+- **WHEN** `GET /api/v1/search/by-code/OEM-PER-8840` responde 200 con `items` de dos productos (`PER-ACERO-01` y `PER-ACERO-02`)
+- **AND** `GET /api/v1/search?q=OEM-PER-8840` responde 200 con hits que MAY incluir esos SKUs u otros
+- **THEN** `data-region="results"` muestra el texto «Código exacto»
+- **AND** las dos primeras `vx-product-card` de la lista corresponden a esos dos productos (cualquier orden relativo entre ellas)
+- **AND** esas dos tarjetas no se repiten más abajo
 
 #### Scenario: escribir rápido cancela la petición anterior y pinta solo la última (happy, Listo cuando)
 
 - **WHEN** la vista operador está montada
 - **AND** llegan `vx-query` de texto `"p"`, luego `"pe"`, luego `"perno m8"` antes de que respondan las anteriores
-- **THEN** cada petición salvo la última queda abortada (`AbortSignal.aborted === true`)
+- **THEN** cada petición de las rondas `"p"` y `"pe"` (incluidas las de `by-code`, porque esas consultas parecen código) queda abortada (`AbortSignal.aborted === true`)
 - **AND** `data-region="results"` muestra los hits de `"perno m8"`
 - **AND** no muestra hits que solo correspondían a `"p"` o `"pe"`
 
@@ -3090,15 +3128,23 @@ Textos visibles MUST estar en español. `base.css` MAY estilar la lista solo con
 - **THEN** el primer hit queda activo (`aria-selected="true"` / `aria-activedescendant`)
 - **AND** no se lanza excepción
 
+#### Scenario: ArrowDown con coincidencias exactas activa la primera exacta (happy)
+
+- **WHEN** hay al menos una tarjeta en el grupo «Código exacto» y hits de `/search` debajo
+- **AND** el input del Omnibox tiene el foco
+- **AND** se pulsa ArrowDown
+- **THEN** la primera tarjeta del grupo exacto queda activa
+- **AND** la etiqueta «Código exacto» no queda como opción activa
+
 #### Scenario: la respuesta abortada no se pinta (unhappy)
 
 - **WHEN** una petición de `"p"` se aborta al escribir `"pe"`
-- **AND** después llega el cuerpo de `"p"`
-- **THEN** `data-region="results"` no muestra esos hits
+- **AND** después llega el cuerpo de `"p"` (de `/search` o de `by-code`)
+- **THEN** `data-region="results"` no muestra esos hits ni esa etiqueta «Código exacto»
 
 #### Scenario: AbortError no llama a showError (unhappy)
 
-- **WHEN** el cliente HTTP rechaza con `AbortError` al cancelar
+- **WHEN** el cliente HTTP rechaza con `AbortError` al cancelar `/search` o `by-code`
 - **THEN** no se invoca `showError`
 - **AND** no se lanza excepción
 
@@ -3106,6 +3152,7 @@ Textos visibles MUST estar en español. `base.css` MAY estilar la lista solo con
 
 - **WHEN** llega `vx-query` con `mode: "ai"` y `text: "?hola"`, o `mode: "voice"`, o `mode: "image"`
 - **THEN** no se envía `GET /api/v1/search`
+- **AND** no se envía `GET /api/v1/search/by-code/{code}`
 - **AND** no se llama a `/ai`, `/speech` ni a la cámara
 
 #### Scenario: consulta vacía limpia sin fetch (unhappy)
@@ -3113,19 +3160,58 @@ Textos visibles MUST estar en español. `base.css` MAY estilar la lista solo con
 - **WHEN** hay hits visibles de una consulta previa
 - **AND** llega `vx-query` con `mode: "text"` y `text: ""` (p. ej. Escape en el Omnibox)
 - **THEN** no se envía `GET /api/v1/search`
-- **AND** `data-region="results"` queda sin hits ni `vx-product-card`
+- **AND** no se envía `GET /api/v1/search/by-code/{code}`
+- **AND** `data-region="results"` queda sin hits ni `vx-product-card` ni etiqueta «Código exacto»
 
 #### Scenario: error de API muestra toast y no pinta (unhappy)
 
 - **WHEN** `GET /api/v1/search` responde 400, 503 o 504 con `problem+json`, o el cliente lanza error `network`
+- **AND** no hubo `by-code` (la consulta no parece código) o `by-code` también falló
 - **THEN** se invoca `showError` con ese error
-- **AND** no se pintan hits de esa respuesta
+- **AND** no se pintan hits de esa respuesta de `/search`
+
+#### Scenario: by-code falla y /search llega 200 (unhappy)
+
+- **WHEN** la consulta parece un código
+- **AND** `GET /api/v1/search/by-code/{code}` responde 400 o 503 con `problem+json`, o el cliente lanza `network`
+- **AND** `GET /api/v1/search` responde 200 con hits
+- **THEN** se invoca `showError` con el error de `by-code`
+- **AND** `data-region="results"` pinta los hits de `/search`
+- **AND** no muestra la etiqueta «Código exacto»
+
+#### Scenario: /search falla y by-code llega 200 (unhappy)
+
+- **WHEN** la consulta parece un código
+- **AND** `GET /api/v1/search` responde 503 o el cliente lanza `network`
+- **AND** `GET /api/v1/search/by-code/{code}` responde 200 con `items` no vacío
+- **THEN** se invoca `showError` con el error de `/search`
+- **AND** `data-region="results"` pinta las tarjetas exactas con la etiqueta «Código exacto»
 
 #### Scenario: hits vacíos dejan la lista sin opciones (unhappy)
 
 - **WHEN** la respuesta 200 trae `hits: []` para la consulta vigente
-- **THEN** `data-region="results"` no muestra opciones de producto ni `vx-product-card`
+- **AND** no hay `items` de `by-code` (no parece código, o `items: []`)
+- **THEN** `data-region="results"` no muestra opciones de producto ni `vx-product-card` ni etiqueta «Código exacto»
 - **AND** no se invoca `showError`
+
+#### Scenario: by-code vacío no pinnea (unhappy)
+
+- **WHEN** la consulta parece un código
+- **AND** `GET /api/v1/search/by-code/{code}` responde 200 con `items: []`
+- **AND** `GET /api/v1/search` responde 200 con hits
+- **THEN** `data-region="results"` no muestra la etiqueta «Código exacto»
+- **AND** pinta solo los hits de `/search`
+
+#### Scenario: consulta con espacios no llama a by-code (unhappy)
+
+- **WHEN** el Omnibox emite `vx-query` con `mode: "text"` y `text: "perno m8"`
+- **THEN** no se envía `GET /api/v1/search/by-code/{code}`
+
+#### Scenario: código más largo que 64 no llama a by-code (unhappy)
+
+- **WHEN** el texto recortado tiene 65 caracteres de `[A-Za-z0-9-]` y ningún espacio
+- **THEN** se envía `GET /api/v1/search` (con `q` recortado a 200)
+- **AND** no se envía `GET /api/v1/search/by-code/{code}`
 
 #### Scenario: HTML de highlight se muestra como texto (unhappy)
 
@@ -3156,6 +3242,7 @@ Textos visibles MUST estar en español. `base.css` MAY estilar la lista solo con
 
 - **WHEN** el hash es `#/admin/productos`
 - **THEN** no se envía `GET /api/v1/search`
+- **AND** no se envía `GET /api/v1/search/by-code/{code}`
 
 ### Requirement: Tests de búsqueda mientras se escribe
 
@@ -3164,6 +3251,8 @@ Antes de archive, la suite MUST incluir estos tests (nombres estables). Happy y 
 | Test | Dónde | Tipo |
 |---|---|---|
 | `search_text_query_calls_get_search_with_q` | `search.test.mjs` | happy |
+| `search_code_like_query_calls_by_code_in_parallel` | `search.test.mjs` | happy |
+| `search_shared_oem_pins_both_exact_matches_first` | `search.test.mjs` | happy, Listo cuando HU-03-08 |
 | `search_cancels_previous_and_paints_last_only` | `search.test.mjs` | happy |
 | `search_renders_full_product_card` | `search.test.mjs` | happy, Listo cuando HU-03-05 |
 | `search_renders_name_and_sku_as_text` | `search.test.mjs` | happy (nombre+SKU visibles en la tarjeta) |
@@ -3171,12 +3260,18 @@ Antes de archive, la suite MUST incluir estos tests (nombres estables). Happy y 
 | `search_missing_image_url_shows_placeholder` | `search.test.mjs` | happy |
 | `search_image_url_sets_card_src` | `search.test.mjs` | happy |
 | `search_arrow_down_from_omnibox_selects_first_hit` | `search.test.mjs` | happy |
+| `search_arrow_down_selects_first_exact_match` | `search.test.mjs` | happy |
 | `search_aborted_response_does_not_paint` | `search.test.mjs` | unhappy |
 | `search_abort_error_does_not_call_showError` | `search.test.mjs` | unhappy |
 | `search_non_text_mode_does_not_call_search` | `search.test.mjs` | unhappy |
 | `search_empty_query_clears_without_fetch` | `search.test.mjs` | unhappy |
 | `search_problem_json_calls_showError` | `search.test.mjs` | unhappy |
+| `search_by_code_error_still_paints_search_hits` | `search.test.mjs` | unhappy |
+| `search_search_error_still_paints_exact_matches` | `search.test.mjs` | unhappy |
 | `search_empty_hits_shows_empty_list` | `search.test.mjs` | unhappy |
+| `search_by_code_empty_items_does_not_pin` | `search.test.mjs` | unhappy |
+| `search_phrase_with_spaces_does_not_call_by_code` | `search.test.mjs` | unhappy |
+| `search_code_longer_than_64_does_not_call_by_code` | `search.test.mjs` | unhappy |
 | `search_highlight_name_paints_mark` | `search.test.mjs` | happy |
 | `search_highlight_null_falls_back_to_name` | `search.test.mjs` | happy |
 | `search_highlight_img_onerror_no_img_element` | `search.test.mjs` | unhappy |
@@ -3200,6 +3295,12 @@ Antes de archive, la suite MUST incluir estos tests (nombres estables). Happy y 
 - **AND** se ejecuta `./scripts/check-vectra-web.sh`
 - **THEN** el comando termina con código distinto de 0
 - **AND** el mensaje nombra `search.js`
+
+#### Scenario: los tests de by-code están nombrados (happy)
+
+- **WHEN** se inspecciona `scripts/fixtures/vectra-web/search.test.mjs`
+- **THEN** existen `search_code_like_query_calls_by_code_in_parallel` y `search_shared_oem_pins_both_exact_matches_first`
+- **AND** existen `search_by_code_error_still_paints_search_hits`, `search_search_error_still_paints_exact_matches`, `search_by_code_empty_items_does_not_pin`, `search_phrase_with_spaces_does_not_call_by_code` y `search_code_longer_than_64_does_not_call_by_code`
 
 ### Requirement: Resaltado seguro (`highlight.js`)
 
