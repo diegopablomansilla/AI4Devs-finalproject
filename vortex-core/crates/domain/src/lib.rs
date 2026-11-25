@@ -11,6 +11,7 @@ pub mod marca;
 pub mod movimiento_stock;
 pub mod outbox;
 pub mod producto;
+pub mod search_document;
 pub mod text_search;
 pub mod timestamp;
 
@@ -43,8 +44,9 @@ pub use producto::{
     Producto, ProductoDraft, ResumenProducto, Sku, TipoCodigo, Ubicacion, UnidadMedida,
     UpdateProducto, ValorAtributo, valor_compatible_con,
 };
+pub use search_document::{CategoriaMeiliLevels, SearchDocument, build_search_document};
 pub use text_search::{
-    IndexSettings, IndexUid, SearchDocument, SearchFacets, SearchFilters, SearchHit, SearchOrden,
-    SearchPage, SearchQuery, TextSearch, validate_index_swap,
+    IndexSettings, IndexUid, SearchFacets, SearchFilters, SearchHit, SearchOrden, SearchPage,
+    SearchQuery, TextSearch, validate_index_swap,
 };
 pub use timestamp::{InvalidTimestamp, Timestamp};
