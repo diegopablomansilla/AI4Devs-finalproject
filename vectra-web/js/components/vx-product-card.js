@@ -127,6 +127,14 @@ export class VxProductCard extends HTMLElement {
   _fillNameEl(nameEl) {
     const slotChild = this.querySelector('[slot="name"]');
     if (slotChild) {
+      const nodes =
+        typeof slotChild.childNodes !== "undefined"
+          ? [...slotChild.childNodes]
+          : [];
+      if (nodes.length > 0) {
+        nameEl.replaceChildren(...nodes.map((n) => n.cloneNode(true)));
+        return;
+      }
       const html = slotChild.innerHTML;
       if (html && typeof nameEl.innerHTML === "string") {
         nameEl.innerHTML = html;
