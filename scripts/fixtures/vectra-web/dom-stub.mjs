@@ -172,7 +172,26 @@ class FakeNode extends EventTargetStub {
     this.value = "";
   }
 
+  cloneNode(deep = false) {
+    const copy = new FakeNode(this.tagName);
+    copy.localName = this.localName;
+    copy._text = this._text;
+    copy._attrs = { ...this._attrs };
+    copy.disabled = this.disabled;
+    if (deep && this._children?.length) {
+      for (const kid of this._children) {
+        copy.appendChild(kid.cloneNode(true));
+      }
+    }
+    return copy;
+  }
+
   get textContent() {
+    if (this.shadowRoot?._children?.length) {
+      return this.shadowRoot._descendants()
+        .map((c) => c.textContent ?? "")
+        .join("");
+    }
     const kids = this._children ?? [];
     if (kids.length > 0) {
       return kids.map((c) => c.textContent ?? "").join("");
@@ -184,6 +203,18 @@ class FakeNode extends EventTargetStub {
     this._text = String(value ?? "");
     if (this._children) {
       this._children = [];
+    }
+  }
+
+  get childNodes() {
+    return this._children ?? [];
+  }
+
+  replaceChildren(...nodes) {
+    this._children = [...nodes];
+    for (const n of nodes) {
+      n.parentNode = this;
+      n.isConnected = true;
     }
   }
 
@@ -268,6 +299,14 @@ class FakeNode extends EventTargetStub {
     this._children.push(node);
     node.parentNode = this;
     node.isConnected = true;
+    if (
+      typeof node.connectedCallback === "function" &&
+      !node.shadowRoot &&
+      node.tagName !== "#TEXT" &&
+      !node._manualLifecycle
+    ) {
+      void node.connectedCallback();
+    }
     return node;
   }
 
@@ -302,6 +341,12 @@ class FakeNode extends EventTargetStub {
     /** @type {FakeNode[]} */
     const out = [];
     const walk = (node) => {
+      if (node.shadowRoot) {
+        for (const child of node.shadowRoot._children ?? []) {
+          out.push(child);
+          walk(child);
+        }
+      }
       const kids = node._children ?? [];
       for (const child of kids) {
         out.push(child);
@@ -314,6 +359,11 @@ class FakeNode extends EventTargetStub {
 
   querySelector(selector) {
     const sel = String(selector);
+    if (sel === "vx-product-card") {
+      return (
+        this._descendants().find((n) => n.localName === "vx-product-card") ?? null
+      );
+    }
     if (sel === '[slot="name"]') {
       const kids = this._children ?? [];
       return kids.find((c) => c.getAttribute("slot") === "name") ?? null;
@@ -345,6 +395,17 @@ class FakeNode extends EventTargetStub {
       );
     }
     return null;
+  }
+
+  querySelectorAll(selector) {
+    const sel = String(selector);
+    if (sel === "vx-product-card") {
+      return this._descendants().filter((n) => n.localName === "vx-product-card");
+    }
+    if (sel === "mark" || sel === "img") {
+      return this._descendants().filter((n) => n.localName === sel);
+    }
+    return [];
   }
 }
 
@@ -394,9 +455,13 @@ class DocumentStub extends EventTargetStub {
   }
 
   createElement(tag) {
-    const name = String(tag);
+    const name = String(tag).toLowerCase();
+    const Ctor = registry.get(name);
+    if (Ctor) {
+      return customElements._create(name);
+    }
     const node = new FakeNode(name.toUpperCase());
-    node.localName = name.toLowerCase();
+    node.localName = name;
     return node;
   }
 
@@ -446,6 +511,9 @@ class DocumentStub extends EventTargetStub {
     if (sel === "vx-omnibox") {
       return node.localName === "vx-omnibox";
     }
+    if (sel === "vx-product-card") {
+      return node.localName === "vx-product-card";
+    }
     if (sel === "mark" || sel === "img" || sel === "em" || sel === "script") {
       return node.localName === sel;
     }
@@ -478,6 +546,7 @@ export const customElements = {
     const el = new Ctor();
     el.localName = name;
     el.tagName = String(name).toUpperCase();
+    el._manualLifecycle = true;
     return el;
   },
 };

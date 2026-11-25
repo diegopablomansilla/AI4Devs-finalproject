@@ -22,9 +22,53 @@ const routerUrl = pathToFileURL(
 
 const waitMicrotask = () => new Promise((resolve) => queueMicrotask(resolve));
 const waitTick = () => new Promise((resolve) => setTimeout(resolve, 0));
+const waitPaint = () => new Promise((resolve) => setTimeout(resolve, 20));
 
 function readCss(name) {
   return fs.readFileSync(path.join(REPO_ROOT, "vectra-web/css", name), "utf8");
+}
+
+let webComponentsReady = false;
+
+async function ensureWebComponents() {
+  if (webComponentsReady) {
+    return;
+  }
+  const sharedUrl = new URL(
+    "../../../vectra-web/js/components/shared.js",
+    import.meta.url,
+  ).href;
+  const { setSharedStyleLoader } = await import(sharedUrl);
+  setSharedStyleLoader(async (url) => {
+    const file = url.pathname.endsWith("base.css") ? "base.css" : "tokens.css";
+    return readCss(file);
+  });
+  await import(
+    new URL("../../../vectra-web/js/components/vx-product-card.js", import.meta.url)
+      .href
+  );
+  await import(
+    new URL("../../../vectra-web/js/components/vx-omnibox.js", import.meta.url)
+      .href
+  );
+  webComponentsReady = true;
+}
+
+function fullHit(overrides = {}) {
+  return {
+    name: "Perno de Acero",
+    sku: "PER-STEEL",
+    brand: "Fixser",
+    price: "120.00",
+    stock: "40",
+    location: "P3 · E-B · 12",
+    imageUrl: null,
+    highlight: {
+      name: "<mark>Perno</mark> de Acero",
+      description: null,
+    },
+    ...overrides,
+  };
 }
 
 function searchPayload(query, hits) {
@@ -52,21 +96,10 @@ async function buildOperator({ withOmnibox = true } = {}) {
   root.appendChild(results);
   document.body.appendChild(root);
 
+  await ensureWebComponents();
+
   let omnibox = null;
   if (withOmnibox) {
-    const sharedUrl = new URL(
-      "../../../vectra-web/js/components/shared.js",
-      import.meta.url,
-    ).href;
-    const { setSharedStyleLoader } = await import(sharedUrl);
-    setSharedStyleLoader(async (url) => {
-      const file = url.pathname.endsWith("base.css") ? "base.css" : "tokens.css";
-      return readCss(file);
-    });
-    await import(
-      new URL("../../../vectra-web/js/components/vx-omnibox.js", import.meta.url)
-        .href
-    );
     omnibox = customElements._create("vx-omnibox");
     omniboxWrap.appendChild(omnibox);
     await omnibox.connectedCallback();
@@ -181,31 +214,87 @@ describe("search", () => {
   test("search_renders_name_and_sku_as_text", async () => {
     const { root, results } = await buildOperator({ withOmnibox: false });
     const unmount = searchMod.mountSearch(root, {
-      request: async () =>
-        searchPayload("perno", [
-          {
-            name: "Perno de Acero",
-            sku: "PER-STEEL",
-            highlight: {
-              name: "<mark>Perno</mark> de Acero",
-              description: null,
-            },
-          },
-        ]),
+      request: async () => searchPayload("perno", [fullHit()]),
       showError: () => {},
     });
     dispatchTextQuery(root, "perno");
-    await waitTick();
+    await waitPaint();
     const painted = resultsItemText(results);
     assert.match(painted, /Perno de Acero/);
     assert.match(painted, /PER-STEEL/);
-    assert.doesNotMatch(painted, /<mark>/);
-    assert.equal(
-      results.querySelector("vx-product-card"),
-      null,
-    );
+    assert.ok(results.querySelector("vx-product-card"));
     const listbox = results.querySelector('[role="listbox"]');
     assert.ok(listbox);
+    unmount();
+  });
+
+  test("search_renders_full_product_card", async () => {
+    const { root, results } = await buildOperator({ withOmnibox: false });
+    const unmount = searchMod.mountSearch(root, {
+      request: async () => searchPayload("perno", [fullHit()]),
+      showError: () => {},
+    });
+    dispatchTextQuery(root, "perno");
+    await waitPaint();
+    const card = results.querySelector("vx-product-card");
+    assert.ok(card);
+    assert.equal(card.getAttribute("sku"), "PER-STEEL");
+    assert.equal(card.getAttribute("brand"), "Fixser");
+    assert.equal(card.getAttribute("price"), "120.00");
+    assert.equal(card.getAttribute("location"), "P3 · E-B · 12");
+    const rootShadow = card.shadowRoot;
+    assert.ok(rootShadow?.querySelector('[data-field="brand"]'));
+    assert.ok(rootShadow?.querySelector('[data-field="location"]'));
+    unmount();
+  });
+
+  test("search_zero_stock_marks_out_of_stock", async () => {
+    const { root, results } = await buildOperator({ withOmnibox: false });
+    const unmount = searchMod.mountSearch(root, {
+      request: async () =>
+        searchPayload("x", [fullHit({ stock: "0", name: "Agotado", sku: "SIN-1" })]),
+      showError: () => {},
+    });
+    dispatchTextQuery(root, "x");
+    await waitPaint();
+    const card = results.querySelector("vx-product-card");
+    assert.ok(card);
+    assert.equal(card.hasAttribute("data-out-of-stock"), true);
+    assert.match(card.textContent ?? "", /Sin stock/i);
+    unmount();
+  });
+
+  test("search_missing_image_url_shows_placeholder", async () => {
+    const { root, results } = await buildOperator({ withOmnibox: false });
+    const unmount = searchMod.mountSearch(root, {
+      request: async () => searchPayload("x", [fullHit({ imageUrl: null })]),
+      showError: () => {},
+    });
+    dispatchTextQuery(root, "x");
+    await waitPaint();
+    const card = results.querySelector("vx-product-card");
+    const rootShadow = card?.shadowRoot;
+    assert.equal(rootShadow?.querySelector("img"), null);
+    assert.ok(rootShadow?.querySelector('[data-field="image-placeholder"]'));
+    unmount();
+  });
+
+  test("search_image_url_sets_card_src", async () => {
+    const { root, results } = await buildOperator({ withOmnibox: false });
+    const unmount = searchMod.mountSearch(root, {
+      request: async () =>
+        searchPayload("x", [
+          fullHit({ imageUrl: "https://example.test/perno.jpg" }),
+        ]),
+      showError: () => {},
+    });
+    dispatchTextQuery(root, "x");
+    await waitPaint();
+    const img = results
+      .querySelector("vx-product-card")
+      ?.shadowRoot?.querySelector("img");
+    assert.ok(img);
+    assert.equal(img.getAttribute("src"), "https://example.test/perno.jpg");
     unmount();
   });
 
@@ -368,21 +457,24 @@ describe("search", () => {
           {
             name: "Perno M8",
             sku: "PER-M8",
+            brand: "Fixser",
+            price: "10",
+            stock: "1",
             highlight: { name: "<mark>Perno</mark> M8", description: null },
           },
         ]),
       showError: () => {},
     });
     dispatchTextQuery(root, "perno");
-    await waitTick();
+    await waitPaint();
     const list = results.querySelector('[role="listbox"]');
     assert.ok(list);
-    assert.ok(list.querySelector("mark"));
+    assert.ok(results.querySelector("mark"));
     assert.match(resultsItemText(results), /PER-M8/);
     unmount();
   });
 
-  test("search_highlight_description_paints_mark", async () => {
+  test("search_highlight_description_does_not_paint_on_card", async () => {
     const { root, results } = await buildOperator({ withOmnibox: false });
     const unmount = searchMod.mountSearch(root, {
       request: async () =>
@@ -390,6 +482,9 @@ describe("search", () => {
           {
             name: "Perno",
             sku: "P-1",
+            brand: "X",
+            price: "1",
+            stock: "2",
             highlight: {
               name: null,
               description: "<mark>zincado</mark>",
@@ -399,9 +494,49 @@ describe("search", () => {
       showError: () => {},
     });
     dispatchTextQuery(root, "zinc");
-    await waitTick();
-    const list = results.querySelector('[role="listbox"]');
-    assert.ok(list?.querySelector("mark"));
+    await waitPaint();
+    assert.equal(results.querySelector("mark"), null);
+    assert.match(resultsItemText(results), /Perno/);
+    unmount();
+  });
+
+  test("search_html_in_plain_fields_is_text", async () => {
+    const { root, results } = await buildOperator({ withOmnibox: false });
+    const unmount = searchMod.mountSearch(root, {
+      request: async () =>
+        searchPayload("x", [
+          fullHit({
+            brand: '<img onerror="alert(1)">',
+            sku: "SKU-1",
+          }),
+        ]),
+      showError: () => {},
+    });
+    dispatchTextQuery(root, "x");
+    await waitPaint();
+    const card = results.querySelector("vx-product-card");
+    assert.ok(card);
+    assert.equal(results.querySelector("img"), null);
+    assert.match(card.textContent ?? "", /<img/);
+    unmount();
+  });
+
+  test("search_malformed_hit_does_not_throw", async () => {
+    const { root, results } = await buildOperator({ withOmnibox: false });
+    const unmount = searchMod.mountSearch(root, {
+      request: async () =>
+        searchPayload("x", [
+          null,
+          "bad",
+          fullHit({ sku: "GOOD", name: "Ok" }),
+        ]),
+      showError: () => {},
+    });
+    dispatchTextQuery(root, "x");
+    await waitPaint();
+    const cards = results.querySelectorAll("vx-product-card");
+    assert.equal(cards.length, 1);
+    assert.equal(cards[0].getAttribute("sku"), "GOOD");
     unmount();
   });
 
@@ -410,12 +545,18 @@ describe("search", () => {
     const unmount = searchMod.mountSearch(root, {
       request: async () =>
         searchPayload("x", [
-          { name: "Arandela", sku: "A-1", highlight: null },
+          {
+            name: "Arandela",
+            sku: "A-1",
+            price: "1",
+            stock: "1",
+            highlight: null,
+          },
         ]),
       showError: () => {},
     });
     dispatchTextQuery(root, "x");
-    await waitTick();
+    await waitPaint();
     assert.match(resultsItemText(results), /Arandela/);
     assert.equal(results.querySelector("mark"), null);
     unmount();
@@ -438,10 +579,10 @@ describe("search", () => {
       showError: () => {},
     });
     dispatchTextQuery(root, "x");
-    await waitTick();
+    await waitPaint();
     const list = results.querySelector('[role="listbox"]');
     assert.ok(list);
-    assert.equal(list.querySelector("img"), null);
+    assert.equal(results.querySelector("img"), null);
     assert.match(resultsItemText(results), /&lt;img/);
     unmount();
   });

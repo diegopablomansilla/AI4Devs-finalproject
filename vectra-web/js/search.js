@@ -44,6 +44,66 @@ export function mountSearch(root, { request, showError }) {
   }
 
   /**
+   * @param {unknown} value
+   * @returns {string}
+   */
+  function asAttrString(value) {
+    if (value === null || value === undefined) {
+      return "";
+    }
+    return String(value);
+  }
+
+  /**
+   * @param {Record<string, unknown>} hit
+   * @returns {HTMLElement | null}
+   */
+  function createProductCardForHit(hit) {
+    const card = document.createElement("vx-product-card");
+    card.setAttribute("variant", "full");
+
+    const sku = asAttrString(hit.sku);
+    const name = asAttrString(hit.name);
+    if (sku) {
+      card.setAttribute("sku", sku);
+    }
+    if (name) {
+      card.setAttribute("name", name);
+    }
+
+    const brand = hit.brand;
+    if (brand != null && asAttrString(brand).trim() !== "") {
+      card.setAttribute("brand", asAttrString(brand));
+    }
+    const price = hit.price;
+    if (price != null && asAttrString(price).trim() !== "") {
+      card.setAttribute("price", asAttrString(price));
+    }
+    const stock = hit.stock;
+    if (stock != null && asAttrString(stock).trim() !== "") {
+      card.setAttribute("stock", asAttrString(stock));
+    }
+    const location = hit.location;
+    if (location != null && asAttrString(location).trim() !== "") {
+      card.setAttribute("location", asAttrString(location));
+    }
+    const imageUrl = hit.imageUrl;
+    if (imageUrl != null && asAttrString(imageUrl).trim() !== "") {
+      card.setAttribute("image-url", asAttrString(imageUrl).trim());
+    }
+
+    const highlightName = hit?.highlight?.name;
+    if (highlightName != null && String(highlightName).trim() !== "") {
+      const slot = document.createElement("span");
+      slot.setAttribute("slot", "name");
+      appendSanitizedHtml(slot, String(highlightName));
+      card.appendChild(slot);
+    }
+
+    return card;
+  }
+
+  /**
    * @param {Array<{ name?: string, sku?: string, highlight?: { name?: string | null, description?: string | null } | null }>} hits
    */
   function paintHits(hits) {
@@ -62,25 +122,20 @@ export function mountSearch(root, { request, showError }) {
     list.setAttribute("tabindex", "0");
     const items = [];
     for (const hit of hits) {
-      const row = document.createElement("div");
-      const nameWrap = document.createElement("span");
-      const highlightName = hit?.highlight?.name;
-      if (highlightName != null && String(highlightName).trim() !== "") {
-        appendSanitizedHtml(nameWrap, highlightName);
-      } else {
-        nameWrap.textContent = hit?.name ?? "";
+      if (!hit || typeof hit !== "object") {
+        continue;
       }
-      row.appendChild(nameWrap);
-      row.appendChild(document.createTextNode(" · "));
-      row.appendChild(document.createTextNode(hit?.sku ?? ""));
-      const highlightDesc = hit?.highlight?.description;
-      if (highlightDesc != null && String(highlightDesc).trim() !== "") {
-        const descWrap = document.createElement("div");
-        appendSanitizedHtml(descWrap, highlightDesc);
-        row.appendChild(descWrap);
+      const card = createProductCardForHit(
+        /** @type {Record<string, unknown>} */ (hit),
+      );
+      if (!card) {
+        continue;
       }
-      list.appendChild(row);
-      items.push(row);
+      list.appendChild(card);
+      items.push(card);
+    }
+    if (!items.length) {
+      return;
     }
     results.appendChild(list);
 
