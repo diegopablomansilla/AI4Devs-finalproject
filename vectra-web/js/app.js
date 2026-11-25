@@ -6,6 +6,7 @@ import { mountCategories } from "./admin/categories.js";
 import { mountBrands } from "./admin/brands.js";
 import { mountAttributeDefinitions } from "./admin/attribute-definitions.js";
 import { mountProducts } from "./admin/products.js";
+import { mountSearch } from "./search.js";
 import { startHealth } from "./health.js";
 import { startSwUpdateWatcher } from "./sw-update.js";
 
@@ -34,6 +35,7 @@ if (outlet) {
     mountBrands,
     mountAttributeDefinitions,
     mountProducts,
+    mountSearch,
   });
   startHealth({ fetch: globalThis.fetch.bind(globalThis), window, document });
   registerAppServiceWorker();

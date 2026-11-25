@@ -206,6 +206,10 @@ ${navLinks}
  *   mountBrands?: (el: Element, deps: object) => Promise<void>,
  *   mountAttributeDefinitions?: (el: Element, deps: object) => Promise<void>,
  *   mountProducts?: (el: Element, deps: object) => Promise<void>,
+ *   mountSearch?: (
+ *     root: Element,
+ *     deps: { request?: Function, showError?: (err: unknown) => void },
+ *   ) => () => void,
  * }} opts
  */
 export function startRouter({
@@ -219,15 +223,33 @@ export function startRouter({
   mountBrands,
   mountAttributeDefinitions,
   mountProducts,
+  mountSearch,
 }) {
   const resolvedStorage =
     storage ??
     (typeof window.localStorage !== "undefined" ? window.localStorage : null);
 
+  /** @type {(() => void) | null} */
+  let unmountSearch = null;
+
   const paint = () => {
+    if (unmountSearch) {
+      unmountSearch();
+      unmountSearch = null;
+    }
     const route = parseHash(window.location.hash);
     const terminalValue = readTerminalName(resolvedStorage);
     outlet.innerHTML = viewHtml(route, terminalValue);
+    if (
+      route.view === "operator" &&
+      typeof mountSearch === "function" &&
+      typeof request === "function"
+    ) {
+      unmountSearch = mountSearch(outlet, {
+        request,
+        showError: showError ?? (() => {}),
+      });
+    }
     if (route.view === "admin" && typeof outlet.querySelector === "function") {
       const field = outlet.querySelector('vx-field[name="terminal"]');
       bindTerminalName(field, resolvedStorage);
