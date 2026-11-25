@@ -10,7 +10,7 @@ Ticket padre: T-03-04. HU: HU-03-01.
 
 ### Requirement: Adaptador TextSearch en search
 
-El crate `search` MUST implementar el puerto `domain::TextSearch` contra un Meilisearch HTTP local. El adaptador MUST construirse con una URL base (por defecto la de `MEILISEARCH_URL` / `http://127.0.0.1:7700`) y una `api_key` opcional. MUST esperar cada *task* de escritura (`upsert_documents`, `delete_documents`, `create_index`, `delete_index`, `swap_indexes`, y `apply_settings` cuando no sea no-op) hasta completar o hasta un *timeout* configurable (defecto 5 s). MUST NOT construir el documento 4.11.1 (T-03-06): el alta serializa `SearchDocument` con el campo `id` (ULID de 26 caracteres, sin prefijo de tabla) como clave primaria. MUST NOT enganchar el adaptador en `bin/vortex` ni en el supervisor (T-00-27). MUST NOT enviar `synonyms` al motor (T-03-27).
+El crate `search` MUST implementar el puerto `domain::TextSearch` contra un Meilisearch HTTP local. El adaptador MUST construirse con una URL base (por defecto la de `MEILISEARCH_URL` / `http://127.0.0.1:7700`) y una `api_key` opcional. MUST esperar cada *task* de escritura (`upsert_documents`, `delete_documents`, `create_index`, `delete_index`, `swap_indexes`, y `apply_settings` cuando no sea no-op) hasta completar o hasta un *timeout* configurable (defecto 5 s). `upsert_documents` MUST serializar cada `SearchDocument` con **todos** los campos [4.11.1](../../../../../docs/4-modelo.md#4111-documento) (`id` ULID de 26 caracteres sin prefijo de tabla como clave primaria, más `sku`, `nombre`, `tipo`, `marca`, `marca_id`, `categoria`, `categoria_ids`, `codigos`, `atributos_texto`, `attr_*`, `descripcion`, `precio`, `unidad_medida`, `stock_disponible`, `con_stock`, `ubicacion`, `imagen`). MUST NOT enganchar el adaptador en `bin/vortex` ni en el supervisor (T-00-27). MUST NOT enviar `synonyms` al motor (T-03-27).
 
 `search` (consulta) MUST enviar `q`, `offset` y `limit` del `SearchQuery` al motor y MUST devolver un `SearchPage` cuyos `hits` exponen el `id` ULID de cada documento. MUST NOT traducir filtros HTTP ni `orden` de ranking a la consulta (T-03-12). `facet_search` MAY delegar en `search` sin agregar facetas (T-03-18). `apply_settings` con `IndexSettings` vacío MUST terminar en éxito **sin** llamar al motor y **sin** aplicar `searchableAttributes` / `filterableAttributes` / `rankingRules`. `apply_settings` con `IndexSettings` no vacío MUST aplicar al uid dado las listas del payload (`searchableAttributes`, `rankingRules`, `filterableAttributes`, `sortableAttributes`, `typoTolerance.disableOnAttributes`) y MUST esperar la *task*. MUST NOT PATCH `synonyms` ni `attributesToHighlight`. `create_index` y `delete_index` MUST operar sobre el uid dado. `swap_indexes` MUST rechazar origen = destino con `invalid_input` (misma guarda de dominio) y, si difieren, pedir el intercambio al motor.
 
@@ -19,6 +19,12 @@ El crate `search` MUST implementar el puerto `domain::TextSearch` contra un Meil
 - **WHEN** el adaptador hace `upsert_documents` de un `SearchDocument` con un ULID válido en un índice de prueba y luego `search` con `q` igual a ese ULID (o `q` vacía con `limit` suficiente)
 - **THEN** ambas operaciones terminan sin error
 - **AND** `SearchPage.hits` incluye un hit cuyo `id` es ese ULID
+
+#### Scenario: Upsert envía el documento 4.11.1 (happy)
+
+- **WHEN** el adaptador hace `upsert_documents` de un `SearchDocument` con `sku` y `nombre` no vacíos y luego se lee el documento del motor por `id`
+- **THEN** el JSON persistido incluye `sku` y `nombre` iguales a los del `SearchDocument`
+- **AND** la clave primaria sigue siendo `id`
 
 #### Scenario: Borrado de un documento (happy, Listo cuando)
 
@@ -91,6 +97,7 @@ Antes de archive, la suite MUST incluir estos tests (nombres estables). Happy y 
 | Test | Ubicación | Tipo | Motor |
 |---|---|---|---|
 | `meilisearch_adapter_upserts_then_searches_document` | `vortex-core/crates/search/tests/` | happy | `#[ignore = "meilisearch"]` |
+| `meilisearch_adapter_upserts_full_search_document` | `vortex-core/crates/search/tests/` | happy | `#[ignore = "meilisearch"]` |
 | `meilisearch_adapter_deletes_document` | `vortex-core/crates/search/tests/` | happy | `#[ignore = "meilisearch"]` |
 | `meilisearch_adapter_health_is_up` | `vortex-core/crates/search/tests/` | happy | `#[ignore = "meilisearch"]` |
 | `meilisearch_apply_productos_settings_matches_expected` | `vortex-core/crates/search/tests/` | happy | `#[ignore = "meilisearch"]` |
@@ -109,6 +116,13 @@ Los tests `#[ignore = "meilisearch"]` MUST usar `MEILISEARCH_URL` (defecto `http
 - **WHEN** Meilisearch de la versión fijada responde en la URL configurada
 - **AND** se ejecuta `cargo test --workspace -- --include-ignored meilisearch`
 - **THEN** `meilisearch_adapter_upserts_then_searches_document` y `meilisearch_adapter_deletes_document` corren y terminan con código 0
+
+#### Scenario: Upsert de documento completo (happy)
+
+- **WHEN** Meilisearch de la versión fijada responde en la URL configurada
+- **AND** se ejecuta `cargo test -p search -- --include-ignored meilisearch_adapter_upserts_full_search_document`
+- **THEN** el test corre y termina con código 0
+- **AND** el documento en el motor conserva `sku` y `nombre` además de `id`
 
 #### Scenario: Configuración aplicada coincide con la esperada (happy, Listo cuando)
 

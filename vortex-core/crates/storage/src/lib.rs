@@ -6,6 +6,7 @@ mod categoria;
 mod marca;
 mod migrate;
 mod movimiento_stock;
+mod outbox;
 mod producto;
 pub mod testing;
 mod tx;
@@ -20,6 +21,7 @@ pub use migrate::{
     MigrationRecord, checksum_hex,
 };
 pub use movimiento_stock::MovimientoStockRepo;
+pub use outbox::OutboxStore;
 pub use producto::ProductoRepo;
 pub use tx::{OutboxNotifier, Tx};
 

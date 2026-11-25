@@ -4972,6 +4972,12 @@ dependencies = [
 [[package]]
 name = "sync"
 version = "0.1.0"
+dependencies = [
+ "domain",
+ "search",
+ "storage",
+ "tokio",
+]
 
 [[package]]
 name = "sync_wrapper"

@@ -19,6 +19,13 @@ pub struct OutboxNotifier {
 }
 
 impl OutboxNotifier {
+    /// Detached notifier for unit tests (e.g. `sync` worker); production uses [`Db::outbox_notifier`].
+    pub fn stub() -> Self {
+        Self {
+            inner: Arc::new(Notify::new()),
+        }
+    }
+
     /// Returns a future that completes when [`Db::tx`] commits successfully.
     pub fn notified(&self) -> tokio::sync::futures::Notified<'_> {
         self.inner.notified()
@@ -158,6 +165,10 @@ pub(crate) fn map_surreal_message(msg: &str, statements: &[String]) -> DomainErr
         if let Ok(code) = DomainCode::from_str(token) {
             return DomainError::from_domain_code(code, vec![]);
         }
+    }
+
+    if lower.contains("not_found") {
+        return DomainError::not_found();
     }
 
     if lower.contains("unique")
