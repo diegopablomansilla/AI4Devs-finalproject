@@ -10,6 +10,7 @@ pub mod id;
 pub mod marca;
 pub mod movimiento_stock;
 pub mod outbox;
+pub mod outbox_repo;
 pub mod producto;
 pub mod search_document;
 pub mod text_search;
@@ -39,6 +40,7 @@ pub use movimiento_stock::{
     MovimientoStock, MovimientoStockDraft, NewMovimientoStock, StockLedger, TipoMovimiento, Venta,
 };
 pub use outbox::{OutboxEntity, OutboxEvent, OutboxEventError, OutboxOp};
+pub use outbox_repo::{OUTBOX_BATCH_LIMIT, OutboxRecord, OutboxRepo, OutboxRow};
 pub use producto::{
     AtributoFicha, AtributoValor, Codigo, FichaProducto, FiltroProducto, NewProducto, ProductRepo,
     Producto, ProductoDraft, ResumenProducto, Sku, TipoCodigo, Ubicacion, UnidadMedida,

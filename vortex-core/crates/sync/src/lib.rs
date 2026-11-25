@@ -1,1 +1,5 @@
-//! Crate `sync` (placeholder for T-00-01-02).
+//! Index Sync Worker (outbox → Meilisearch, T-03-07).
+
+mod meili_product_worker;
+
+pub use meili_product_worker::{DEFAULT_POLL_INTERVAL, MeiliProductWorker};

@@ -66,15 +66,9 @@ impl MeiliTextSearch {
         index: &IndexUid,
         documents: &[SearchDocument],
     ) -> Result<(), DomainError> {
-        let meili_docs: Vec<MeiliDocument> = documents
-            .iter()
-            .map(|doc| MeiliDocument {
-                id: doc.id.to_string(),
-            })
-            .collect();
         let idx = self.client.index(index.as_str());
         let task = idx
-            .add_or_replace(&meili_docs, Some("id"))
+            .add_or_replace(documents, Some("id"))
             .await
             .map_err(|e| map_meili_error(&e))?;
         self.complete_task(task).await

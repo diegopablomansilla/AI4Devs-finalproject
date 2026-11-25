@@ -430,6 +430,37 @@ workspace = true
 EOF
 assert_fails_with 'supervisor con clap' "${tmp}" 'supervisor'
 
+# happy: sync declares worker allowlist (T-03-07)
+cp "${REPO_ROOT}/vortex-core/crates/domain/Cargo.toml" "${tmp}/vortex-core/crates/domain/Cargo.toml"
+cp "${REPO_ROOT}/vortex-core/crates/storage/Cargo.toml" "${tmp}/vortex-core/crates/storage/Cargo.toml"
+cp "${REPO_ROOT}/vortex-core/crates/api/Cargo.toml" "${tmp}/vortex-core/crates/api/Cargo.toml"
+cp "${REPO_ROOT}/vortex-core/crates/catalog/Cargo.toml" "${tmp}/vortex-core/crates/catalog/Cargo.toml"
+cp "${REPO_ROOT}/vortex-core/crates/search/Cargo.toml" "${tmp}/vortex-core/crates/search/Cargo.toml"
+cp "${REPO_ROOT}/vortex-core/crates/supervisor/Cargo.toml" "${tmp}/vortex-core/crates/supervisor/Cargo.toml"
+cp "${REPO_ROOT}/vortex-core/crates/sync/Cargo.toml" "${tmp}/vortex-core/crates/sync/Cargo.toml"
+assert_ok 'sync con allowlist del worker' "${tmp}"
+
+# unhappy: sync declares meilisearch-sdk outside allowlist
+cat >"${tmp}/vortex-core/crates/sync/Cargo.toml" <<'EOF'
+[package]
+name = "sync"
+version = "0.1.0"
+edition.workspace = true
+publish = false
+
+[dependencies]
+domain = { path = "../domain" }
+storage = { path = "../storage" }
+tokio = { workspace = true }
+meilisearch-sdk = { workspace = true }
+
+[lints]
+workspace = true
+EOF
+assert_fails_with 'sync con meilisearch-sdk' "${tmp}" 'sync'
+
+cp "${REPO_ROOT}/vortex-core/crates/sync/Cargo.toml" "${tmp}/vortex-core/crates/sync/Cargo.toml"
+
 # happy: vortex declares config allowlist
 cp "${REPO_ROOT}/vortex-core/crates/api/Cargo.toml" "${tmp}/vortex-core/crates/api/Cargo.toml"
 cp "${REPO_ROOT}/vortex-core/crates/domain/Cargo.toml" "${tmp}/vortex-core/crates/domain/Cargo.toml"

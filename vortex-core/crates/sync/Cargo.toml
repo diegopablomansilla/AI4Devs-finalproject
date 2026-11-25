@@ -4,5 +4,14 @@ version = "0.1.0"
 edition.workspace = true
 publish = false
 
+[dependencies]
+domain = { path = "../domain" }
+storage = { path = "../storage" }
+tokio = { workspace = true, features = ["macros", "rt", "time", "sync"] }
+
+[dev-dependencies]
+search = { path = "../search" }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+
 [lints]
 workspace = true

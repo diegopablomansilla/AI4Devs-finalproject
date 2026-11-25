@@ -112,6 +112,38 @@ async fn meilisearch_adapter_deletes_document() {
 }
 
 #[tokio::test]
+#[ignore = "meilisearch"]
+async fn meilisearch_adapter_upserts_full_search_document() {
+    let adapter = adapter();
+    let index = ephemeral_index_uid();
+    adapter.create_index(&index).await.expect("create_index");
+
+    let product_id = Id::<Producto>::generate();
+    let mut doc = SearchDocument::try_new(product_id.clone());
+    doc.sku = String::from("PER-M8X40-ZN");
+    doc.nombre = String::from("Perno completo");
+    doc.tipo = String::from("Perno");
+
+    adapter
+        .upsert_documents(&index, &[doc])
+        .await
+        .expect("upsert");
+
+    let query = SearchQuery::try_new(
+        String::from("PER-M8X40-ZN"),
+        SearchFilters::default(),
+        SearchOrden::Relevancia,
+        0,
+        20,
+    )
+    .expect("query");
+    let page = adapter.search(&index, query).await.expect("search");
+    assert!(page.hits.iter().any(|hit| hit.id == product_id));
+
+    cleanup_index(&adapter, &index).await;
+}
+
+#[tokio::test]
 async fn meilisearch_adapter_unavailable_when_unreachable() {
     let adapter =
         MeiliTextSearch::new("http://127.0.0.1:1", None::<String>).expect("client for dead port");
