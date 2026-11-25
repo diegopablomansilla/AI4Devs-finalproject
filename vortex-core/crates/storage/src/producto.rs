@@ -8,8 +8,8 @@ use domain::{
     AtributoDef, AtributoFicha, AtributoValor, AttributeDefRepo, BrandRepo, Categoria,
     CategoryRepo, Codigo, ConflictCode, Decimal, DomainError, FichaProducto, FiltroProducto, Id,
     InvalidInputCode, Marca, MovimientoStock, NewProducto, OutboxEntity, OutboxEvent, OutboxOp,
-    ProductRepo, Producto, ProductoDraft, ResumenProducto, Timestamp, TipoCodigo, Ubicacion,
-    UnavailableCode, UnidadMedida, UpdateProducto, ValorAtributo,
+    ProductRepo, Producto, ProductoDraft, ResumenProducto, Timestamp, TipoAtributo, TipoCodigo,
+    Ubicacion, UnavailableCode, UnidadMedida, UpdateProducto, ValorAtributo,
 };
 use serde::Deserialize;
 use surrealdb::{RecordId, RecordIdKey};
@@ -570,8 +570,8 @@ async fn record_to_producto(
         Some(id) => id,
         None => record_id_to_domain_id(&row.id)?,
     };
-    let defs = load_atributo_defs(db, &row.atributos).await?;
-    let atributos = map_atributos(&row.atributos)?;
+    let defs = load_atributo_defs(Arc::clone(&db), &row.atributos).await?;
+    let atributos = map_atributos(&row.atributos, &defs)?;
     let codigos = row
         .codigos
         .iter()
@@ -641,16 +641,49 @@ async fn load_atributo_defs(
     Ok(defs)
 }
 
-fn map_atributos(attrs: &[AtributoValorRecord]) -> Result<Vec<AtributoValor>, DomainError> {
+fn map_atributos(
+    attrs: &[AtributoValorRecord],
+    defs: &[AtributoDef],
+) -> Result<Vec<AtributoValor>, DomainError> {
     attrs
         .iter()
         .map(|a| {
+            let def_id = record_id_to_domain_id(&a.def)?;
+            let raw = surreal_valor_to_domain(&a.valor)?;
+            let def = defs
+                .iter()
+                .find(|d| d.id == def_id)
+                .ok_or(DomainError::unavailable(UnavailableCode::Unavailable))?;
             Ok(AtributoValor {
-                def: record_id_to_domain_id(&a.def)?,
-                valor: surreal_valor_to_domain(&a.valor)?,
+                def: def_id,
+                valor: valor_for_def_tipo(def, raw)?,
             })
         })
         .collect()
+}
+
+/// Aligns stored Surreal scalars with attribute definition `tipo` on read (e.g. decimal as string).
+fn valor_for_def_tipo(
+    def: &AtributoDef,
+    valor: ValorAtributo,
+) -> Result<ValorAtributo, DomainError> {
+    Ok(match (def.tipo, valor) {
+        (TipoAtributo::Numero, ValorAtributo::Texto(s)) => {
+            ValorAtributo::Numero(decimal_from_wire_text(&s)?)
+        }
+        (TipoAtributo::Numero, ValorAtributo::Numero(d)) => ValorAtributo::Numero(d),
+        (TipoAtributo::Booleano, ValorAtributo::Texto(s)) if s == "true" || s == "false" => {
+            ValorAtributo::Booleano(s == "true")
+        }
+        (TipoAtributo::Booleano, ValorAtributo::Booleano(b)) => ValorAtributo::Booleano(b),
+        (_, ValorAtributo::Texto(s)) => ValorAtributo::Texto(s),
+        (_, ValorAtributo::Numero(d)) => ValorAtributo::Numero(d),
+        (_, ValorAtributo::Booleano(b)) => ValorAtributo::Booleano(b),
+    })
+}
+
+fn decimal_from_wire_text(s: &str) -> Result<Decimal, DomainError> {
+    Decimal::from_str(s.trim()).map_err(|_| DomainError::unavailable(UnavailableCode::Unavailable))
 }
 
 pub(crate) fn surreal_valor_to_domain(v: &SurrealValor) -> Result<ValorAtributo, DomainError> {

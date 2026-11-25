@@ -1,12 +1,15 @@
-//! `vortex seed` — import master catalog rows (T-02-42).
+//! `vortex seed` — import master catalog rows and products (T-02-42, T-02-43).
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use catalog::{
-    AttributeDefService, BrandService, CategoryService, ProductionOccupancy, import_masters,
+    AttributeDefService, BrandService, CategoryService, ProductService, ProductionOccupancy,
+    import_masters, import_products,
 };
-use storage::{AtributoDefRepo, CategoriaRepo, DB_DIR_NAME, Db, MarcaRepo, ProductAttributeUsage};
+use storage::{
+    AtributoDefRepo, CategoriaRepo, DB_DIR_NAME, Db, MarcaRepo, ProductAttributeUsage, ProductoRepo,
+};
 
 use crate::config::Config;
 use crate::serve::resolve_config_path;
@@ -34,6 +37,29 @@ pub fn run(config_flag: Option<&PathBuf>, dir: PathBuf) -> ! {
 
     let exit_code = rt.block_on(run_import(config, &dir));
     std::process::exit(exit_code);
+}
+
+fn print_issues(issues: &[catalog::SeedIssue]) {
+    for issue in issues {
+        if issue.linea == 0 {
+            eprintln!(
+                "{}: {}",
+                issue.archivo,
+                if issue.mensaje.is_empty() {
+                    issue.campo.as_str()
+                } else {
+                    issue.mensaje.as_str()
+                }
+            );
+        } else if issue.campo.is_empty() {
+            eprintln!("{}:{} {}", issue.archivo, issue.linea, issue.mensaje);
+        } else {
+            eprintln!(
+                "{}:{} {}: {}",
+                issue.archivo, issue.linea, issue.campo, issue.mensaje
+            );
+        }
+    }
 }
 
 async fn run_import(config: Config, dir: &Path) -> i32 {
@@ -70,29 +96,39 @@ async fn run_import(config: Config, dir: &Path) -> i32 {
     )
     .await
     {
-        Ok(()) => 0,
+        Ok(()) => {}
         Err(issues) => {
-            for issue in &issues {
-                if issue.linea == 0 {
-                    eprintln!(
-                        "{}: {}",
-                        issue.archivo,
-                        if issue.mensaje.is_empty() {
-                            issue.campo.as_str()
-                        } else {
-                            issue.mensaje.as_str()
-                        }
-                    );
-                } else if issue.campo.is_empty() {
-                    eprintln!("{}:{} {}", issue.archivo, issue.linea, issue.mensaje);
-                } else {
-                    eprintln!(
-                        "{}:{} {}: {}",
-                        issue.archivo, issue.linea, issue.campo, issue.mensaje
-                    );
-                }
-            }
-            1
+            print_issues(&issues);
+            return 1;
         }
     }
+
+    let products: Arc<dyn catalog::ProductGateway> = Arc::new(ProductService::new(
+        ProductoRepo::new(Arc::clone(&db)),
+        CategoriaRepo::new(Arc::clone(&db)),
+        MarcaRepo::new(Arc::clone(&db)),
+        AtributoDefRepo::new(Arc::clone(&db)),
+    ));
+
+    let summary = import_products(
+        dir,
+        categories.as_ref(),
+        brands.as_ref(),
+        attribute_defs.as_ref(),
+        products.as_ref(),
+    )
+    .await;
+
+    if !summary.issues.is_empty() {
+        print_issues(&summary.issues);
+    }
+    eprintln!(
+        "productos: importados={} rechazados={}",
+        summary.importados, summary.rechazados
+    );
+
+    if summary.rechazados > 0 {
+        return 1;
+    }
+    0
 }

@@ -9,10 +9,11 @@ pub mod stock;
 
 pub use atributo_def::{AttributeDefGateway, AttributeDefService, EmptyAttributeUsage};
 pub use categoria::{CategoryGateway, CategoryOccupancy, CategoryService, ProductionOccupancy};
+pub use domain::{FiltroProducto, StockLedger, TipoMovimiento};
 pub use marca::{BrandGateway, BrandService};
 pub use producto::{
     PatchProducto, ProductGateway, ProductService, product_id_after,
     product_matches_categoria_branch,
 };
-pub use seed::{SeedIssue, import_masters, validate_dir};
+pub use seed::{SeedIssue, SeedProductSummary, import_masters, import_products, validate_dir};
 pub use stock::{StockGateway, StockService};
