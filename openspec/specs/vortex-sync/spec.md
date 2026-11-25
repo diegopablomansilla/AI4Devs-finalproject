@@ -18,7 +18,7 @@ El crate `sync` MUST exponer una tarea en segundo plano (Index Sync Worker de Me
 4. MUST esperar la *task* de Meilisearch y solo entonces avanzar `sync_cursor:meilisearch.ultimo_evento` al id de ese evento cuando la operación confirma. Si el *upsert*/*delete* (o el *fan-out*) falla con `unavailable` o `timeout`, MUST NOT avanzar el cursor de ese evento ni de los posteriores del lote. Si falla con `invalid_input`, MUST registrar `outbox_fallo` y avanzar según el requirement «Error permanente registra outbox_fallo y avanza».
 5. MUST procesar los eventos del lote **en orden**. MAY agrupar escrituras al motor pero el cursor MUST quedar en el último evento confirmado o marcado `fallido`.
 
-El worker MUST recibir por inyección el puerto `TextSearch`, los repositorios (`OutboxRepo`, `ProductRepo`, `AttributeDefRepo`), un `IndexUid` (los tests usan un uid efímero distinto de `productos`; el uid `productos` lo cablea T-00-27) y un puerto de telemetría (requirement «Telemetría de sync»). MUST NOT instanciar el adaptador Meilisearch ni abrir SurrealDB. MUST NOT engancharse en `bin/vortex` (T-00-27). MUST implementar *fan-out* de `categoria`, `marca` y `atributo_def` según el requirement «Fan-out de categoría, marca y atributo_def». MUST implementar *backoff* y `outbox_fallo` según los requirements de T-03-09. MUST NOT aplicar `synonyms` (T-03-27). MUST NOT reprocesar a mano filas `fallido`.
+El worker MUST recibir por inyección el puerto `TextSearch`, los repositorios (`OutboxRepo`, `ProductRepo`, `AttributeDefRepo`), un `IndexUid` (los tests del crate `sync` usan un uid efímero distinto de `productos`) y un puerto de telemetría (requirement «Telemetría de sync»). MUST NOT instanciar el adaptador Meilisearch ni abrir SurrealDB: el composition root `vortex serve` (T-00-27) MUST construir el adaptador, abrir Storage y **inyectar** el uid `productos`. MUST implementar *fan-out* de `categoria`, `marca` y `atributo_def` según el requirement «Fan-out de categoría, marca y atributo_def». MUST implementar *backoff* y `outbox_fallo` según los requirements de T-03-09. MUST NOT aplicar `synonyms` (T-03-27). MUST NOT reprocesar a mano filas `fallido`.
 
 `imagen` del documento MUST permanecer `null` (T-02-28 / T-03-06).
 
@@ -60,6 +60,12 @@ El worker MUST recibir por inyección el puerto `TextSearch`, los repositorios (
 - **WHEN** no hay eventos con `id` mayor que el cursor
 - **THEN** el ciclo termina sin error
 - **AND** no se invoca `upsert_documents` ni `delete_documents`
+
+#### Scenario: vortex serve inyecta el índice productos (happy)
+
+- **WHEN** `vortex serve` arranca el Index Sync Worker
+- **THEN** el `IndexUid` inyectado es `productos`
+- **AND** el crate `sync` no abre SurrealDB ni instancia el cliente Meilisearch
 
 ### Requirement: Idempotencia del worker
 

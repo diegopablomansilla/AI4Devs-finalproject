@@ -46,7 +46,7 @@ hostname = "localhost"
 moneda = "ARS"
 
 [meilisearch]
-url = "http://127.0.0.1:7700"
+url = "http://127.0.0.1:1"
 
 [ollama]
 url = "http://127.0.0.1:11434"
@@ -235,14 +235,16 @@ fn wait_for_health_ok_storage_up(bind: &str, timeout: Duration) -> Option<serde_
     let start = Instant::now();
     while start.elapsed() < timeout {
         if let Some((status, ctype, json)) = http_get_problem(addr, "/health") {
+            let agg = json.get("status").and_then(|v| v.as_str());
+            let storage_up = json["components"]["storage"]
+                .get("status")
+                .and_then(|v| v.as_str())
+                == Some("up");
             if status == 200
                 && ctype == "application/json"
-                && json.get("status").and_then(|v| v.as_str()) == Some("ok")
                 && json.get("code").is_none()
-                && json["components"]["storage"]
-                    .get("status")
-                    .and_then(|v| v.as_str())
-                    == Some("up")
+                && storage_up
+                && matches!(agg, Some("ok") | Some("degraded"))
             {
                 return Some(json);
             }
@@ -270,10 +272,55 @@ fn spawn_serve_production(config_path: &Path) -> Child {
     Command::new(vortex_bin())
         .args(["--config", config_path.to_str().unwrap(), "serve"])
         .env("VORTEX_ENV", "production")
+        .env("VORTEX_BOOT_MEILI_TIMEOUT_MS", "0")
         .stdout(Stdio::null())
         .stderr(Stdio::piped())
         .spawn()
         .expect("spawn serve")
+}
+
+fn write_config_meilisearch_local(dir: &Path, bind: &str, meili_url: &str) -> PathBuf {
+    let datos = dir.join("datos");
+    fs::create_dir_all(&datos).expect("datos dir");
+    let web = dir.join("web");
+    fs::create_dir_all(&web).expect("web dir");
+    let path = dir.join("vortex.toml");
+    let body = format!(
+        r#"
+[paths]
+datos = "{datos}"
+modelos = "/tmp/modelos"
+backups = "/tmp/backups"
+web = "{web}"
+
+[server]
+bind = "{bind}"
+hostname = "localhost"
+
+[negocio]
+moneda = "ARS"
+
+[meilisearch]
+url = "{meili_url}"
+
+[ollama]
+url = "http://127.0.0.1:11434"
+
+[backup]
+hora = "03:00"
+retencion = 14
+
+[logs]
+nivel = "info"
+retencion = 14
+"#,
+        datos = datos.display(),
+        web = web.display(),
+        bind = bind,
+        meili_url = meili_url,
+    );
+    fs::write(&path, body.trim()).expect("write config");
+    path
 }
 
 fn read_log_json_lines(logs_dir: &Path) -> Vec<serde_json::Value> {
@@ -430,7 +477,7 @@ hostname = "localhost"
 moneda = "peso"
 
 [meilisearch]
-url = "http://127.0.0.1:7700"
+url = "http://127.0.0.1:1"
 
 [ollama]
 url = "http://127.0.0.1:11434"
@@ -765,9 +812,50 @@ fn vortex_serve_health_ok_with_storage_up() {
     let mut child = spawn_serve_production(&path);
     let json = wait_for_health_ok_storage_up(&bind, BOOT_WAIT)
         .expect("serve must reach /health ok with storage up");
+    assert_eq!(json["components"]["storage"]["status"], "up");
+    assert_eq!(json["components"]["meilisearch"]["status"], "down");
+    assert_eq!(json["components"]["sync"]["status"], "up");
+    assert_eq!(json["status"], "degraded");
+    assert!(json.get("code").is_none());
+    terminate_child(&mut child);
+}
+
+#[test]
+fn vortex_serve_starts_degraded_when_meilisearch_down() {
+    let bind = ephemeral_bind();
+    let dir = temp_dir();
+    let path = write_config(&dir, &bind);
+    let mut child = spawn_serve_production(&path);
+    let json = wait_for_health_ok_storage_up(&bind, BOOT_WAIT).expect("serve must listen");
+    assert_eq!(json["status"], "degraded");
+    assert_eq!(json["components"]["storage"]["status"], "up");
+    assert_eq!(json["components"]["meilisearch"]["status"], "down");
+    assert_eq!(json["components"]["sync"]["status"], "up");
+    assert!(json.get("code").is_none());
+    terminate_child(&mut child);
+}
+
+#[test]
+#[ignore = "meilisearch"]
+fn vortex_serve_health_ok_when_meilisearch_up() {
+    let bind = ephemeral_bind();
+    let dir = temp_dir();
+    let meili =
+        std::env::var("MEILISEARCH_URL").unwrap_or_else(|_| "http://127.0.0.1:7700".to_string());
+    let path = write_config_meilisearch_local(&dir, &bind, &meili);
+    let mut child = Command::new(vortex_bin())
+        .args(["--config", path.to_str().unwrap(), "serve"])
+        .env("VORTEX_ENV", "production")
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn serve");
+    let json = wait_for_health_ok_storage_up(&bind, BOOT_WAIT)
+        .expect("serve with sidecar must reach /health");
     assert_eq!(json["status"], "ok");
     assert_eq!(json["components"]["storage"]["status"], "up");
-    assert!(json.get("code").is_none());
+    assert_eq!(json["components"]["meilisearch"]["status"], "up");
+    assert_eq!(json["components"]["sync"]["status"], "up");
     terminate_child(&mut child);
 }
 
@@ -802,6 +890,8 @@ fn vortex_serve_boot_logs_phase_durations() {
         "boot.logging",
         "boot.storage",
         "boot.health",
+        "boot.meilisearch",
+        "boot.sync",
         "boot.api",
     ] {
         let matching: Vec<_> = lines

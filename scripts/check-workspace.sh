@@ -472,7 +472,7 @@ vortex_deps_allowed() {
       /^\[dependencies\]/ { indeps = 1; next }
       /^\[/ { indeps = 0 }
       indeps && /^[^[:space:]#]/ { print }
-    ' "${crate_toml}" | grep -v -E '^(toml|serde|thiserror|tracing|tracing-subscriber|tracing-appender|clap|api|supervisor|storage|catalog|tokio|axum)[[:space:]]*=' || true
+    ' "${crate_toml}" | grep -v -E '^(toml|serde|thiserror|tracing|tracing-subscriber|tracing-appender|clap|api|supervisor|storage|catalog|search|sync|domain|tokio|axum)[[:space:]]*=' || true
   )
   if [ -n "${other_deps}" ]; then
     return 1
@@ -498,6 +498,18 @@ vortex_deps_allowed() {
   fi
   if grep -E '^catalog[[:space:]]*=' "${crate_toml}" >/dev/null 2>&1; then
     grep -E '^catalog[[:space:]]*=' "${crate_toml}" | grep -Fq 'path' \
+      || return 1
+  fi
+  if grep -E '^search[[:space:]]*=' "${crate_toml}" >/dev/null 2>&1; then
+    grep -E '^search[[:space:]]*=' "${crate_toml}" | grep -Fq 'path' \
+      || return 1
+  fi
+  if grep -E '^sync[[:space:]]*=' "${crate_toml}" >/dev/null 2>&1; then
+    grep -E '^sync[[:space:]]*=' "${crate_toml}" | grep -Fq 'path' \
+      || return 1
+  fi
+  if grep -E '^domain[[:space:]]*=' "${crate_toml}" >/dev/null 2>&1; then
+    grep -E '^domain[[:space:]]*=' "${crate_toml}" | grep -Fq 'path' \
       || return 1
   fi
   return 0

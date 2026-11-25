@@ -1,21 +1,28 @@
-//! `vortex serve` — ordered boot (T-00-20) and graceful shutdown (T-00-10).
+//! `vortex serve` — ordered boot (T-00-20, T-00-27) and graceful shutdown (T-00-10).
 
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::Instant;
 
 use std::sync::Arc;
 
-use api::{AppState, build_router};
+use api::{AppState, PrometheusSyncTelemetry, build_router};
 use axum::serve;
 use catalog::{
     AttributeDefService, BrandService, CategoryService, ProductService, ProductionOccupancy,
 };
+use domain::{IndexUid, SyncTelemetry};
+use search::MeiliTextSearch;
 use storage::{
-    AtributoDefRepo, CategoriaRepo, DB_DIR_NAME, Db, MarcaRepo, ProductAttributeUsage, ProductoRepo,
+    AtributoDefRepo, CategoriaRepo, DB_DIR_NAME, Db, MarcaRepo, OutboxStore, ProductAttributeUsage,
+    ProductoRepo,
 };
 use supervisor::{ComponentId, ComponentStatus, HealthRegistry};
+use sync::{DEFAULT_POLL_INTERVAL, MeiliProductWorker};
 use tokio::net::TcpListener;
+use tokio::task::JoinHandle;
 
+use crate::boot::wait_meilisearch_text_search;
 use crate::config::{Config, ConfigError};
 use crate::logging::{self, LoggingGuard};
 
@@ -81,6 +88,51 @@ pub fn run(config_flag: Option<&PathBuf>) -> ! {
     std::process::exit(exit_code);
 }
 
+/// Forwards metrics to Prometheus and mirrors sync stats on [`HealthRegistry`].
+#[derive(Clone)]
+struct RegistrySyncTelemetry {
+    prom: PrometheusSyncTelemetry,
+    health: Arc<HealthRegistry>,
+    failed: Arc<AtomicU64>,
+    last_lag: Arc<AtomicU64>,
+}
+
+impl RegistrySyncTelemetry {
+    fn new(health: Arc<HealthRegistry>) -> Self {
+        Self {
+            prom: PrometheusSyncTelemetry,
+            health,
+            failed: Arc::new(AtomicU64::new(0)),
+            last_lag: Arc::new(AtomicU64::new(0)),
+        }
+    }
+
+    fn push_health_stats(&self) {
+        self.health.set_sync_stats(
+            self.last_lag.load(Ordering::Relaxed),
+            self.failed.load(Ordering::Relaxed),
+        );
+    }
+}
+
+impl SyncTelemetry for RegistrySyncTelemetry {
+    fn set_outbox_lag(&self, consumidor: &str, lag: u64) {
+        self.prom.set_outbox_lag(consumidor, lag);
+        self.last_lag.store(lag, Ordering::Relaxed);
+        self.push_health_stats();
+    }
+
+    fn inc_outbox_failed(&self) {
+        self.prom.inc_outbox_failed();
+        self.failed.fetch_add(1, Ordering::Relaxed);
+        self.push_health_stats();
+    }
+
+    fn observe_sync_propagation_seconds(&self, seconds: f64) {
+        self.prom.observe_sync_propagation_seconds(seconds);
+    }
+}
+
 async fn serve_config(config: Config, _logging_guard: LoggingGuard) -> i32 {
     let health_start = Instant::now();
     let health = Arc::new(HealthRegistry::new(env!("CARGO_PKG_VERSION")));
@@ -114,6 +166,69 @@ async fn serve_config(config: Config, _logging_guard: LoggingGuard) -> i32 {
     );
 
     let db = Arc::new(db);
+
+    let meili_start = Instant::now();
+    health.set(ComponentId::Meilisearch, ComponentStatus::Starting);
+    let text_search = match MeiliTextSearch::new(
+        config.meilisearch.url.clone(),
+        config.meilisearch.api_key.clone(),
+    ) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("meilisearch: {e}");
+            tracing::error!(phase = "boot.meilisearch", error = %e, "meilisearch client failed");
+            return 1;
+        }
+    };
+
+    let meili_up = wait_meilisearch_text_search(&text_search).await;
+    if meili_up {
+        health.set(ComponentId::Meilisearch, ComponentStatus::Up);
+    } else {
+        health.set(ComponentId::Meilisearch, ComponentStatus::Down);
+    }
+    tracing::info!(
+        phase = "boot.meilisearch",
+        duration_ms = meili_start.elapsed().as_millis() as u64,
+        meili_up,
+        "boot.meilisearch"
+    );
+
+    let sync_start = Instant::now();
+    let index = match IndexUid::try_new("productos") {
+        Ok(i) => i,
+        Err(e) => {
+            eprintln!("sync: {e}");
+            return 1;
+        }
+    };
+    let telemetry = RegistrySyncTelemetry::new(Arc::clone(&health));
+    let outbox = OutboxStore::new(Arc::clone(&db));
+    let worker = MeiliProductWorker::new(
+        outbox,
+        ProductoRepo::new(Arc::clone(&db)),
+        AtributoDefRepo::new(Arc::clone(&db)),
+        text_search,
+        telemetry.clone(),
+        db.outbox_notifier(),
+        index,
+        DEFAULT_POLL_INTERVAL,
+    );
+    let worker_stop = Arc::new(AtomicBool::new(false));
+    let stop_flag = Arc::clone(&worker_stop);
+    let worker_handle: JoinHandle<()> = tokio::spawn(async move {
+        worker
+            .run_while(|| !stop_flag.load(Ordering::Relaxed))
+            .await;
+    });
+    health.set(ComponentId::Sync, ComponentStatus::Up);
+    telemetry.push_health_stats();
+    tracing::info!(
+        phase = "boot.sync",
+        duration_ms = sync_start.elapsed().as_millis() as u64,
+        "boot.sync"
+    );
+
     let category_gateway: Arc<dyn catalog::CategoryGateway> = Arc::new(CategoryService::new(
         CategoriaRepo::new(Arc::clone(&db)),
         ProductionOccupancy,
@@ -139,6 +254,8 @@ async fn serve_config(config: Config, _logging_guard: LoggingGuard) -> i32 {
         Ok(addr) => addr,
         Err(_) => {
             eprintln!("config: server.bind: debe ser una dirección host:puerto válida");
+            worker_stop.store(true, Ordering::Relaxed);
+            worker_handle.abort();
             return 1;
         }
     };
@@ -148,6 +265,8 @@ async fn serve_config(config: Config, _logging_guard: LoggingGuard) -> i32 {
         Ok(l) => l,
         Err(e) => {
             eprintln!("config: server.bind: {e}");
+            worker_stop.store(true, Ordering::Relaxed);
+            worker_handle.abort();
             return 1;
         }
     };
@@ -168,8 +287,16 @@ async fn serve_config(config: Config, _logging_guard: LoggingGuard) -> i32 {
         .with_products(product_gateway)
         .with_stock(stock_gateway);
     let router = build_router(state);
+
+    let stop_worker = Arc::clone(&worker_stop);
+    let graceful = async move {
+        shutdown_signal().await;
+        stop_worker.store(true, Ordering::Relaxed);
+        worker_handle.abort();
+    };
+
     if let Err(e) = serve(listener, router)
-        .with_graceful_shutdown(shutdown_signal())
+        .with_graceful_shutdown(graceful)
         .await
     {
         eprintln!("serve: {e}");
