@@ -1,5 +1,6 @@
 //! Vortex Core binary.
 
+mod boot;
 mod cli;
 mod config;
 mod logging;
