@@ -167,6 +167,32 @@ impl MeiliTextSearch {
         }
     }
 
+    /// Hidden helper for integration tests (T-03-08).
+    #[doc(hidden)]
+    pub async fn test_read_categoria_lvl0(
+        &self,
+        index: &IndexUid,
+        id: &Id<Producto>,
+    ) -> Result<Option<String>, DomainError> {
+        #[derive(Deserialize, Default)]
+        struct CategoriaPartial {
+            #[serde(default)]
+            lvl0: Option<String>,
+        }
+        #[derive(Deserialize, Default)]
+        struct DocPartial {
+            #[serde(default)]
+            categoria: CategoriaPartial,
+        }
+        let doc: DocPartial = self
+            .client
+            .index(index.as_str())
+            .get_document(&id.to_string())
+            .await
+            .map_err(|e| map_meili_error(&e))?;
+        Ok(doc.categoria.lvl0)
+    }
+
     /// Hidden helper for integration tests (Listo cuando T-03-05).
     #[doc(hidden)]
     pub async fn test_read_index_settings(

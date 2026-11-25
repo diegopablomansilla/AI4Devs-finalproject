@@ -1,4 +1,4 @@
-//! Integration tests: Listo cuando (T-03-07).
+//! Integration tests: Listo cuando (T-03-07, T-03-08).
 
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -11,6 +11,8 @@ use storage::{AtributoDefRepo, OutboxStore, ProductoRepo};
 use sync::{DEFAULT_POLL_INTERVAL, MeiliProductWorker};
 
 const REGISTRO: &str = "01J9ZKA7M3Q8R2T5V9X1Z4B6D8";
+const ROOT_CAT: &str = "01J9ZKA7M3Q8R2T5V9X1Z4C0D0";
+const CHILD_CAT: &str = "01J9ZKA7M3Q8R2T5V9X1Z4C0D1";
 
 fn meilisearch_url() -> String {
     std::env::var("MEILISEARCH_URL").unwrap_or_else(|_| "http://127.0.0.1:7700".to_string())
@@ -18,6 +20,11 @@ fn meilisearch_url() -> String {
 
 fn ephemeral_index_uid() -> IndexUid {
     let name = format!("t0307-{}", Id::<Producto>::generate());
+    IndexUid::try_new(&name).expect("index uid")
+}
+
+fn ephemeral_index_uid_t0308() -> IndexUid {
+    let name = format!("t0308-{}", Id::<Producto>::generate());
     IndexUid::try_new(&name).expect("index uid")
 }
 
@@ -40,6 +47,39 @@ async fn seed_catalog(db: &storage::Db) {
     ))
     .await
     .expect("seed outbox");
+}
+
+async fn seed_fijaciones_pernos_product(db: &storage::Db) {
+    let product_outbox = Id::<OutboxRecord>::generate();
+    db.query(&format!(
+        "CREATE type::thing('categoria', '{ROOT_CAT}') CONTENT {{ \
+         nombre: 'Fijaciones', slug: 'fijaciones', ruta: ['Fijaciones'], activo: true }}; \
+         CREATE type::thing('categoria', '{CHILD_CAT}') CONTENT {{ \
+         nombre: 'Pernos', slug: 'pernos', padre: type::thing('categoria', '{ROOT_CAT}'), \
+         ancestros: [type::thing('categoria', '{ROOT_CAT}')], \
+         ruta: ['Fijaciones', 'Pernos'], activo: true }}; \
+         CREATE type::thing('producto', '{REGISTRO}') CONTENT {{ \
+         sku: 'PER-M8X40-ZN', nombre: 'Perno', tipo: 'Perno', \
+         categoria: type::thing('categoria', '{CHILD_CAT}'), precio: 1dec, activo: true, stock: 1 }}; \
+         CREATE type::thing('outbox', '{product_outbox}') CONTENT {{ \
+         entidad: 'producto', registro: type::thing('producto', '{REGISTRO}'), operacion: 'upsert' }};"
+    ))
+    .await
+    .expect("seed tree");
+}
+
+async fn rename_fijaciones_emit_categoria_outbox(db: &storage::Db) {
+    let outbox_id = Id::<OutboxRecord>::generate();
+    db.query(&format!(
+        "UPDATE type::thing('categoria', '{ROOT_CAT}') SET nombre = 'Tornillería', \
+         ruta = ['Tornillería']; \
+         UPDATE type::thing('categoria', '{CHILD_CAT}') SET \
+         ruta = ['Tornillería', 'Pernos']; \
+         CREATE type::thing('outbox', '{outbox_id}') CONTENT {{ \
+         entidad: 'categoria', registro: type::thing('categoria', '{ROOT_CAT}'), operacion: 'upsert' }};"
+    ))
+    .await
+    .expect("rename + outbox");
 }
 
 async fn cleanup_index(adapter: &MeiliTextSearch, index: &IndexUid) {
@@ -138,6 +178,41 @@ async fn worker_reprocessing_same_event_is_idempotent() {
         1,
         "reprocessing must not duplicate the document"
     );
+
+    cleanup_index(&search, &index).await;
+}
+
+#[tokio::test]
+#[ignore = "meilisearch"]
+async fn worker_fanout_categoria_rename_updates_lvl0_within_one_second() {
+    let db = Arc::new(test_db().await);
+    seed_fijaciones_pernos_product(&db).await;
+
+    let search = MeiliTextSearch::new(meilisearch_url(), None::<String>).expect("meilisearch");
+    let index = ephemeral_index_uid_t0308();
+    search.create_index(&index).await.expect("create_index");
+
+    let product_id: Id<Producto> = REGISTRO.parse().expect("product id");
+    let w = worker(Arc::clone(&db), search.clone(), index.clone());
+
+    w.drain_once().await.expect("index product");
+    rename_fijaciones_emit_categoria_outbox(&db).await;
+
+    let started = Instant::now();
+    w.drain_once().await.expect("fan-out categoria");
+
+    while search
+        .test_read_categoria_lvl0(&index, &product_id)
+        .await
+        .expect("read doc")
+        != Some("Tornillería".into())
+    {
+        assert!(
+            started.elapsed() < Duration::from_secs(1),
+            "categoria.lvl0 not updated within 1s"
+        );
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
 
     cleanup_index(&search, &index).await;
 }

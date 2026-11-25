@@ -12,6 +12,7 @@ pub mod movimiento_stock;
 pub mod outbox;
 pub mod outbox_repo;
 pub mod producto;
+pub mod productos_index_settings;
 pub mod search_document;
 pub mod text_search;
 pub mod timestamp;
@@ -46,6 +47,7 @@ pub use producto::{
     Producto, ProductoDraft, ResumenProducto, Sku, TipoCodigo, Ubicacion, UnidadMedida,
     UpdateProducto, ValorAtributo, valor_compatible_con,
 };
+pub use productos_index_settings::productos_index_settings;
 pub use search_document::{CategoriaMeiliLevels, SearchDocument, build_search_document};
 pub use text_search::{
     IndexSettings, IndexUid, SearchFacets, SearchFilters, SearchHit, SearchOrden, SearchPage,

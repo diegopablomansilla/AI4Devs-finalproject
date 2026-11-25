@@ -1,7 +1,7 @@
-//! Index `productos` Meilisearch settings profile (T-03-05, docs/4.11.2 + H-03/H-04).
+//! Index `productos` Meilisearch settings profile (T-03-05, T-03-08; docs/4.11.2 + H-03/H-04).
 
-use domain::IndexSettings;
-use domain::error::{DomainError, FieldError, InvalidInputCode};
+use crate::error::{DomainError, FieldError, InvalidInputCode};
+use crate::text_search::IndexSettings;
 
 const SEARCHABLE: &[&str] = &[
     "nombre",
@@ -105,7 +105,7 @@ pub fn productos_index_settings(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use domain::error::DomainCode;
+    use crate::error::DomainCode;
 
     #[test]
     fn productos_index_settings_includes_4_11_2_h03_h04() {
