@@ -319,6 +319,69 @@ workspace = true
 EOF
 assert_fails_with 'catalog con clap' "${tmp}" 'catalog'
 
+cp "${REPO_ROOT}/vortex-core/crates/catalog/Cargo.toml" "${tmp}/vortex-core/crates/catalog/Cargo.toml"
+
+# unhappy: recommend declares dependencies (empty-lib rule)
+cat >"${tmp}/vortex-core/crates/recommend/Cargo.toml" <<'EOF'
+[package]
+name = "recommend"
+version = "0.1.0"
+edition.workspace = true
+publish = false
+
+[dependencies]
+serde = { workspace = true }
+
+[lints]
+workspace = true
+EOF
+assert_fails_with 'recommend con dependencies' "${tmp}" 'recommend'
+
+cp "${REPO_ROOT}/vortex-core/crates/recommend/Cargo.toml" "${tmp}/vortex-core/crates/recommend/Cargo.toml"
+
+# happy: search declares Meilisearch allowlist (T-03-04)
+cp "${REPO_ROOT}/vortex-core/crates/domain/Cargo.toml" "${tmp}/vortex-core/crates/domain/Cargo.toml"
+cp "${REPO_ROOT}/vortex-core/crates/search/Cargo.toml" "${tmp}/vortex-core/crates/search/Cargo.toml"
+assert_ok 'search con allowlist Meilisearch' "${tmp}"
+
+# unhappy: search declares surrealdb outside allowlist
+cat >"${tmp}/vortex-core/crates/search/Cargo.toml" <<'EOF'
+[package]
+name = "search"
+version = "0.1.0"
+edition.workspace = true
+publish = false
+
+[dependencies]
+domain = { path = "../domain" }
+meilisearch-sdk = { workspace = true }
+surrealdb = { workspace = true }
+
+[lints]
+workspace = true
+EOF
+assert_fails_with 'search con surrealdb' "${tmp}" 'search'
+
+# unhappy: search declares reqwest outside allowlist
+cat >"${tmp}/vortex-core/crates/search/Cargo.toml" <<'EOF'
+[package]
+name = "search"
+version = "0.1.0"
+edition.workspace = true
+publish = false
+
+[dependencies]
+domain = { path = "../domain" }
+meilisearch-sdk = { workspace = true }
+reqwest = { workspace = true }
+
+[lints]
+workspace = true
+EOF
+assert_fails_with 'search con reqwest' "${tmp}" 'search'
+
+cp "${REPO_ROOT}/vortex-core/crates/search/Cargo.toml" "${tmp}/vortex-core/crates/search/Cargo.toml"
+
 # happy: storage declares surrealdb allowlist
 cp "${REPO_ROOT}/vortex-core/crates/api/Cargo.toml" "${tmp}/vortex-core/crates/api/Cargo.toml"
 cp "${REPO_ROOT}/vortex-core/crates/catalog/Cargo.toml" "${tmp}/vortex-core/crates/catalog/Cargo.toml"
