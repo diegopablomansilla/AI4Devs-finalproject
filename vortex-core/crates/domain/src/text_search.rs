@@ -33,9 +33,26 @@ impl IndexUid {
     }
 }
 
-/// Placeholder for index settings (T-03-05 fills 4.11.2).
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct IndexSettings;
+/// Meilisearch index settings payload (`apply_settings`; T-03-05).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct IndexSettings {
+    pub searchable_attributes: Vec<String>,
+    pub ranking_rules: Vec<String>,
+    pub filterable_attributes: Vec<String>,
+    pub sortable_attributes: Vec<String>,
+    pub typo_disable_on_attributes: Vec<String>,
+}
+
+impl IndexSettings {
+    /// True when no lists are set (no-op for `apply_settings`).
+    pub fn is_empty(&self) -> bool {
+        self.searchable_attributes.is_empty()
+            && self.ranking_rules.is_empty()
+            && self.filterable_attributes.is_empty()
+            && self.sortable_attributes.is_empty()
+            && self.typo_disable_on_attributes.is_empty()
+    }
+}
 
 /// Document body for `upsert_documents` (T-03-06 extends fields).
 #[derive(Debug, Clone, PartialEq)]
@@ -444,7 +461,20 @@ mod tests {
 
     #[test]
     fn index_settings_constructs_empty() {
-        let _ = IndexSettings::default();
+        let settings = IndexSettings::default();
+        assert!(settings.is_empty());
+    }
+
+    #[test]
+    fn index_settings_constructs_with_lists() {
+        let settings = IndexSettings {
+            searchable_attributes: vec!["nombre".into()],
+            filterable_attributes: vec!["marca_id".into()],
+            ..IndexSettings::default()
+        };
+        assert!(!settings.is_empty());
+        assert_eq!(settings.searchable_attributes, ["nombre"]);
+        assert_eq!(settings.filterable_attributes, ["marca_id"]);
     }
 
     #[test]
@@ -512,7 +542,7 @@ mod tests {
             let _ = r.delete_documents(index, &[]);
             let _ = r.search(index, query.clone());
             let _ = r.facet_search(index, query);
-            let _ = r.apply_settings(index, IndexSettings);
+            let _ = r.apply_settings(index, IndexSettings::default());
             let _ = r.create_index(index);
             let _ = r.delete_index(index);
             let _ = r.swap_indexes(index, index);

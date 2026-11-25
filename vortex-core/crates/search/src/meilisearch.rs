@@ -12,6 +12,7 @@ use domain::{
 };
 use meilisearch_sdk::client::{Client, SwapIndexes};
 use meilisearch_sdk::errors::{Error, ErrorCode, ErrorType};
+use meilisearch_sdk::settings::{FilterableAttribute, Settings, TypoToleranceSettings};
 use meilisearch_sdk::task_info::TaskInfo;
 use serde::{Deserialize, Serialize};
 
@@ -122,6 +123,87 @@ impl MeiliTextSearch {
             tiempo_ms,
             None,
         )
+    }
+
+    fn to_meili_settings(settings: &IndexSettings) -> Settings {
+        Settings {
+            searchable_attributes: Some(settings.searchable_attributes.clone()),
+            ranking_rules: Some(settings.ranking_rules.clone()),
+            filterable_attributes: Some(
+                settings
+                    .filterable_attributes
+                    .iter()
+                    .map(|name| FilterableAttribute::from(name.as_str()))
+                    .collect(),
+            ),
+            sortable_attributes: Some(settings.sortable_attributes.clone()),
+            typo_tolerance: Some(TypoToleranceSettings {
+                disable_on_attributes: Some(settings.typo_disable_on_attributes.clone()),
+                ..TypoToleranceSettings::default()
+            }),
+            ..Settings::default()
+        }
+    }
+
+    fn from_meili_settings(got: &Settings) -> IndexSettings {
+        let filterable_attributes = got
+            .filterable_attributes
+            .as_ref()
+            .map(|attrs| {
+                attrs
+                    .iter()
+                    .filter_map(|a| match a {
+                        FilterableAttribute::Attribute(name) => Some(name.clone()),
+                        _ => None,
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        let typo_disable_on_attributes = got
+            .typo_tolerance
+            .as_ref()
+            .and_then(|t| t.disable_on_attributes.clone())
+            .unwrap_or_default();
+        IndexSettings {
+            searchable_attributes: got.searchable_attributes.clone().unwrap_or_default(),
+            ranking_rules: got.ranking_rules.clone().unwrap_or_default(),
+            filterable_attributes,
+            sortable_attributes: got.sortable_attributes.clone().unwrap_or_default(),
+            typo_disable_on_attributes,
+        }
+    }
+
+    /// Hidden helper for integration tests (Listo cuando T-03-05).
+    #[doc(hidden)]
+    pub async fn test_read_index_settings(
+        &self,
+        index: &IndexUid,
+    ) -> Result<(IndexSettings, bool), DomainError> {
+        let got = self
+            .client
+            .index(index.as_str())
+            .get_settings()
+            .await
+            .map_err(|e| map_meili_error(&e))?;
+        let synonyms_present = got.synonyms.is_some();
+        Ok((Self::from_meili_settings(&got), synonyms_present))
+    }
+
+    async fn apply_settings_inner(
+        &self,
+        index: &IndexUid,
+        settings: IndexSettings,
+    ) -> Result<(), DomainError> {
+        if settings.is_empty() {
+            return Ok(());
+        }
+        let idx = self.client.index(index.as_str());
+        let meili = Self::to_meili_settings(&settings);
+        let task = idx
+            .set_settings(&meili)
+            .await
+            .map_err(|e| map_meili_error(&e))?;
+        self.complete_task(task).await
     }
 
     async fn health_inner(&self) -> Result<ComponentHealth, DomainError> {
@@ -240,10 +322,12 @@ impl TextSearch for MeiliTextSearch {
 
     fn apply_settings(
         &self,
-        _index: &IndexUid,
-        _settings: IndexSettings,
+        index: &IndexUid,
+        settings: IndexSettings,
     ) -> impl Future<Output = Result<(), DomainError>> + Send {
-        std::future::ready(Ok(()))
+        let this = self.clone();
+        let index = index.clone();
+        async move { this.apply_settings_inner(&index, settings).await }
     }
 
     fn create_index(
