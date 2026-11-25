@@ -332,7 +332,7 @@ api_deps_allowed() {
   return 0
 }
 
-# `vortex` allowlist: config + tracing stack + clap + api + supervisor + storage + catalog + tokio + axum; [dev-dependencies] serde_json only.
+# `vortex` allowlist: config + tracing stack + clap + api + supervisor + storage + catalog + tokio + axum; [dev-dependencies] serde_json and tokio only.
 vortex_deps_allowed() {
   crate_toml=$1
 
@@ -342,7 +342,7 @@ vortex_deps_allowed() {
         /^\[dev-dependencies\]/ { indev = 1; next }
         /^\[/ { indev = 0 }
         indev && /^[^[:space:]#]/ { print }
-      ' "${crate_toml}" | grep -v -E '^serde_json[[:space:]]*=' || true
+      ' "${crate_toml}" | grep -v -E '^(serde_json|tokio)[[:space:]]*=' || true
     )
     if [ -n "${dev_other}" ]; then
       return 1
@@ -350,6 +350,11 @@ vortex_deps_allowed() {
     if grep -Eq '^\[dev-dependencies\]' "${crate_toml}" \
       && grep -E '^serde_json[[:space:]]*=' "${crate_toml}" >/dev/null 2>&1; then
       grep -E '^serde_json[[:space:]]*=' "${crate_toml}" | grep -Eq 'workspace[[:space:]]*=[[:space:]]*true' \
+        || return 1
+    fi
+    if grep -Eq '^\[dev-dependencies\]' "${crate_toml}" \
+      && grep -E '^tokio[[:space:]]*=' "${crate_toml}" >/dev/null 2>&1; then
+      grep -E '^tokio[[:space:]]*=' "${crate_toml}" | grep -Eq 'workspace[[:space:]]*=[[:space:]]*true' \
         || return 1
     fi
   fi

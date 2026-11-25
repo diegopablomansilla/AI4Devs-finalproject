@@ -4,7 +4,7 @@
 
 Define el esqueleto de la CLI de Vortex Core: subcomandos operativos, flag global `--config` y respuesta uniforme «no implementado» (exit 1) para los que aún no tienen lógica (salvo `serve`, implementado en T-00-10), de modo que `vortex --help` liste el contrato completo.
 
-Ticket padre: T-00-07. Changes: T-00-07, T-00-10. HU: HU-00-06.
+Ticket padre: T-00-07. Changes: T-00-07, T-00-10, T-02-42. HU: HU-00-06, HU-02-11.
 
 ## Requirements
 
@@ -43,7 +43,7 @@ MUST NOT exigirse archivo de configuración ni variable `VORTEX_CONFIG` para mos
 
 ### Requirement: --config es una opción global
 
-El binario MUST exponer `--config <path>` y `--config=<path>` como opción **global** (válida antes o después del subcomando). `vortex --help` MUST mencionar `--config`. Los subcomandos stub MUST NOT abrir ni validar el archivo. `vortex serve` MUST cargar `Config` al despacharse (capability `vortex-api` / `vortex-config`).
+El binario MUST exponer `--config <path>` y `--config=<path>` como opción **global** (válida antes o después del subcomando). `vortex --help` MUST mencionar `--config`. Los subcomandos stub MUST NOT abrir ni validar el archivo. `vortex serve` y `vortex seed` MUST cargar `Config` al despacharse (`vortex-api` / `vortex-config` / `vortex-seed`).
 
 #### Scenario: --config aparece en la ayuda raíz (happy)
 
@@ -57,6 +57,12 @@ El binario MUST exponer `--config <path>` y `--config=<path>` como opción **glo
 - **AND** stderr contiene `no implementado`
 - **AND** stderr no trata la ausencia del archivo como el error principal (no exige que el TOML exista)
 
+#### Scenario: seed no ignora un --config inexistente (unhappy)
+
+- **WHEN** se ejecuta `vortex --config /nonexistent/vortex-config.toml seed`
+- **THEN** el proceso termina con código distinto de 0
+- **AND** stderr no contiene `no implementado`
+
 ### Requirement: Subcomandos no implementados responden no implementado con código 1
 
 Cada una de estas invocaciones MUST escribir `no implementado` en stderr y MUST terminar con código **1** (ni 0 ni otro código de uso):
@@ -65,12 +71,11 @@ Cada una de estas invocaciones MUST escribir `no implementado` en stderr y MUST 
 - `vortex backup`
 - `vortex cert`
 - `vortex models`
-- `vortex seed`
 - `vortex verify`
 - `vortex service install`
 - `vortex service uninstall`
 
-MUST NOT arrancar el servidor HTTP, Storage, sidecars, `launchd` ni ninguna lógica de producto. MUST NOT exigir un archivo de configuración para producir esa respuesta. `vortex serve` MUST NOT formar parte de esta lista (capability `vortex-api`).
+MUST NOT arrancar el servidor HTTP, Storage, sidecars, `launchd` ni ninguna lógica de producto. MUST NOT exigir un archivo de configuración para producir esa respuesta. `vortex serve` MUST NOT formar parte de esta lista (capability `vortex-api`). `vortex seed` MUST NOT formar parte de esta lista (capability `vortex-seed`).
 
 #### Scenario: vortex serve no implementado (happy / stub)
 
@@ -81,7 +86,7 @@ MUST NOT arrancar el servidor HTTP, Storage, sidecars, `launchd` ni ninguna lóg
 
 #### Scenario: el resto de subcomandos de primer nivel son stub (happy / stub)
 
-- **WHEN** se ejecuta `vortex` con subcomando `reindex`, `backup`, `cert`, `models`, `seed` o `verify`
+- **WHEN** se ejecuta `vortex` con subcomando `reindex`, `backup`, `cert`, `models` o `verify`
 - **THEN** cada invocación termina con código 1
 - **AND** stderr contiene `no implementado`
 
@@ -90,6 +95,12 @@ MUST NOT arrancar el servidor HTTP, Storage, sidecars, `launchd` ni ninguna lóg
 - **WHEN** se ejecuta `vortex service install` o `vortex service uninstall`
 - **THEN** el proceso termina con código 1
 - **AND** stderr contiene `no implementado`
+
+#### Scenario: vortex seed no es stub (happy)
+
+- **WHEN** se ejecuta `vortex seed` sin `--config` y sin `VORTEX_CONFIG`
+- **THEN** el proceso termina con código distinto de 0
+- **AND** stderr no contiene `no implementado`
 
 ### Requirement: Argv inválido no se confunde con un stub
 

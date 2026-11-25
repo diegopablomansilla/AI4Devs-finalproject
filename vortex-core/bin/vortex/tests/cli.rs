@@ -87,8 +87,30 @@ fn vortex_reindex_unimplemented_ignores_missing_config() {
 }
 
 #[test]
+fn vortex_seed_without_config_is_error() {
+    let output = Command::new(vortex_bin())
+        .arg("seed")
+        .output()
+        .expect("spawn vortex");
+    assert_ne!(output.status.code(), Some(0));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(!stderr.contains("no implementado"), "stderr: {stderr}");
+}
+
+#[test]
+fn vortex_seed_missing_config_file_is_not_unimplemented() {
+    let output = Command::new(vortex_bin())
+        .args(["--config", "/nonexistent/vortex-config.toml", "seed"])
+        .output()
+        .expect("spawn vortex");
+    assert_ne!(output.status.code(), Some(0));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(!stderr.contains("no implementado"), "stderr: {stderr}");
+}
+
+#[test]
 fn vortex_top_level_stubs_print_unimplemented() {
-    for sub in ["reindex", "backup", "cert", "models", "seed", "verify"] {
+    for sub in ["reindex", "backup", "cert", "models", "verify"] {
         let output = Command::new(vortex_bin())
             .arg(sub)
             .output()

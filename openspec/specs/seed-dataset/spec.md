@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Define el formato JSONL del dataset semilla en `seed/` (claves naturales: slug, clave, SKU), un validador de directorio que informa archivo, línea y campo sin importar, y el dataset de desarrollo de ferretería y repuestos (~200 SKUs). Tickets: T-02-40, T-02-41. HU: HU-02-11.
+Define el formato JSONL del dataset semilla en `seed/` (claves naturales: slug, clave, SKU), un validador de directorio que informa archivo, línea y campo sin importar, y el dataset de desarrollo de ferretería y repuestos (~200 SKUs). Tickets: T-02-40, T-02-41, T-02-42. HU: HU-02-11.
 
 ## Requirements
 
@@ -20,7 +20,9 @@ El repositorio MUST contener el directorio `seed/` en la raíz con:
 - `notas.jsonl`
 - `imagenes/<sku>/` con al menos un binario de ejemplo
 
-Cada JSONL MUST ser UTF-8, un objeto JSON por línea; las líneas en blanco MUST ignorarse. MUST NOT usar IDs ULID ni nombres de API en inglés (`name`, `brandId`, `categoryId`, `price` como clave). Los campos MUST usar nombres del modelo en español ([4.4](../../../docs/4-modelo.md#44-catálogo)). `seed/` MUST ser el dataset de desarrollo de T-02-41 (ferretería y repuestos, ~200 SKUs), no el catálogo del comercio piloto. MUST NOT importar.
+Cada JSONL MUST ser UTF-8, un objeto JSON por línea; las líneas en blanco MUST ignorarse. MUST NOT usar IDs ULID ni nombres de API en inglés (`name`, `brandId`, `categoryId`, `price` como clave). Los campos MUST usar nombres del modelo en español ([4.4](../../../docs/4-modelo.md#44-catálogo)). `seed/` MUST ser el dataset de desarrollo de T-02-41 (ferretería y repuestos, ~200 SKUs), no el catálogo del comercio piloto.
+
+`README.md` MUST documentar que `vortex seed [DIR]` importa **solo maestros** (categorías, marcas, atributos) con `--config` o `VORTEX_CONFIG` y el servidor detenido, y que productos, imágenes, relaciones, sinónimos y notas quedan para tickets posteriores. El árbol `seed/` MUST NOT ejecutar importación por sí mismo.
 
 Un directorio semilla **arbitrario** (fixtures de test) MAY omitir `relaciones.jsonl`, `sinonimos.jsonl`, `notas.jsonl` e `imagenes/`; si existen, MUST validarse (esquema de registros JSONL). El validador MUST NOT exigir esos archivos para considerar válido un directorio mínimo.
 
@@ -31,6 +33,7 @@ Un directorio semilla **arbitrario** (fixtures de test) MAY omitir `relaciones.j
 - **AND** existen `relaciones.jsonl`, `sinonimos.jsonl`, `notas.jsonl` y el directorio `imagenes/`
 - **AND** `README.md` describe el esquema y las referencias por slug, clave y SKU
 - **AND** `README.md` no afirma que el dataset de ~200 SKUs «llegará» en T-02-41
+- **AND** `README.md` menciona `vortex seed` y que la importación actual cubre categorías, marcas y atributos
 
 #### Scenario: el ejemplo mínimo es un perno válido (happy)
 
@@ -73,7 +76,7 @@ El crate `catalog` MUST exponer una función de biblioteca que recibe la ruta de
 - `campo`: nombre del campo del objeto (p. ej. `precio`, `categoria`, `sku`, `atributos[0].clave`); cadena vacía si la línea no es JSON válido
 - `mensaje`: texto que describe el fallo
 
-MUST NOT abrir SurrealDB, MUST NOT escribir el ledger, MUST NOT llamar casos de uso de importación, MUST NOT arrancar HTTP ni cambiar el stub `vortex seed`. Un directorio válido MUST devolver lista vacía.
+MUST NOT abrir SurrealDB, MUST NOT escribir el ledger, MUST NOT llamar casos de uso de importación y MUST NOT arrancar HTTP. Un directorio válido MUST devolver lista vacía. `vortex seed` MAY invocarse aparte (capability `vortex-seed`); este validador MUST seguir siendo una función pura de lectura.
 
 `precio` MUST parsearse como `Decimal` de dominio (string en el JSON). Un valor no numérico MUST producir al menos un issue con `archivo` `productos.jsonl`, `linea` igual a la línea física del registro y `campo` `precio` (Listo cuando de T-02-40; escenario «Registro inválido» de HU-02-11).
 

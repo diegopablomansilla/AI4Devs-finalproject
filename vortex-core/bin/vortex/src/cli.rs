@@ -28,7 +28,11 @@ pub enum Commands {
     /// Descarga modelos y binarios de sidecars
     Models,
     /// Carga datos semilla en el catálogo
-    Seed,
+    Seed {
+        /// Directorio del dataset (default: `seed`)
+        #[arg(value_name = "DIR", default_value = "seed")]
+        dir: PathBuf,
+    },
     /// Verifica la consistencia del sistema
     Verify,
     /// Instalación del servicio del sistema
