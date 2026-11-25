@@ -6,9 +6,10 @@ use std::future::Future;
 use crate::categoria::Categoria;
 use crate::error::{DomainError, FieldError, InvalidInputCode};
 use crate::health::ComponentHealth;
-use crate::id::{Id, InvalidId};
+use crate::id::Id;
 use crate::marca::Marca;
 use crate::producto::Producto;
+use crate::search_document::SearchDocument;
 
 const MAX_Q_LEN: usize = 200;
 const MAX_OFFSET: u32 = 1000;
@@ -51,31 +52,6 @@ impl IndexSettings {
             && self.filterable_attributes.is_empty()
             && self.sortable_attributes.is_empty()
             && self.typo_disable_on_attributes.is_empty()
-    }
-}
-
-/// Document body for `upsert_documents` (T-03-06 extends fields).
-#[derive(Debug, Clone, PartialEq)]
-pub struct SearchDocument {
-    pub id: Id<Producto>,
-}
-
-impl SearchDocument {
-    pub fn try_new(id: Id<Producto>) -> Self {
-        Self { id }
-    }
-
-    pub fn try_from_ulid_str(s: &str) -> Result<Self, DomainError> {
-        if s.contains(':') {
-            return Err(field_invalid_input(
-                "document.id",
-                "id must not include table prefix",
-            ));
-        }
-        let id = s
-            .parse::<Id<Producto>>()
-            .map_err(|InvalidId| field_invalid_input("document.id", "id must be a valid ULID"))?;
-        Ok(Self { id })
     }
 }
 
