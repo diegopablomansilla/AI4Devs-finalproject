@@ -4,9 +4,9 @@ use std::sync::Arc;
 
 use domain::{
     AtributoDef, AtributoValor, AttributeDefRepo, BrandRepo, Categoria, CategoryRepo, Codigo,
-    ConflictCode, DomainCode, DomainError, FiltroProducto, Id, Marca, NewAtributoDef, NewCategoria,
-    NewMarca, NewProducto, ProductRepo, Producto, TipoAtributo, TipoCodigo, UnidadMedida,
-    UpdateProducto, ValorAtributo,
+    ConflictCode, Decimal, DomainCode, DomainError, FiltroProducto, Id, Marca, NewAtributoDef,
+    NewCategoria, NewMarca, NewProducto, ProductRepo, Producto, TipoAtributo, TipoCodigo,
+    UnidadMedida, UpdateProducto, ValorAtributo,
 };
 
 use storage::testing::test_db;
@@ -496,6 +496,55 @@ fn update_from_producto(producto: &Producto, version: i32) -> UpdateProducto {
         precio: producto.precio,
         ubicacion: producto.ubicacion.clone(),
     }
+}
+
+#[tokio::test]
+async fn product_repo_create_numero_atributo_round_trips_as_numero() {
+    let db = Arc::new(test_db().await);
+    let (categoria, marca, _) = seed_ficha_catalog(Arc::clone(&db)).await;
+    let largo = AtributoDefRepo::new(Arc::clone(&db))
+        .create(NewAtributoDef {
+            clave: "largo".into(),
+            etiqueta: "Largo".into(),
+            tipo: TipoAtributo::Numero,
+            unidad: Some("mm".into()),
+            opciones: None,
+            facetable: false,
+            buscable: false,
+            orden: 0,
+        })
+        .await
+        .expect("largo def");
+    let created = product_repo(Arc::clone(&db))
+        .create(NewProducto {
+            sku: "PER-LARGO-40".into(),
+            nombre: "Test largo".into(),
+            tipo: "Perno".into(),
+            descripcion: None,
+            marca: Some(marca),
+            categoria,
+            atributos: vec![AtributoValor {
+                def: largo.id,
+                valor: ValorAtributo::Numero("40".parse().expect("40")),
+            }],
+            codigos: vec![],
+            unidad_medida: UnidadMedida::Unidad,
+            precio: "10".parse().expect("precio"),
+            ubicacion: None,
+            stock_inicial: "0".parse().expect("stock"),
+            terminal: None,
+        })
+        .await
+        .expect("create");
+    assert!(matches!(
+        created.atributos[0].valor,
+        ValorAtributo::Numero(_)
+    ));
+    let again = product_repo(db).get(created.id.clone()).await.expect("get");
+    assert!(matches!(
+        again.producto.atributos[0].valor,
+        ValorAtributo::Numero(d) if d == "40".parse::<Decimal>().expect("40")
+    ));
 }
 
 #[tokio::test]

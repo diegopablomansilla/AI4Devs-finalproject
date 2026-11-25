@@ -58,8 +58,9 @@ vortex --config /ruta/vortex.toml seed [DIR]
 
 - `DIR`: directorio del dataset; por defecto `seed` (relativo al directorio de trabajo).
 - Requiere `--config` o la variable `VORTEX_CONFIG` (igual que `vortex serve`).
-- En el MVP importa **solo maestros**: `categorias.jsonl`, `marcas.jsonl` y `atributos.jsonl` (idempotente por slug/clave).
-- **No** importa `productos.jsonl`, imágenes, relaciones, sinónimos ni notas (tickets T-02-43 y posteriores).
+- En el MVP importa **maestros y productos**: `categorias.jsonl`, `marcas.jsonl`, `atributos.jsonl` y `productos.jsonl` (idempotente por slug/clave en maestros y por SKU en productos).
+- Al crear cada producto nuevo, se registra el stock inicial con un movimiento de ledger de tipo `inicial` según `stock_inicial` del JSONL (string decimal; `"0"` u omitido no genera movimiento).
+- **No** importa imágenes, relaciones, sinónimos ni notas (tickets posteriores).
 
 Para comprobar el formato sin escribir en la base, use `catalog::validate_dir` en tests o herramientas de desarrollo.
 

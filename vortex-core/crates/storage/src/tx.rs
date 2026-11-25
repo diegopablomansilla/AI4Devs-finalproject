@@ -165,7 +165,7 @@ pub(crate) fn map_surreal_message(msg: &str, statements: &[String]) -> DomainErr
         || lower.contains("already contains")
         || lower.contains("duplicate")
     {
-        let conflict = if lower.contains("sku") {
+        let conflict = if lower.contains("sku") || lower.contains("uq_producto_sku") {
             ConflictCode::DuplicateSku
         } else if lower.contains("slug") {
             ConflictCode::DuplicateSlug

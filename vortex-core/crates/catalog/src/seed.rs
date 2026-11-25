@@ -1,17 +1,20 @@
 //! Seed dataset JSONL format and directory validator (T-02-40).
 //! Master import orchestrator (T-02-42).
+//! Product import (T-02-43).
 
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fs;
 use std::path::Path;
+use std::str::FromStr as _;
 
 use domain::{
-    Decimal, NewAtributoDef, NewCategoria, NewMarca, Sku, Slug, TipoAtributo, TipoCodigo,
-    UnidadMedida, UpdateAtributoDef,
+    AtributoDef, AtributoValor, Codigo, ConflictCode, Decimal, DomainError, FiltroProducto, Id,
+    NewAtributoDef, NewCategoria, NewMarca, NewProducto, Producto, Sku, Slug, TipoAtributo,
+    TipoCodigo, Ubicacion, UnidadMedida, UpdateAtributoDef, ValorAtributo,
 };
 use serde_json::Value;
 
-use crate::{AttributeDefGateway, BrandGateway, CategoryGateway};
+use crate::{AttributeDefGateway, BrandGateway, CategoryGateway, ProductGateway};
 
 const MASTER_FILES: &[&str] = &[
     "categorias.jsonl",
@@ -21,6 +24,14 @@ const MASTER_FILES: &[&str] = &[
 ];
 
 const MASTER_IMPORT_FILES: &[&str] = &["categorias.jsonl", "marcas.jsonl", "atributos.jsonl"];
+
+/// Outcome of `import_products`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SeedProductSummary {
+    pub importados: u32,
+    pub rechazados: u32,
+    pub issues: Vec<SeedIssue>,
+}
 
 /// Single validation finding with location in the seed tree.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -545,6 +556,421 @@ pub async fn import_masters(
     Ok(())
 }
 
+/// Imports products from `productos.jsonl` using masters already in storage.
+pub async fn import_products(
+    path: &Path,
+    categories: &dyn CategoryGateway,
+    brands: &dyn BrandGateway,
+    attribute_defs: &dyn AttributeDefGateway,
+    products: &dyn ProductGateway,
+) -> SeedProductSummary {
+    let mut summary = SeedProductSummary {
+        importados: 0,
+        rechazados: 0,
+        issues: Vec::new(),
+    };
+
+    let productos_path = path.join("productos.jsonl");
+    if !productos_path.is_file() {
+        summary.issues.push(SeedIssue::new(
+            "productos.jsonl",
+            0,
+            "",
+            "missing required file productos.jsonl",
+        ));
+        summary.rechazados += 1;
+        return summary;
+    }
+
+    let all_cats = match categories.list_all().await {
+        Ok(c) => c,
+        Err(e) => {
+            summary
+                .issues
+                .push(domain_to_issue("productos.jsonl", 0, "", &e));
+            summary.rechazados += 1;
+            return summary;
+        }
+    };
+    let all_brands = match brands.list_all().await {
+        Ok(m) => m,
+        Err(e) => {
+            summary
+                .issues
+                .push(domain_to_issue("productos.jsonl", 0, "", &e));
+            summary.rechazados += 1;
+            return summary;
+        }
+    };
+    let all_defs = match attribute_defs.list_all().await {
+        Ok(d) => d,
+        Err(e) => {
+            summary
+                .issues
+                .push(domain_to_issue("productos.jsonl", 0, "", &e));
+            summary.rechazados += 1;
+            return summary;
+        }
+    };
+
+    let categoria_slugs: HashSet<String> = all_cats
+        .iter()
+        .map(|c| c.slug.as_str().to_string())
+        .collect();
+    let marca_slugs: HashSet<String> = all_brands
+        .iter()
+        .map(|m| m.slug.as_str().to_string())
+        .collect();
+    let atributo_claves: HashSet<String> = all_defs.iter().map(|d| d.clave.clone()).collect();
+    let categoria_by_slug: HashMap<String, Id<domain::Categoria>> = all_cats
+        .iter()
+        .map(|c| (c.slug.as_str().to_string(), c.id.clone()))
+        .collect();
+    let marca_by_slug: HashMap<String, Id<domain::Marca>> = all_brands
+        .iter()
+        .map(|m| (m.slug.as_str().to_string(), m.id.clone()))
+        .collect();
+    let def_by_clave: HashMap<String, AtributoDef> =
+        all_defs.into_iter().map(|d| (d.clave.clone(), d)).collect();
+
+    let (mut rows, mut load_issues) = load_producto_rows(&productos_path);
+    dedupe_producto_skus_in_file(&mut rows, &mut load_issues);
+
+    let mut existing_skus = match collect_existing_skus(products).await {
+        Ok(m) => m,
+        Err(e) => {
+            summary
+                .issues
+                .push(domain_to_issue("productos.jsonl", 0, "", &e));
+            summary.rechazados += 1;
+            return summary;
+        }
+    };
+
+    for issue in load_issues {
+        if issue.archivo == "productos.jsonl" && issue.linea > 0 {
+            summary.rechazados += 1;
+        }
+        summary.issues.push(issue);
+    }
+
+    for (linea, row) in rows {
+        let row_issues = validate_producto_record(
+            linea,
+            &row,
+            &categoria_slugs,
+            &marca_slugs,
+            &atributo_claves,
+        );
+        if !row_issues.is_empty() {
+            summary.rechazados += row_issues.len() as u32;
+            summary.issues.extend(row_issues);
+            continue;
+        }
+
+        let sku_key = row.sku.trim().to_string();
+        if existing_skus.contains_key(&sku_key) {
+            summary.importados += 1;
+            continue;
+        }
+
+        let categoria_id = match categoria_by_slug.get(&row.categoria) {
+            Some(id) => id.clone(),
+            None => {
+                summary.rechazados += 1;
+                summary.issues.push(SeedIssue::new(
+                    "productos.jsonl",
+                    linea,
+                    "categoria",
+                    "unknown category slug",
+                ));
+                continue;
+            }
+        };
+        let marca_id = match &row.marca {
+            None => None,
+            Some(slug) => match marca_by_slug.get(slug) {
+                Some(id) => Some(id.clone()),
+                None => {
+                    summary.rechazados += 1;
+                    summary.issues.push(SeedIssue::new(
+                        "productos.jsonl",
+                        linea,
+                        "marca",
+                        "unknown brand slug",
+                    ));
+                    continue;
+                }
+            },
+        };
+
+        let input = match row_to_new_producto(linea, &row, categoria_id, marca_id, &def_by_clave) {
+            Ok(n) => n,
+            Err(issue) => {
+                summary.rechazados += 1;
+                summary.issues.push(issue);
+                continue;
+            }
+        };
+
+        match products.create(input).await {
+            Ok(ficha) => {
+                summary.importados += 1;
+                existing_skus.insert(ficha.producto.sku.as_str().to_string(), ficha.producto.id);
+            }
+            Err(e) if duplicate_sku_conflict(&e) => {
+                summary.importados += 1;
+                if let Ok(Some(id)) = resolve_product_id_by_sku(products, &sku_key).await {
+                    existing_skus.insert(sku_key.clone(), id);
+                } else if let Ok(map) = collect_existing_skus(products).await
+                    && let Some(id) = map.get(&sku_key)
+                {
+                    existing_skus.insert(sku_key.clone(), id.clone());
+                }
+                let _ = e;
+            }
+            Err(e) => {
+                summary.rechazados += 1;
+                summary.issues.push(domain_issue_for_product_row(linea, &e));
+            }
+        }
+    }
+
+    summary
+}
+
+fn duplicate_sku_conflict(err: &DomainError) -> bool {
+    matches!(
+        err,
+        DomainError::Conflict {
+            code: ConflictCode::DuplicateSku,
+            ..
+        } | DomainError::Conflict {
+            code: ConflictCode::Conflict,
+            ..
+        }
+    )
+}
+
+async fn resolve_product_id_by_sku(
+    products: &dyn ProductGateway,
+    sku: &str,
+) -> Result<Option<Id<Producto>>, DomainError> {
+    for activo in [true, false] {
+        let mut after: Option<Id<Producto>> = None;
+        loop {
+            let batch = products
+                .list(
+                    FiltroProducto {
+                        categoria: None,
+                        marca: None,
+                        activo,
+                    },
+                    after.clone(),
+                    500,
+                )
+                .await?;
+            if batch.is_empty() {
+                break;
+            }
+            let count = batch.len();
+            let last_id = batch.last().map(|p| p.id.clone());
+            if let Some(p) = batch.iter().find(|p| p.sku.trim() == sku) {
+                return Ok(Some(p.id.clone()));
+            }
+            if count < 500 {
+                break;
+            }
+            after = last_id;
+        }
+    }
+    Ok(None)
+}
+
+async fn collect_existing_skus(
+    products: &dyn ProductGateway,
+) -> Result<HashMap<String, Id<Producto>>, domain::DomainError> {
+    let mut map = HashMap::new();
+    for activo in [true, false] {
+        let mut after: Option<Id<Producto>> = None;
+        loop {
+            let batch = products
+                .list(
+                    FiltroProducto {
+                        categoria: None,
+                        marca: None,
+                        activo,
+                    },
+                    after.clone(),
+                    500,
+                )
+                .await?;
+            if batch.is_empty() {
+                break;
+            }
+            let count = batch.len();
+            let last_id = batch.last().map(|p| p.id.clone());
+            for item in batch {
+                map.insert(item.sku.trim().to_string(), item.id);
+            }
+            if count < 500 {
+                break;
+            }
+            after = last_id;
+        }
+    }
+    Ok(map)
+}
+
+fn load_producto_rows(path: &Path) -> (Vec<(u32, ProductoRow)>, Vec<SeedIssue>) {
+    let mut rows: Vec<(u32, ProductoRow)> = Vec::new();
+    let issues = read_jsonl(path, "productos.jsonl", parse_producto_row, &mut rows);
+    (rows, issues)
+}
+
+fn dedupe_producto_skus_in_file(rows: &mut Vec<(u32, ProductoRow)>, issues: &mut Vec<SeedIssue>) {
+    let mut seen: HashMap<String, u32> = HashMap::new();
+    let mut kept = Vec::with_capacity(rows.len());
+    for (linea, row) in rows.drain(..) {
+        let sku_key = row.sku.trim().to_string();
+        if seen.contains_key(&sku_key) {
+            issues.push(SeedIssue::new(
+                "productos.jsonl",
+                linea,
+                "sku",
+                "duplicate sku",
+            ));
+            continue;
+        }
+        seen.insert(sku_key, linea);
+        kept.push((linea, row));
+    }
+    *rows = kept;
+}
+
+fn row_to_new_producto(
+    linea: u32,
+    row: &ProductoRow,
+    categoria: Id<domain::Categoria>,
+    marca: Option<Id<domain::Marca>>,
+    def_by_clave: &HashMap<String, AtributoDef>,
+) -> Result<NewProducto, SeedIssue> {
+    let archivo = "productos.jsonl";
+    let precio = Decimal::from_str(&row.precio_raw)
+        .map_err(|_| SeedIssue::new(archivo, linea, "precio", "invalid decimal"))?;
+    let stock_inicial = match &row.stock_inicial_raw {
+        None => Decimal::from_str("0").expect("zero"),
+        Some(s) => Decimal::from_str(s)
+            .map_err(|_| SeedIssue::new(archivo, linea, "stock_inicial", "invalid decimal"))?,
+    };
+    let unidad_medida = match &row.unidad_medida {
+        None => UnidadMedida::Unidad,
+        Some(um) => um.parse::<UnidadMedida>().map_err(|_| {
+            SeedIssue::new(archivo, linea, "unidad_medida", "invalid unidad_medida")
+        })?,
+    };
+    let mut atributos = Vec::new();
+    for (i, (clave, json)) in row.atributos.iter().enumerate() {
+        let def = def_by_clave.get(clave).ok_or_else(|| {
+            SeedIssue::new(
+                archivo,
+                linea,
+                format!("atributos[{i}].clave"),
+                "unknown atributo clave",
+            )
+        })?;
+        let valor = valor_from_json(def, json)
+            .map_err(|msg| SeedIssue::new(archivo, linea, format!("atributos[{i}].valor"), msg))?;
+        atributos.push(AtributoValor {
+            def: def.id.clone(),
+            valor,
+        });
+    }
+    let mut codigos = Vec::new();
+    for (i, (tipo, valor)) in row.codigos.iter().enumerate() {
+        let tipo = TipoCodigo::parse_wire(tipo).map_err(|_| {
+            SeedIssue::new(archivo, linea, format!("codigos[{i}].tipo"), "invalid tipo")
+        })?;
+        let codigo = Codigo::try_new(tipo, valor.clone()).map_err(|e| {
+            domain_to_issue(archivo, linea, format!("codigos[{i}].valor").as_str(), &e)
+        })?;
+        codigos.push(codigo);
+    }
+    let ubicacion = row.ubicacion.as_ref().map(|(p, e, pos)| Ubicacion {
+        pasillo: p.clone(),
+        estante: e.clone(),
+        posicion: pos.clone(),
+    });
+    Ok(NewProducto {
+        sku: row.sku.clone(),
+        nombre: row.nombre.clone(),
+        tipo: row.tipo.clone(),
+        descripcion: row.descripcion.clone(),
+        marca,
+        categoria,
+        atributos,
+        codigos,
+        unidad_medida,
+        precio,
+        ubicacion,
+        stock_inicial,
+        terminal: None,
+    })
+}
+
+fn valor_from_json(def: &AtributoDef, value: &Value) -> Result<ValorAtributo, String> {
+    match def.tipo {
+        TipoAtributo::Texto => match value {
+            Value::String(s) => Ok(ValorAtributo::Texto(s.clone())),
+            Value::Number(n) => Ok(ValorAtributo::Texto(n.to_string())),
+            Value::Bool(b) => Ok(ValorAtributo::Texto(b.to_string())),
+            _ => Err("expected text value".into()),
+        },
+        TipoAtributo::Numero => match value {
+            Value::String(s) => Decimal::from_str(s)
+                .map(ValorAtributo::Numero)
+                .map_err(|_| "expected number value".to_string()),
+            Value::Number(n) => Decimal::from_str(&n.to_string())
+                .map(ValorAtributo::Numero)
+                .map_err(|_| "expected number value".to_string()),
+            _ => Err("expected number value".into()),
+        },
+        TipoAtributo::Booleano => match value {
+            Value::Bool(b) => Ok(ValorAtributo::Booleano(*b)),
+            _ => Err("expected boolean value".into()),
+        },
+        TipoAtributo::Enum => match value {
+            Value::String(s) => Ok(ValorAtributo::Texto(s.clone())),
+            Value::Number(n) => Ok(ValorAtributo::Texto(n.to_string())),
+            _ => Err("expected enum text value".into()),
+        },
+    }
+}
+
+fn domain_issue_for_product_row(linea: u32, err: &domain::DomainError) -> SeedIssue {
+    let campo = match err {
+        domain::DomainError::InvalidInput { errors, .. } => errors
+            .first()
+            .map(|f| remap_product_domain_field(f.field.as_str()))
+            .unwrap_or_default(),
+        domain::DomainError::Conflict { .. } => "sku".to_string(),
+        _ => String::new(),
+    };
+    domain_to_issue("productos.jsonl", linea, campo.as_str(), err)
+}
+
+fn remap_product_domain_field(field: &str) -> String {
+    match field {
+        "categoria" => "categoria".to_string(),
+        "marca" => "marca".to_string(),
+        f if f.starts_with("attributes[") => f
+            .replace("attributes", "atributos")
+            .replace(".definitionId", ".clave")
+            .replace(".value", ".valor"),
+        other => other.to_string(),
+    }
+}
+
 fn read_jsonl<T, F>(
     path: &Path,
     archivo: &str,
@@ -779,13 +1205,17 @@ fn parse_atributo_row(linea: u32, value: &Value) -> Result<AtributoRow, SeedIssu
 #[derive(Debug)]
 struct ProductoRow {
     sku: String,
+    nombre: String,
+    tipo: String,
+    descripcion: Option<String>,
     categoria: String,
     marca: Option<String>,
     precio_raw: String,
     stock_inicial_raw: Option<String>,
     unidad_medida: Option<String>,
-    _codigos: Vec<(String, String)>,
+    codigos: Vec<(String, String)>,
     atributos: Vec<(String, Value)>,
+    ubicacion: Option<(Option<String>, Option<String>, Option<String>)>,
 }
 
 fn parse_producto_row(linea: u32, value: &Value) -> Result<ProductoRow, SeedIssue> {
@@ -794,13 +1224,36 @@ fn parse_producto_row(linea: u32, value: &Value) -> Result<ProductoRow, SeedIssu
     if Sku::try_new(sku_raw).is_err() {
         return Err(SeedIssue::new(archivo, linea, "sku", "invalid sku"));
     }
-    for field in ["nombre", "tipo", "categoria"] {
-        let s = require_str(value, field, archivo, linea)?;
-        if s.trim().is_empty() {
-            return Err(SeedIssue::new(archivo, linea, field, "must not be empty"));
-        }
+    let nombre = require_str(value, "nombre", archivo, linea)?
+        .trim()
+        .to_string();
+    if nombre.is_empty() {
+        return Err(SeedIssue::new(
+            archivo,
+            linea,
+            "nombre",
+            "must not be empty",
+        ));
     }
+    let tipo = require_str(value, "tipo", archivo, linea)?
+        .trim()
+        .to_string();
+    if tipo.is_empty() {
+        return Err(SeedIssue::new(archivo, linea, "tipo", "must not be empty"));
+    }
+    let descripcion = value
+        .get("descripcion")
+        .and_then(Value::as_str)
+        .map(|s| s.to_string());
     let categoria = require_str(value, "categoria", archivo, linea)?.to_string();
+    if categoria.trim().is_empty() {
+        return Err(SeedIssue::new(
+            archivo,
+            linea,
+            "categoria",
+            "must not be empty",
+        ));
+    }
     if Slug::parse(&categoria).is_err() {
         return Err(SeedIssue::new(
             archivo,
@@ -907,15 +1360,40 @@ fn parse_producto_row(linea: u32, value: &Value) -> Result<ProductoRow, SeedIssu
             atributos.push((clave.to_string(), valor));
         }
     }
+    let ubicacion = match value.get("ubicacion") {
+        None | Some(Value::Null) => None,
+        Some(Value::Object(obj)) => {
+            let pasillo = obj.get("pasillo").and_then(Value::as_str).map(String::from);
+            let estante = obj.get("estante").and_then(Value::as_str).map(String::from);
+            let posicion = obj
+                .get("posicion")
+                .and_then(Value::as_str)
+                .map(String::from);
+            Some((pasillo, estante, posicion))
+        }
+        Some(_) => {
+            return Err(SeedIssue::new(
+                archivo,
+                linea,
+                "ubicacion",
+                "must be an object",
+            ));
+        }
+    };
+
     Ok(ProductoRow {
-        sku: sku_raw.to_string(),
+        sku: sku_raw.trim().to_string(),
+        nombre,
+        tipo,
+        descripcion,
         categoria,
         marca,
         precio_raw,
         stock_inicial_raw,
         unidad_medida,
-        _codigos: codigos,
+        codigos,
         atributos,
+        ubicacion,
     })
 }
 
@@ -958,15 +1436,22 @@ fn validate_producto_record(
             "must not be negative",
         ));
     }
-    if let Some(stock) = &row.stock_inicial_raw
-        && Decimal::from_str(stock).is_err()
-    {
-        issues.push(SeedIssue::new(
-            archivo,
-            linea,
-            "stock_inicial",
-            "invalid decimal",
-        ));
+    if let Some(stock) = &row.stock_inicial_raw {
+        match Decimal::from_str(stock) {
+            Err(_) => issues.push(SeedIssue::new(
+                archivo,
+                linea,
+                "stock_inicial",
+                "invalid decimal",
+            )),
+            Ok(d) if d < Decimal::from_str("0").expect("zero") => issues.push(SeedIssue::new(
+                archivo,
+                linea,
+                "stock_inicial",
+                "must not be negative",
+            )),
+            Ok(_) => {}
+        }
     }
     if let Some(um) = &row.unidad_medida
         && um.parse::<UnidadMedida>().is_err()
@@ -1171,8 +1656,6 @@ fn require_str<'a>(
         .and_then(Value::as_str)
         .ok_or_else(|| SeedIssue::new(archivo, linea, field, "required"))
 }
-
-use std::str::FromStr as _;
 
 #[cfg(test)]
 mod tests {
@@ -1786,6 +2269,344 @@ mod tests {
                 .any(|i| i.archivo == "categorias.jsonl" && i.campo == "padre")
         );
         assert!(cats.list_all().await.unwrap().is_empty());
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    use crate::producto::testing::{
+        InMemoryProductRepo, SharedAttributeDefRepo, SharedBrandRepo, SharedCategoryRepo,
+    };
+    use crate::producto::{ProductGateway, ProductService};
+
+    fn write_product_seed_fixture(dir: &Path, stock_inicial: &str) {
+        write_master_import_fixture(dir, "Fixser");
+        fs::write(
+            dir.join("productos.jsonl"),
+            format!(
+                r#"{{"sku":"PER-M8X40-ZN","nombre":"Perno hexagonal M8 x 40","tipo":"Perno","categoria":"pernos","marca":"fixser","precio":"120.50","stock_inicial":"{stock_inicial}","atributos":[{{"clave":"medida","valor":"M8"}}]}}
+"#
+            ),
+        )
+        .expect("productos");
+    }
+
+    fn seed_product_gateways() -> (
+        Arc<dyn CategoryGateway>,
+        Arc<dyn BrandGateway>,
+        Arc<dyn AttributeDefGateway>,
+        Arc<dyn ProductGateway>,
+    ) {
+        let cat_repo = Arc::new(InMemoryCategoryRepo::new());
+        let brand_repo = Arc::new(InMemoryBrandRepo::new());
+        let attr_repo = Arc::new(InMemoryAttributeDefRepo::new());
+        let cat_shared = SharedCategoryRepo(Arc::clone(&cat_repo));
+        let brand_shared = SharedBrandRepo(Arc::clone(&brand_repo));
+        let attr_shared = SharedAttributeDefRepo(Arc::clone(&attr_repo));
+        let cats: Arc<dyn CategoryGateway> = Arc::new(CategoryService::new(
+            cat_shared.clone(),
+            FakeOccupancy::new(),
+        ));
+        let brands: Arc<dyn BrandGateway> = Arc::new(BrandService::new(brand_shared.clone()));
+        let attrs: Arc<dyn AttributeDefGateway> = Arc::new(AttributeDefService::new(
+            attr_shared.clone(),
+            EmptyAttributeUsage,
+        ));
+        let products = InMemoryProductRepo::new(
+            cat_shared.clone(),
+            brand_shared.clone(),
+            attr_shared.clone(),
+        );
+        let product_gw: Arc<dyn ProductGateway> = Arc::new(ProductService::new(
+            products,
+            cat_shared,
+            brand_shared,
+            attr_shared,
+        ));
+        (cats, brands, attrs, product_gw)
+    }
+
+    async fn import_masters_and_products(
+        dir: &Path,
+        cats: &dyn CategoryGateway,
+        brands: &dyn BrandGateway,
+        attrs: &dyn AttributeDefGateway,
+        products: &dyn ProductGateway,
+    ) -> SeedProductSummary {
+        import_masters(dir, cats, brands, attrs)
+            .await
+            .expect("masters");
+        import_products(dir, cats, brands, attrs, products).await
+    }
+
+    async fn product_count(products: &dyn ProductGateway) -> usize {
+        let mut total = 0usize;
+        for activo in [true, false] {
+            let mut after = None;
+            loop {
+                let batch = products
+                    .list(
+                        domain::FiltroProducto {
+                            categoria: None,
+                            marca: None,
+                            activo,
+                        },
+                        after,
+                        500,
+                    )
+                    .await
+                    .expect("list");
+                if batch.is_empty() {
+                    break;
+                }
+                total += batch.len();
+                if batch.len() < 500 {
+                    break;
+                }
+                after = batch.last().map(|p| p.id.clone());
+            }
+        }
+        total
+    }
+
+    #[tokio::test]
+    async fn seed_import_products_creates_producto_and_stock_inicial() {
+        let dir = unique_temp_dir();
+        write_product_seed_fixture(&dir, "50");
+        let (cats, brands, attrs, products) = seed_product_gateways();
+        let summary = import_masters_and_products(
+            &dir,
+            cats.as_ref(),
+            brands.as_ref(),
+            attrs.as_ref(),
+            products.as_ref(),
+        )
+        .await;
+        assert_eq!(summary.importados, 1);
+        assert_eq!(summary.rechazados, 0);
+        let batch = products
+            .list(
+                domain::FiltroProducto {
+                    categoria: None,
+                    marca: None,
+                    activo: true,
+                },
+                None,
+                10,
+            )
+            .await
+            .expect("list");
+        assert_eq!(batch.len(), 1);
+        assert_eq!(batch[0].sku, "PER-M8X40-ZN");
+        assert_eq!(batch[0].stock.to_string(), "50");
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn seed_import_products_zero_stock_has_no_inicial_movement() {
+        let dir = unique_temp_dir();
+        write_product_seed_fixture(&dir, "0");
+        let (cats, brands, attrs, products) = seed_product_gateways();
+        let summary = import_masters_and_products(
+            &dir,
+            cats.as_ref(),
+            brands.as_ref(),
+            attrs.as_ref(),
+            products.as_ref(),
+        )
+        .await;
+        assert_eq!(summary.importados, 1);
+        let batch = products
+            .list(
+                domain::FiltroProducto {
+                    categoria: None,
+                    marca: None,
+                    activo: true,
+                },
+                None,
+                10,
+            )
+            .await
+            .expect("list");
+        assert_eq!(batch[0].stock.to_string(), "0");
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn seed_import_products_second_run_does_not_duplicate() {
+        let dir = unique_temp_dir();
+        write_product_seed_fixture(&dir, "50");
+        let (cats, brands, attrs, products) = seed_product_gateways();
+        for _ in 0..2 {
+            import_masters(&dir, cats.as_ref(), brands.as_ref(), attrs.as_ref())
+                .await
+                .expect("masters");
+            let summary = import_products(
+                &dir,
+                cats.as_ref(),
+                brands.as_ref(),
+                attrs.as_ref(),
+                products.as_ref(),
+            )
+            .await;
+            assert_eq!(summary.rechazados, 0);
+        }
+        assert_eq!(product_count(products.as_ref()).await, 1);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn seed_import_dev_dataset_imports_all_skus() {
+        let src = repo_seed_dir();
+        let dir = unique_temp_dir();
+        copy_dir_all(&src, &dir).expect("copy seed");
+        let expected: HashSet<String> = read_jsonl_values(&dir.join("productos.jsonl"))
+            .into_iter()
+            .filter_map(|v| v.get("sku").and_then(Value::as_str).map(String::from))
+            .collect();
+        let (cats, brands, attrs, products) = seed_product_gateways();
+        let summary = import_masters_and_products(
+            &dir,
+            cats.as_ref(),
+            brands.as_ref(),
+            attrs.as_ref(),
+            products.as_ref(),
+        )
+        .await;
+        assert_eq!(summary.rechazados, 0);
+        assert_eq!(summary.importados as usize, expected.len());
+        assert_eq!(product_count(products.as_ref()).await, expected.len());
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn seed_import_products_does_not_persist_relaciones_imagenes() {
+        let src = repo_seed_dir();
+        let dir = unique_temp_dir();
+        copy_dir_all(&src, &dir).expect("copy");
+        let (cats, brands, attrs, products) = seed_product_gateways();
+        let summary = import_masters_and_products(
+            &dir,
+            cats.as_ref(),
+            brands.as_ref(),
+            attrs.as_ref(),
+            products.as_ref(),
+        )
+        .await;
+        assert_eq!(summary.rechazados, 0);
+        assert!(product_count(products.as_ref()).await > 1);
+        assert!(dir.join("relaciones.jsonl").is_file());
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn seed_import_products_rejects_non_numeric_precio_only() {
+        let dir = unique_temp_dir();
+        write_product_seed_fixture(&dir, "50");
+        fs::write(
+            dir.join("productos.jsonl"),
+            r#"{"sku":"PER-M8X40-ZN","nombre":"Perno","tipo":"Perno","categoria":"pernos","marca":"fixser","precio":"120.50","stock_inicial":"50","atributos":[{"clave":"medida","valor":"M8"}]}
+{"sku":"BAD-PRICE","nombre":"Malo","tipo":"Perno","categoria":"pernos","marca":"fixser","precio":"barato","stock_inicial":"1","atributos":[{"clave":"medida","valor":"M8"}]}
+"#,
+        )
+        .expect("productos");
+        let (cats, brands, attrs, products) = seed_product_gateways();
+        let summary = import_masters_and_products(
+            &dir,
+            cats.as_ref(),
+            brands.as_ref(),
+            attrs.as_ref(),
+            products.as_ref(),
+        )
+        .await;
+        assert!(summary.importados >= 1);
+        assert!(summary.rechazados >= 1);
+        assert!(
+            summary
+                .issues
+                .iter()
+                .any(|i| i.archivo == "productos.jsonl" && i.campo == "precio")
+        );
+        assert_eq!(product_count(products.as_ref()).await, 1);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn seed_import_products_rejects_malformed_line_only() {
+        let dir = unique_temp_dir();
+        write_product_seed_fixture(&dir, "50");
+        fs::write(
+            dir.join("productos.jsonl"),
+            "{\"sku\":\"PER-M8X40-ZN\",\"nombre\":\"Perno\",\"tipo\":\"Perno\",\"categoria\":\"pernos\",\"marca\":\"fixser\",\"precio\":\"120.50\",\"stock_inicial\":\"50\",\"atributos\":[{\"clave\":\"medida\",\"valor\":\"M8\"}]}\nNOT JSON\n",
+        )
+        .expect("productos");
+        let (cats, brands, attrs, products) = seed_product_gateways();
+        let summary = import_masters_and_products(
+            &dir,
+            cats.as_ref(),
+            brands.as_ref(),
+            attrs.as_ref(),
+            products.as_ref(),
+        )
+        .await;
+        assert_eq!(product_count(products.as_ref()).await, 1);
+        assert!(summary.rechazados >= 1);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn seed_import_products_rejects_unknown_categoria_only() {
+        let dir = unique_temp_dir();
+        write_master_import_fixture(&dir, "Fixser");
+        fs::write(
+            dir.join("productos.jsonl"),
+            r#"{"sku":"OK-SKU","nombre":"Ok","tipo":"Perno","categoria":"pernos","marca":"fixser","precio":"10","stock_inicial":"1","atributos":[{"clave":"medida","valor":"M8"}]}
+{"sku":"BAD-CAT","nombre":"Malo","tipo":"Perno","categoria":"no-existe","marca":"fixser","precio":"10","stock_inicial":"1","atributos":[{"clave":"medida","valor":"M8"}]}
+"#,
+        )
+        .expect("productos");
+        let (cats, brands, attrs, products) = seed_product_gateways();
+        let summary = import_masters_and_products(
+            &dir,
+            cats.as_ref(),
+            brands.as_ref(),
+            attrs.as_ref(),
+            products.as_ref(),
+        )
+        .await;
+        assert_eq!(product_count(products.as_ref()).await, 1);
+        assert!(summary.rechazados >= 1);
+        assert!(
+            summary
+                .issues
+                .iter()
+                .any(|i| i.archivo == "productos.jsonl" && i.campo == "categoria")
+        );
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn seed_import_products_rejects_missing_productos_file() {
+        let dir = unique_temp_dir();
+        write_master_import_fixture(&dir, "Fixser");
+        let (cats, brands, attrs, products) = seed_product_gateways();
+        import_masters(&dir, cats.as_ref(), brands.as_ref(), attrs.as_ref())
+            .await
+            .expect("masters");
+        let summary = import_products(
+            &dir,
+            cats.as_ref(),
+            brands.as_ref(),
+            attrs.as_ref(),
+            products.as_ref(),
+        )
+        .await;
+        assert_eq!(product_count(products.as_ref()).await, 0);
+        assert!(
+            summary
+                .issues
+                .iter()
+                .any(|i| i.archivo == "productos.jsonl")
+        );
+        assert_eq!(cats.list_all().await.unwrap().len(), 2);
         let _ = fs::remove_dir_all(&dir);
     }
 
