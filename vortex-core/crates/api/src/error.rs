@@ -172,6 +172,19 @@ impl ApiError {
     }
 
     #[must_use]
+    pub fn invalid_search_sort(instance: String) -> Self {
+        Self::invalid_input_with_fields(
+            vec![FieldProblem {
+                field: "sort".into(),
+                message: "unknown search sort".into(),
+            }],
+            Some("Invalid sort".into()),
+            Some(instance),
+            "invalid_input",
+        )
+    }
+
+    #[must_use]
     pub fn invalid_attribute_id(instance: String) -> Self {
         Self::invalid_input_with_fields(
             vec![FieldProblem {

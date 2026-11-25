@@ -170,6 +170,7 @@ dependencies = [
  "jsonschema",
  "metrics",
  "metrics-exporter-prometheus",
+ "search",
  "serde",
  "serde_json",
  "serde_yaml",

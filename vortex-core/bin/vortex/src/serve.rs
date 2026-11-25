@@ -12,7 +12,7 @@ use catalog::{
     AttributeDefService, BrandService, CategoryService, ProductService, ProductionOccupancy,
 };
 use domain::{IndexUid, SyncTelemetry};
-use search::MeiliTextSearch;
+use search::{MeiliTextSearch, SearchService};
 use storage::{
     AtributoDefRepo, CategoriaRepo, DB_DIR_NAME, Db, MarcaRepo, OutboxStore, ProductAttributeUsage,
     ProductoRepo,
@@ -204,6 +204,8 @@ async fn serve_config(config: Config, _logging_guard: LoggingGuard) -> i32 {
     };
     let telemetry = RegistrySyncTelemetry::new(Arc::clone(&health));
     let outbox = OutboxStore::new(Arc::clone(&db));
+    let search_gateway: Arc<dyn search::SearchGateway> =
+        Arc::new(SearchService::new(text_search.clone(), index.clone()));
     let worker = MeiliProductWorker::new(
         outbox,
         ProductoRepo::new(Arc::clone(&db)),
@@ -285,7 +287,8 @@ async fn serve_config(config: Config, _logging_guard: LoggingGuard) -> i32 {
         .with_brands(brand_gateway)
         .with_attribute_defs(attribute_def_gateway)
         .with_products(product_gateway)
-        .with_stock(stock_gateway);
+        .with_stock(stock_gateway)
+        .with_search(search_gateway);
     let router = build_router(state);
 
     let stop_worker = Arc::clone(&worker_stop);

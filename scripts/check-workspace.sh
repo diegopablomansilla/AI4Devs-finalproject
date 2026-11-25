@@ -313,7 +313,7 @@ supervisor_deps_allowed() {
   return 0
 }
 
-# `api` allowlist (T-00-11 + T-00-12 + T-00-14 + T-09-04): [dependencies] axum, domain, serde, serde_json, thiserror, tower-http, tracing, metrics, metrics-exporter-prometheus; [dev-dependencies] tokio, tracing-subscriber, jsonschema, serde_yaml.
+# `api` allowlist (T-00-11 + T-00-12 + T-00-14 + T-09-04 + T-03-13): [dependencies] axum, domain, catalog, search, serde, serde_json, thiserror, tower-http, tracing, metrics, metrics-exporter-prometheus, tokio (feature time); [dev-dependencies] tokio, tracing-subscriber, jsonschema, serde_yaml.
 api_deps_allowed() {
   crate_toml=$1
 
@@ -344,10 +344,15 @@ api_deps_allowed() {
       /^\[dependencies\]/ { indeps = 1; next }
       /^\[/ { indeps = 0 }
       indeps && /^[^[:space:]#]/ { print }
-    ' "${crate_toml}" | grep -v -E '^(axum|domain|catalog|serde|serde_json|thiserror|tower-http|tracing|metrics|metrics-exporter-prometheus)[[:space:]]*=' || true
+    ' "${crate_toml}" | grep -v -E '^(axum|domain|catalog|search|serde|serde_json|thiserror|tower-http|tracing|metrics|metrics-exporter-prometheus|tokio)[[:space:]]*=' || true
   )
   if [ -n "${other_deps}" ]; then
     return 1
+  fi
+
+  if grep -E '^tokio[[:space:]]*=' "${crate_toml}" >/dev/null 2>&1; then
+    grep -E '^tokio[[:space:]]*=' "${crate_toml}" | grep -Eq 'workspace[[:space:]]*=[[:space:]]*true' \
+      || return 1
   fi
 
   if grep -E '^axum[[:space:]]*=' "${crate_toml}" >/dev/null 2>&1; then
@@ -372,6 +377,10 @@ api_deps_allowed() {
   fi
   if grep -E '^catalog[[:space:]]*=' "${crate_toml}" >/dev/null 2>&1; then
     grep -E '^catalog[[:space:]]*=' "${crate_toml}" | grep -Eq 'path[[:space:]]*=' \
+      || return 1
+  fi
+  if grep -E '^search[[:space:]]*=' "${crate_toml}" >/dev/null 2>&1; then
+    grep -E '^search[[:space:]]*=' "${crate_toml}" | grep -Eq 'path[[:space:]]*=' \
       || return 1
   fi
   if grep -E '^tower-http[[:space:]]*=' "${crate_toml}" >/dev/null 2>&1; then

@@ -555,6 +555,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/SearchResponse' }
         '400': { $ref: '#/components/responses/BadRequest' }
+        '503': { $ref: '#/components/responses/Unavailable' }
         '504': { $ref: '#/components/responses/Timeout' }
 
   /api/v1/search/suggestions:
