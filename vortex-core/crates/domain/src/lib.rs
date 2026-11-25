@@ -13,6 +13,7 @@ pub mod outbox;
 pub mod outbox_repo;
 pub mod producto;
 pub mod productos_index_settings;
+pub mod relacion;
 pub mod search_document;
 pub mod sync_telemetry;
 pub mod text_search;
@@ -49,6 +50,10 @@ pub use producto::{
     UpdateProducto, ValorAtributo, valor_compatible_con,
 };
 pub use productos_index_settings::productos_index_settings;
+pub use relacion::{
+    GrupoBidireccional, NewRelacion, Relacion, RelacionDraft, RelationRepo, TipoRelacion,
+    UpdateRelacion, default_bidireccional, resolve_bidireccional,
+};
 pub use search_document::{CategoriaMeiliLevels, SearchDocument, build_search_document};
 pub use sync_telemetry::{NoopSyncTelemetry, SyncTelemetry};
 pub use text_search::{
