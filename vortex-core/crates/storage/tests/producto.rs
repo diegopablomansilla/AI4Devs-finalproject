@@ -1126,3 +1126,96 @@ async fn storage_list_does_not_write_outbox() {
         before_products
     );
 }
+
+#[tokio::test]
+async fn product_repo_find_by_code_shared_oem_returns_both() {
+    let db = Arc::new(test_db().await);
+    let cat = seed_categoria_repo(Arc::clone(&db)).await;
+    let repo = product_repo(Arc::clone(&db));
+    let mut a = new_product_at(cat.clone(), None, "SKU-A", "0");
+    a.codigos = vec![Codigo::try_new(TipoCodigo::Oem, "SHARED-OEM").expect("oem")];
+    repo.create(a).await.expect("A");
+    let mut b = new_product_at(cat, None, "SKU-B", "0");
+    b.codigos = vec![Codigo::try_new(TipoCodigo::Oem, "SHARED-OEM").expect("oem")];
+    repo.create(b).await.expect("B");
+    let rows = repo.find_by_code("SHARED-OEM".into()).await.expect("find");
+    assert_eq!(rows.len(), 2);
+    let skus: Vec<_> = rows.iter().map(|r| r.sku.as_str()).collect();
+    assert!(skus.contains(&"SKU-A"));
+    assert!(skus.contains(&"SKU-B"));
+}
+
+#[tokio::test]
+async fn product_repo_find_by_code_matches_sku() {
+    let db = Arc::new(test_db().await);
+    let cat = seed_categoria_repo(Arc::clone(&db)).await;
+    let repo = product_repo(Arc::clone(&db));
+    repo.create(new_product_at(cat, None, "PER-M8X40-ZN", "0"))
+        .await
+        .expect("create");
+    let rows = repo
+        .find_by_code("PER-M8X40-ZN".into())
+        .await
+        .expect("find");
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].sku, "PER-M8X40-ZN");
+}
+
+#[tokio::test]
+async fn product_repo_find_by_code_matches_fabricante() {
+    let db = Arc::new(test_db().await);
+    let cat = seed_categoria_repo(Arc::clone(&db)).await;
+    let repo = product_repo(Arc::clone(&db));
+    let mut input = new_product_at(cat, None, "SKU-FAB", "0");
+    input.codigos = vec![Codigo::try_new(TipoCodigo::Fabricante, "HX-0840Z").expect("fabricante")];
+    repo.create(input).await.expect("create");
+    let rows = repo.find_by_code("HX-0840Z".into()).await.expect("find");
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].sku, "SKU-FAB");
+}
+
+#[tokio::test]
+async fn product_repo_find_by_code_does_not_prefix_match() {
+    let db = Arc::new(test_db().await);
+    let cat = seed_categoria_repo(Arc::clone(&db)).await;
+    let repo = product_repo(Arc::clone(&db));
+    let mut input = new_product_at(cat, None, "SKU-FAB", "0");
+    input.codigos = vec![Codigo::try_new(TipoCodigo::Fabricante, "HX-0840Z").expect("fabricante")];
+    repo.create(input).await.expect("create");
+    let rows = repo.find_by_code("HX-0841Z".into()).await.expect("find");
+    assert!(rows.is_empty());
+}
+
+#[tokio::test]
+async fn product_repo_find_by_code_excludes_inactive() {
+    let db = Arc::new(test_db().await);
+    let cat = seed_categoria_repo(Arc::clone(&db)).await;
+    let repo = product_repo(Arc::clone(&db));
+    let mut active = new_product_at(cat.clone(), None, "SKU-ACT", "0");
+    active.codigos = vec![Codigo::try_new(TipoCodigo::Oem, "OFF-OEM").expect("oem")];
+    let created = repo.create(active).await.expect("active");
+    let mut inactive = new_product_at(cat, None, "SKU-INACT", "0");
+    inactive.codigos = vec![Codigo::try_new(TipoCodigo::Oem, "OFF-OEM").expect("oem")];
+    let inactive_created = repo.create(inactive).await.expect("inactive");
+    repo.set_activo(inactive_created.id, false)
+        .await
+        .expect("deactivate");
+    let rows = repo.find_by_code("OFF-OEM".into()).await.expect("find");
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].id, created.id);
+}
+
+#[tokio::test]
+async fn product_repo_find_by_code_unknown_returns_empty() {
+    let db = Arc::new(test_db().await);
+    let cat = seed_categoria_repo(Arc::clone(&db)).await;
+    let repo = product_repo(Arc::clone(&db));
+    repo.create(new_product_at(cat, None, "SKU-ONLY", "0"))
+        .await
+        .expect("create");
+    let rows = repo
+        .find_by_code("NO-SUCH-CODE".into())
+        .await
+        .expect("find");
+    assert!(rows.is_empty());
+}

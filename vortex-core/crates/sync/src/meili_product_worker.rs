@@ -542,6 +542,31 @@ mod tests {
             out.truncate(take as usize);
             Ok(out)
         }
+
+        async fn find_by_code(&self, code: String) -> Result<Vec<ResumenProducto>, DomainError> {
+            let mut out: Vec<ResumenProducto> = self
+                .fichas
+                .iter()
+                .filter(|f| f.producto.activo)
+                .filter(|f| {
+                    f.producto.sku.as_str() == code
+                        || f.producto.codigos.iter().any(|c| c.valor == code)
+                })
+                .map(|f| ResumenProducto {
+                    id: f.producto.id.clone(),
+                    sku: f.producto.sku.as_str().to_string(),
+                    nombre: f.producto.nombre.clone(),
+                    tipo: f.producto.tipo.clone(),
+                    precio: f.producto.precio,
+                    stock: f.producto.stock,
+                    activo: f.producto.activo,
+                    marca_nombre: f.marca.as_ref().map(|m| m.nombre.clone()),
+                    categoria_ruta: f.categoria.ruta.clone(),
+                })
+                .collect();
+            out.sort_by(|a, b| a.sku.cmp(&b.sku));
+            Ok(out)
+        }
     }
 
     impl ProductRepo for FakeProducts {
@@ -583,6 +608,15 @@ mod tests {
             _filtro: domain::FiltroProducto,
             _after: Option<Id<Producto>>,
             _take: u32,
+        ) -> Result<Vec<domain::ResumenProducto>, DomainError> {
+            Err(DomainError::unavailable(
+                domain::UnavailableCode::Unavailable,
+            ))
+        }
+
+        async fn find_by_code(
+            &self,
+            _code: String,
         ) -> Result<Vec<domain::ResumenProducto>, DomainError> {
             Err(DomainError::unavailable(
                 domain::UnavailableCode::Unavailable,

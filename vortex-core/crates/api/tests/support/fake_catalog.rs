@@ -853,6 +853,29 @@ impl ProductRepo for FakeProductRepo {
             Ok(out)
         }
     }
+
+    fn find_by_code(
+        &self,
+        code: String,
+    ) -> impl std::future::Future<Output = Result<Vec<ResumenProducto>, DomainError>> + Send {
+        async move {
+            let items: Vec<Producto> = {
+                let map = self.inner.lock().expect("lock");
+                map.values()
+                    .filter(|p| p.activo)
+                    .filter(|p| p.sku.as_str() == code || p.codigos.iter().any(|c| c.valor == code))
+                    .cloned()
+                    .collect()
+            };
+            let mut sorted = items;
+            sorted.sort_by(|a, b| a.sku.as_str().cmp(b.sku.as_str()));
+            let mut out = Vec::with_capacity(sorted.len());
+            for p in sorted {
+                out.push(self.producto_to_resumen(p).await?);
+            }
+            Ok(out)
+        }
+    }
 }
 
 pub struct ProductTestSeeds {
@@ -932,6 +955,17 @@ impl ProductGateway for RecordingProductGateway {
         >,
     > {
         Box::pin(self.inner.list(filtro, after, take))
+    }
+
+    fn find_by_code(
+        &self,
+        code: String,
+    ) -> std::pin::Pin<
+        Box<
+            dyn std::future::Future<Output = Result<Vec<ResumenProducto>, DomainError>> + Send + '_,
+        >,
+    > {
+        Box::pin(self.inner.find_by_code(code))
     }
 }
 

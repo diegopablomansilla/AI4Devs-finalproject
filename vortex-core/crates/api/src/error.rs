@@ -242,6 +242,19 @@ impl ApiError {
     }
 
     #[must_use]
+    pub fn invalid_path_code(instance: String) -> Self {
+        Self::invalid_input_with_fields(
+            vec![FieldProblem {
+                field: "code".into(),
+                message: "must be 1 to 64 characters".into(),
+            }],
+            Some("Invalid path parameter".into()),
+            Some(instance),
+            "invalid_input",
+        )
+    }
+
+    #[must_use]
     pub fn patch_empty(instance: String) -> Self {
         Self::invalid_input_with_fields(
             vec![],

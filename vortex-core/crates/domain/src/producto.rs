@@ -497,6 +497,11 @@ pub trait ProductRepo {
         after: Option<Id<Producto>>,
         take: u32,
     ) -> impl Future<Output = Result<Vec<ResumenProducto>, DomainError>> + Send;
+
+    fn find_by_code(
+        &self,
+        code: String,
+    ) -> impl Future<Output = Result<Vec<ResumenProducto>, DomainError>> + Send;
 }
 
 fn field_invalid_input(field: &str, message: &str) -> DomainError {
@@ -980,6 +985,13 @@ mod tests {
         ) -> impl Future<Output = Result<Vec<ResumenProducto>, DomainError>> + Send {
             async { Ok(vec![]) }
         }
+
+        fn find_by_code(
+            &self,
+            _code: String,
+        ) -> impl Future<Output = Result<Vec<ResumenProducto>, DomainError>> + Send {
+            async { Ok(vec![]) }
+        }
     }
 
     #[test]
@@ -1034,6 +1046,14 @@ mod tests {
             let _f = r.set_activo(Id::generate(), false);
         }
         assert_set_activo(&DummyProductRepo);
+    }
+
+    #[test]
+    fn product_repo_trait_exposes_find_by_code() {
+        fn assert_find_by_code<R: ProductRepo>(r: &R) {
+            let _f = r.find_by_code("HX-0840Z".into());
+        }
+        assert_find_by_code(&DummyProductRepo);
     }
 
     #[test]

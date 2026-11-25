@@ -262,6 +262,10 @@ pub fn router_shell(state: AppState) -> Router {
             post(stock::post_stock_movement),
         )
         .route("/api/v1/search", get(search::get_search))
+        .route(
+            "/api/v1/search/by-code/{code}",
+            get(search::get_search_by_code),
+        )
         .fallback(fallback_not_found)
         .layer(middleware::from_fn(metrics::record_http_duration))
         .with_state(state)
