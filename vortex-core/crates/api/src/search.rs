@@ -9,9 +9,10 @@ use std::time::{Duration, Instant};
 
 use ::search::SearchGateway;
 use axum::Json;
-use axum::extract::{Query, RawQuery, State};
+use axum::extract::{Path, Query, RawQuery, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
+use catalog::ProductGateway;
 use domain::producto::{Producto, UnidadMedida};
 use domain::{
     Categoria, Decimal, Id, Marca, SearchFilters, SearchHighlight, SearchHit, SearchOrden,
@@ -24,8 +25,11 @@ use tokio::time::timeout;
 use crate::AppState;
 use crate::error::ApiError;
 use crate::metrics::operation_duration_seconds;
+use crate::products::product_summary_response;
 
 const INSTANCE: &str = "/api/v1/search";
+const BY_CODE_INSTANCE: &str = "/api/v1/search/by-code/{code}";
+const MAX_CODE_LEN: usize = 64;
 const SEARCH_TIMEOUT: Duration = Duration::from_secs(2);
 
 #[derive(Debug, Deserialize)]
@@ -100,6 +104,26 @@ struct SearchResponseBody {
     processing_time_ms: u32,
     facets: Option<serde_json::Value>,
     degraded: bool,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ByCodeResponse {
+    items: Vec<crate::products::ProductSummaryResponse>,
+}
+
+fn require_products(state: &AppState) -> Result<Arc<dyn ProductGateway>, ApiError> {
+    state
+        .products()
+        .ok_or_else(|| ApiError::catalog_unavailable(BY_CODE_INSTANCE.to_owned()))
+}
+
+fn parse_code_path(raw: &str) -> Result<String, ApiError> {
+    let code = raw.trim().to_string();
+    if code.is_empty() || code.len() > MAX_CODE_LEN {
+        return Err(ApiError::invalid_path_code(BY_CODE_INSTANCE.to_owned()));
+    }
+    Ok(code)
 }
 
 fn require_search(state: &AppState) -> Result<Arc<dyn SearchGateway>, ApiError> {
@@ -304,4 +328,18 @@ pub async fn get_search(
 
     let body = response_body(&q, page);
     Ok((StatusCode::OK, Json(body)))
+}
+
+pub async fn get_search_by_code(
+    State(state): State<AppState>,
+    Path(code): Path<String>,
+) -> Result<impl IntoResponse, ApiError> {
+    let gateway = require_products(&state)?;
+    let code = parse_code_path(&code)?;
+    let rows = gateway
+        .find_by_code(code)
+        .await
+        .map_err(|e| ApiError::from_domain(e, BY_CODE_INSTANCE))?;
+    let items: Vec<_> = rows.into_iter().map(product_summary_response).collect();
+    Ok((StatusCode::OK, Json(ByCodeResponse { items })))
 }

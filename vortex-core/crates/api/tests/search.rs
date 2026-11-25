@@ -4,13 +4,16 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use api::{AppState, build_router, prometheus_handle};
-use domain::SearchOrden;
+use catalog::ProductGateway;
+use domain::{Codigo, NewProducto, SearchOrden, TipoCodigo, UnidadMedida};
 use search::SearchGateway;
+use support::fake_catalog::test_product_gateway;
 use support::fake_search::{FakeSearchGateway, test_search_gateway};
 use support::openapi::assert_conforms;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 const SEARCH_PATH: &str = "/api/v1/search";
+const BY_CODE_OPENAPI_PATH: &str = "/api/v1/search/by-code/{code}";
 const CANONICAL_ULID: &str = "01J9ZKA7M3Q8R2T5V9X1Z4B6D8";
 const BRAND_ULID: &str = "01J9ZK4Q6Y3M2V8W0XAB1CD2EF";
 
@@ -100,6 +103,35 @@ async fn serve_search(
 ) -> (std::net::SocketAddr, tokio::task::JoinHandle<()>) {
     let state = AppState::new().with_search(gateway);
     serve(state).await
+}
+
+async fn serve_products(
+    gateway: Arc<dyn ProductGateway>,
+) -> (std::net::SocketAddr, tokio::task::JoinHandle<()>) {
+    let state = AppState::new().with_products(gateway);
+    serve(state).await
+}
+
+fn perno_with_fabricante(
+    seeds: &support::fake_catalog::ProductTestSeeds,
+    sku: &str,
+    fabricante: &str,
+) -> NewProducto {
+    NewProducto {
+        sku: sku.into(),
+        nombre: format!("Producto {sku}"),
+        tipo: "Perno".into(),
+        descripcion: None,
+        marca: Some(seeds.brand_id.clone()),
+        categoria: seeds.category_id.clone(),
+        atributos: vec![],
+        codigos: vec![Codigo::try_new(TipoCodigo::Fabricante, fabricante).expect("codigo")],
+        unidad_medida: UnidadMedida::Unidad,
+        precio: "10".parse().expect("precio"),
+        ubicacion: None,
+        stock_inicial: "0".parse().expect("stock"),
+        terminal: None,
+    }
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -470,4 +502,126 @@ async fn get_search_records_duration_histogram() {
     assert!(metrics_body.contains("_bucket"));
     assert!(metrics_body.contains("_sum"));
     assert!(metrics_body.contains("_count"));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn get_search_by_code_returns_product_summaries() {
+    let (gateway, _, seeds) = test_product_gateway().await;
+    gateway
+        .create(perno_with_fabricante(&seeds, "SKU-FAB", "HX-0840Z"))
+        .await
+        .expect("create");
+    let products: Arc<dyn ProductGateway> = gateway;
+    let (addr, handle) = serve_products(products).await;
+    let path = "/api/v1/search/by-code/HX-0840Z";
+    let (status, ctype, body) = http_get(addr, path).await;
+    handle.abort();
+    let json = json_body(&body);
+    assert_eq!(status, 200);
+    assert_eq!(ctype, "application/json");
+    assert_eq!(
+        json.get("items").and_then(|v| v.as_array()).map(Vec::len),
+        Some(1)
+    );
+    assert_eq!(
+        json.get("items")
+            .and_then(|v| v.as_array())
+            .and_then(|a| a.first())
+            .and_then(|o| o.get("sku"))
+            .and_then(|v| v.as_str()),
+        Some("SKU-FAB")
+    );
+    assert_conforms("GET", BY_CODE_OPENAPI_PATH, 200, "application/json", &json);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn get_search_by_code_works_without_search_gateway() {
+    let (gateway, _, seeds) = test_product_gateway().await;
+    gateway
+        .create(perno_with_fabricante(&seeds, "SKU-2", "CODE-2"))
+        .await
+        .expect("create");
+    let (addr, handle) = serve_products(gateway).await;
+    let (status, _, body) = http_get(addr, "/api/v1/search/by-code/CODE-2").await;
+    handle.abort();
+    assert_eq!(status, 200);
+    assert_eq!(
+        json_body(&body)
+            .get("items")
+            .and_then(|v| v.as_array())
+            .map(Vec::len),
+        Some(1)
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn get_search_by_code_does_not_prefix_match() {
+    let (gateway, _, seeds) = test_product_gateway().await;
+    gateway
+        .create(perno_with_fabricante(&seeds, "SKU-FAB", "HX-0840Z"))
+        .await
+        .expect("create");
+    let (addr, handle) = serve_products(gateway).await;
+    let (status, _, body) = http_get(addr, "/api/v1/search/by-code/HX-0841Z").await;
+    handle.abort();
+    assert_eq!(status, 200);
+    assert!(
+        json_body(&body)
+            .get("items")
+            .and_then(|v| v.as_array())
+            .is_some_and(|a| a.is_empty())
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn get_search_by_code_rejects_code_longer_than_64() {
+    let (gateway, _, _) = test_product_gateway().await;
+    let (addr, handle) = serve_products(gateway).await;
+    let long_code = "x".repeat(65);
+    let path = format!("/api/v1/search/by-code/{long_code}");
+    let (status, ctype, body) = http_get(addr, &path).await;
+    handle.abort();
+    let json = json_body(&body);
+    assert_eq!(status, 400);
+    assert_eq!(ctype, "application/problem+json");
+    assert_eq!(
+        json.get("code").and_then(|c| c.as_str()),
+        Some("invalid_input")
+    );
+    assert!(
+        json.get("errors")
+            .and_then(|e| e.as_array())
+            .and_then(|a| a.first())
+            .and_then(|o| o.get("field"))
+            .and_then(|f| f.as_str())
+            == Some("code")
+    );
+    assert_conforms(
+        "GET",
+        BY_CODE_OPENAPI_PATH,
+        400,
+        "application/problem+json",
+        &json,
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn get_search_by_code_without_catalog_is_503() {
+    let (addr, handle) = serve(AppState::new()).await;
+    let (status, ctype, body) = http_get(addr, "/api/v1/search/by-code/X").await;
+    handle.abort();
+    let json = json_body(&body);
+    assert_eq!(status, 503);
+    assert_eq!(ctype, "application/problem+json");
+    assert_eq!(
+        json.get("code").and_then(|c| c.as_str()),
+        Some("unavailable")
+    );
+    assert_conforms(
+        "GET",
+        BY_CODE_OPENAPI_PATH,
+        503,
+        "application/problem+json",
+        &json,
+    );
 }

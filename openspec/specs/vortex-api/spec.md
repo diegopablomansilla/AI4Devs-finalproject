@@ -2142,7 +2142,7 @@ Query (nombres OpenAPI, camelCase):
 
 Si `AppState` no tiene servicio de búsqueda, MUST responder `503` `unavailable` (`application/problem+json`). Motor `unavailable` MUST ser `503` `unavailable` (no `200` con `degraded: true`; eso es T-03-30). `invalid_input` de dominio o ULID/sort inválidos MUST ser `400` `invalid_input` con `errors[].field` en inglés (`q`, `offset`, `limit`, `categoryId`, `brandId`, `sort`, `key`). Timeout del motor o de la ruta MUST ser `504` `timeout`.
 
-`docs/openapi.yaml` MUST declarar `'503': { $ref: '#/components/responses/Unavailable' }` en `GET /api/v1/search` (además de `200`/`400`/`504` ya presentes). MUST NOT implementar `GET /api/v1/search/suggestions` ni `GET /api/v1/search/by-code/{code}`. `POST /api/v1/search` MUST NOT ser una ruta de negocio (método no registrado → 405).
+`docs/openapi.yaml` MUST declarar `'503': { $ref: '#/components/responses/Unavailable' }` en `GET /api/v1/search` (además de `200`/`400`/`504` ya presentes). MUST NOT implementar `GET /api/v1/search/suggestions`. `POST /api/v1/search` MUST NOT ser una ruta de negocio (método no registrado → 405).
 
 `vortex serve` MUST inyectar `SearchService` sobre el adaptador Meilisearch ya construido, con uid `productos`. Contra ese bind, `GET /api/v1/search` MUST NOT ser `404`.
 
@@ -2323,3 +2323,48 @@ Antes de archive, la suite de `api` MUST incluir estos tests (nombres estables).
 - **THEN** corren los tests de la tabla
 - **AND** los JSON de 200/400/504/503 pasan `assert_conforms`
 - **AND** el test de cancelación pasa
+
+### Requirement: Endpoint GET /api/v1/search/by-code/{code}
+
+El router MUST registrar `GET /api/v1/search/by-code/{code}` alineado con `docs/openapi.yaml` (`operationId` `findProductsByCode`). MUST delegar en `ProductGateway::find_by_code` inyectado en `AppState`. MUST NOT usar `SearchGateway` ni Meilisearch.
+
+Path `code`: tras percent-decode y `trim`, MUST tener longitud 1..=64. Vacío o > 64 → `400 invalid_input` con `errors[].field` `code`. Si no hay `ProductGateway` → `503 unavailable`.
+
+Respuesta `200`: JSON `{ "items": ProductSummary[] }` (camelCase). Sin matches → `items: []`.
+
+`docs/openapi.yaml` MUST declarar `'400'` y `'503'` en esta ruta.
+
+#### Scenario: OEM devuelve items (happy)
+
+- **WHEN** el catálogo tiene dos activos con el mismo OEM
+- **AND** se envía `GET /api/v1/search/by-code/SHARED-OEM`
+- **THEN** HTTP 200 y `items` tiene longitud 2
+- **AND** `assert_conforms` de `GET /api/v1/search/by-code/{code}` 200 `application/json` no falla
+
+#### Scenario: HX-0841Z no devuelve HX-0840Z (unhappy, Listo cuando)
+
+- **WHEN** solo existe fabricante `"HX-0840Z"`
+- **AND** se envía `GET /api/v1/search/by-code/HX-0841Z`
+- **THEN** HTTP 200 y `items` está vacío
+
+#### Scenario: Sin SearchGateway sigue operando (happy, H-05)
+
+- **WHEN** `AppState` tiene `ProductGateway` pero no `SearchGateway`
+- **AND** se envía `GET /api/v1/search/by-code/<código válido>`
+- **THEN** HTTP 200
+
+#### Scenario: code demasiado largo (unhappy)
+
+- **WHEN** el segmento `code` tiene más de 64 caracteres
+- **THEN** HTTP 400 `invalid_input`, `errors[].field` es `code`
+- **AND** `assert_conforms` no falla
+
+#### Scenario: Sin catálogo 503 (unhappy)
+
+- **WHEN** `AppState` no tiene `ProductGateway`
+- **THEN** HTTP 503 `unavailable`
+
+#### Scenario: suite by-code en api (happy)
+
+- **WHEN** se ejecuta `cargo test -p api --test search by_code`
+- **THEN** los tests terminan con código 0

@@ -203,7 +203,7 @@ pub(crate) struct ListProductsQuery {
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct ProductSummaryResponse {
+pub(crate) struct ProductSummaryResponse {
     id: Id<domain::Producto>,
     sku: String,
     name: String,
@@ -224,7 +224,7 @@ struct ProductSummaryPageResponse {
     next_cursor: Option<String>,
 }
 
-fn product_summary_response(row: ResumenProducto) -> ProductSummaryResponse {
+pub(crate) fn product_summary_response(row: ResumenProducto) -> ProductSummaryResponse {
     ProductSummaryResponse {
         id: row.id,
         sku: row.sku,

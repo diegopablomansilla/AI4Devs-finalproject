@@ -1246,6 +1246,7 @@ MUST usar `storage::testing::test_db()`. MUST NOT exigir Meilisearch.
 
 - **WHEN** se ejecuta `cargo test -p storage storage_outbox_repo`
 - **THEN** los cuatro tests de la tabla corren y terminan con código 0
+
 ### Requirement: Adaptador OutboxRepo escribe outbox_fallo y mide lag
 
 El adaptador `OutboxStore` MUST implementar las operaciones nuevas de `OutboxRepo` contra las tablas ya migradas en T-03-01 (`outbox_fallo`, `outbox`, `sync_cursor`). MUST NOT crear una migración nueva. `creado_en` MUST leerse de `outbox`. El upsert de `outbox_fallo` MUST respetar `uq_outbox_fallo` (`evento`, `consumidor`). Lag MUST ser `SELECT count` (o equivalente) de `outbox` con `id > sync_cursor:meilisearch.ultimo_evento`. MUST NOT actualizar `sync_cursor:vectores`.
@@ -1282,3 +1283,34 @@ MUST usar `storage::testing::test_db()`. MUST NOT exigir Meilisearch.
 
 - **WHEN** se ejecuta `cargo test -p storage storage_outbox_repo`
 - **THEN** los tests de la tabla de este requirement y los ya existentes de T-03-07 corren y terminan con código 0
+
+### Requirement: ProductRepo find_by_code en SurrealDB
+
+`ProductoRepo` MUST implementar `find_by_code` consultando la tabla `producto` con `activo = true` y (`sku = $code` OR `$code IN codigos.valor`). MUST hidratar `ResumenProducto` con marca y `categoria_ruta` igual que `list`. MUST ordenar por `sku` ascendente. MUST NOT consultar Meilisearch. MUST NOT devolver inactivos.
+
+#### Scenario: product_repo_find_by_code_shared_oem_returns_both (happy, Listo cuando)
+
+- **WHEN** en la base hay dos productos activos con el mismo `codigos[].valor` OEM
+- **AND** se llama `find_by_code` con ese valor
+- **THEN** se devuelven dos `ResumenProducto`
+
+#### Scenario: product_repo_find_by_code_does_not_prefix_match (unhappy, Listo cuando)
+
+- **WHEN** hay un producto con fabricante `"HX-0840Z"`
+- **AND** se llama `find_by_code` con `"HX-0841Z"`
+- **THEN** la lista está vacía
+
+#### Scenario: product_repo_find_by_code_excludes_inactive (unhappy)
+
+- **WHEN** un producto inactivo comparte el OEM buscado
+- **THEN** no aparece en el resultado
+
+#### Scenario: product_repo_find_by_code_unknown_returns_empty (happy)
+
+- **WHEN** no hay coincidencias exactas
+- **THEN** la lista está vacía sin error
+
+#### Scenario: suite find_by_code en storage (happy)
+
+- **WHEN** se ejecuta `cargo test -p storage --test producto product_repo_find_by_code`
+- **THEN** todos los tests terminan con código 0

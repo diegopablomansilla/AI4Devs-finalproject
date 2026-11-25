@@ -136,6 +136,35 @@ impl ProductRepo for ProductoRepo {
         let db = Arc::clone(&self.db);
         async move { list_impl(db, filtro, after, take).await }
     }
+
+    fn find_by_code(
+        &self,
+        code: String,
+    ) -> impl Future<Output = Result<Vec<ResumenProducto>, DomainError>> + Send {
+        let db = Arc::clone(&self.db);
+        async move { find_by_code_impl(db, code).await }
+    }
+}
+
+async fn find_by_code_impl(db: Arc<Db>, code: String) -> Result<Vec<ResumenProducto>, DomainError> {
+    const STMT: &str = "SELECT * FROM producto WHERE activo = true AND (sku = $code OR $code IN codigos.valor) ORDER BY sku ASC;";
+    let response = db
+        .inner
+        .query(STMT)
+        .bind(("code", code.clone()))
+        .await
+        .map_err(|e| map_surreal_message(&e.to_string(), &[STMT.to_string()]))?;
+    let mut checked = response
+        .check()
+        .map_err(|e| map_surreal_message(&e.to_string(), &[STMT.to_string()]))?;
+    let rows: Vec<ProductoRecord> = checked
+        .take(0)
+        .map_err(|e| map_surreal_message(&format!("deserialize: {e}"), &[STMT.to_string()]))?;
+    let mut out = Vec::with_capacity(rows.len());
+    for row in rows {
+        out.push(record_to_resumen(Arc::clone(&db), row).await?);
+    }
+    Ok(out)
 }
 
 async fn list_impl(

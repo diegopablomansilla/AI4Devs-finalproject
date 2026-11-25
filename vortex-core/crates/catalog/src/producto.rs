@@ -110,6 +110,10 @@ where
         self.products.list(filtro, after, take).await
     }
 
+    pub async fn find_by_code(&self, code: String) -> Result<Vec<ResumenProducto>, DomainError> {
+        self.products.find_by_code(code).await
+    }
+
     async fn load_and_validate_refs(
         &self,
         categoria: &Id<Categoria>,
@@ -315,6 +319,11 @@ pub trait ProductGateway: Send + Sync {
         after: Option<Id<domain::Producto>>,
         take: u32,
     ) -> Pin<Box<dyn Future<Output = Result<Vec<ResumenProducto>, DomainError>> + Send + '_>>;
+
+    fn find_by_code(
+        &self,
+        code: String,
+    ) -> Pin<Box<dyn Future<Output = Result<Vec<ResumenProducto>, DomainError>> + Send + '_>>;
 }
 
 impl<P, C, B, A> ProductGateway for ProductService<P, C, B, A>
@@ -366,6 +375,13 @@ where
         take: u32,
     ) -> Pin<Box<dyn Future<Output = Result<Vec<ResumenProducto>, DomainError>> + Send + '_>> {
         Box::pin(ProductService::list(self, filtro, after, take))
+    }
+
+    fn find_by_code(
+        &self,
+        code: String,
+    ) -> Pin<Box<dyn Future<Output = Result<Vec<ResumenProducto>, DomainError>> + Send + '_>> {
+        Box::pin(ProductService::find_by_code(self, code))
     }
 }
 
@@ -631,6 +647,31 @@ pub mod testing {
                 items.truncate(take as usize);
                 let mut out = Vec::with_capacity(items.len());
                 for p in items {
+                    out.push(self.producto_to_resumen(p).await?);
+                }
+                Ok(out)
+            }
+        }
+
+        fn find_by_code(
+            &self,
+            code: String,
+        ) -> impl Future<Output = Result<Vec<ResumenProducto>, DomainError>> + Send {
+            async move {
+                let items: Vec<Producto> = {
+                    let map = self.inner.lock().expect("lock");
+                    map.values()
+                        .filter(|p| p.activo)
+                        .filter(|p| {
+                            p.sku.as_str() == code || p.codigos.iter().any(|c| c.valor == code)
+                        })
+                        .cloned()
+                        .collect()
+                };
+                let mut sorted = items;
+                sorted.sort_by(|a, b| a.sku.as_str().cmp(b.sku.as_str()));
+                let mut out = Vec::with_capacity(sorted.len());
+                for p in sorted {
                     out.push(self.producto_to_resumen(p).await?);
                 }
                 Ok(out)
@@ -1291,6 +1332,35 @@ mod tests {
         ) -> impl Future<Output = Result<Vec<ResumenProducto>, DomainError>> + Send {
             self.inner.list(filtro, after, take)
         }
+
+        fn find_by_code(
+            &self,
+            code: String,
+        ) -> impl Future<Output = Result<Vec<ResumenProducto>, DomainError>> + Send {
+            self.inner.find_by_code(code)
+        }
+    }
+
+    #[tokio::test]
+    async fn product_service_find_by_code_delegates() {
+        let (service, seeds) = seed_active_catalog().await;
+        let mut input = perno_new_producto(&seeds);
+        input.codigos =
+            vec![Codigo::try_new(domain::TipoCodigo::Fabricante, "HX-0840Z").expect("fabricante")];
+        service.create(input).await.expect("create");
+        let rows = service
+            .find_by_code("HX-0840Z".into())
+            .await
+            .expect("by code");
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].sku, "PER-M8X40-ZN");
+        assert!(
+            service
+                .find_by_code("HX-0841Z".into())
+                .await
+                .expect("miss")
+                .is_empty()
+        );
     }
 
     #[tokio::test]
