@@ -92,7 +92,7 @@ MUST NOT introducir `code` nuevos (`meilisearch_unavailable`, etc.). MUST reutil
 
 ### Requirement: Tests del adaptador Meilisearch
 
-Antes de archive, la suite MUST incluir estos tests (nombres estables). Happy y unhappy path son obligatorios.
+Antes de archive, la suite MUST incluir estos tests (nombres estables). Happy y unhappy path son obligatorios. Los unitarios del perfil `productos` viven en `domain` (T-03-08); este crate conserva el probe de integración y el reexport.
 
 | Test | Ubicación | Tipo | Motor |
 |---|---|---|---|
@@ -105,11 +105,8 @@ Antes de archive, la suite MUST incluir estos tests (nombres estables). Happy y 
 | `meilisearch_apply_settings_unavailable_when_unreachable` | `vortex-core/crates/search/tests/` | unhappy | siempre (URL muerta; no exige sidecar) |
 | `meilisearch_error_maps_timeout` | `vortex-core/crates/search/` | unhappy | unidad (mapper) |
 | `meilisearch_error_maps_invalid_document` | `vortex-core/crates/search/` | unhappy | unidad (mapper) |
-| `productos_index_settings_includes_4_11_2_h03_h04` | `vortex-core/crates/search/` | happy | unidad (sin sidecar) |
-| `productos_index_settings_omits_synonyms` | `vortex-core/crates/search/` | happy | unidad (sin sidecar) |
-| `productos_index_settings_rejects_invalid_clave` | `vortex-core/crates/search/` | unhappy | unidad (sin sidecar) |
 
-Los tests `#[ignore = "meilisearch"]` MUST usar `MEILISEARCH_URL` (defecto `http://127.0.0.1:7700`) y un uid de índice de prueba distinto de `productos`. `cargo test --workspace` **sin** `--include-ignored` MUST terminar con código 0 aunque el sidecar no esté levantado (los tests ignore se omiten; el unhappy de URL muerta y los unitarios del perfil corren). `cargo test --workspace -- --include-ignored meilisearch` MUST ejecutar los ignore de esta tabla **y** el probe `meilisearch_health_is_available` de T-09-05. MUST NOT borrar ese probe. MUST NOT exigir el job CI `meilisearch` nuevo: el de T-09-05 ya filtra `meilisearch`.
+Los tests `#[ignore = "meilisearch"]` MUST usar `MEILISEARCH_URL` (defecto `http://127.0.0.1:7700`) y un uid de índice de prueba distinto de `productos`. `cargo test --workspace` **sin** `--include-ignored` MUST terminar con código 0 aunque el sidecar no esté levantado (los tests ignore se omiten; el unhappy de URL muerta corre). `cargo test --workspace -- --include-ignored meilisearch` MUST ejecutar los ignore de esta tabla **y** el probe `meilisearch_health_is_available` de T-09-05. MUST NOT borrar ese probe. MUST NOT exigir el job CI `meilisearch` nuevo: el de T-09-05 ya filtra `meilisearch`.
 
 #### Scenario: Alta, consulta y borrado contra el motor (happy, Listo cuando)
 
@@ -154,7 +151,7 @@ Los tests `#[ignore = "meilisearch"]` MUST usar `MEILISEARCH_URL` (defecto `http
 
 ### Requirement: Perfil de settings del índice productos
 
-El crate `search` MUST exponer un constructor de `IndexSettings` para el perfil `productos` que acepta las `clave` de `AtributoDef` con `facetable = true` (sin prefijo `attr_`) y MUST armar las listas siguientes. MUST NOT consultar SurrealDB ni `AttributeDefRepo`. MUST NOT incluir `synonyms` (T-03-27).
+El crate `search` MUST reexportar `domain::productos_index_settings` (mismo nombre público `search::productos_index_settings`) para no romper los tests T-03-05. MUST NOT duplicar las listas 4.11.2 en `search`. MUST NOT consultar SurrealDB ni `AttributeDefRepo`. MUST NOT incluir `synonyms` (T-03-27). El contrato observable del constructor (listas, validación de `clave`, `invalid_input`) MUST ser el de `domain-text-search`.
 
 `searchableAttributes` (orden de peso): `nombre`, `tipo`, `sku`, `codigos`, `marca`, `atributos_texto`, `descripcion`.
 
