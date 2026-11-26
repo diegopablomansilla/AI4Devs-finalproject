@@ -47,6 +47,11 @@ pub fn prometheus_handle() -> &'static PrometheusHandle {
             Unit::Seconds,
             "Text search operation latency"
         );
+        describe_histogram!(
+            operation_duration_seconds("recommendations"),
+            Unit::Seconds,
+            "Product recommendations operation latency"
+        );
         super::sync_telemetry::describe_sync_metrics();
         PrometheusBuilder::new()
             .set_buckets(HTTP_DURATION_BUCKETS)
@@ -117,6 +122,10 @@ mod tests {
         assert_eq!(
             operation_duration_seconds("search"),
             "search_duration_seconds"
+        );
+        assert_eq!(
+            operation_duration_seconds("recommendations"),
+            "recommendations_duration_seconds"
         );
     }
 }

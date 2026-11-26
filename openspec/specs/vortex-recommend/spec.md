@@ -94,7 +94,7 @@ El crate `recommend` MUST exponer un trait object-safe `RelationGateway` (`Send 
 
 ### Requirement: Consulta de recomendaciones (4.6.2)
 
-El crate `recommend` MUST exponer un caso de uso de consulta de recomendaciones que delega en `RelationRepo::recommendations_for_product` y MUST NOT abrir SurrealDB ni mapear a HTTP. MUST NOT vivir en `catalog` ([DC-05](../../../docs/3-componentes.md#36-decisiones-de-diseño-transversales-a-los-componentes)). MUST NOT registrar rutas ni DTO JSON (T-04-07).
+El crate `recommend` MUST exponer un caso de uso de consulta de recomendaciones que delega en `RelationRepo::recommendations_for_product` y MUST NOT abrir SurrealDB ni mapear a HTTP. MUST NOT vivir en `catalog` ([DC-05](../../../../../docs/3-componentes.md#36-decisiones-de-diseño-transversales-a-los-componentes)). MUST NOT registrar rutas ni DTO JSON (el mapper HTTP vive en `api`, T-04-07).
 
 El caso de uso MUST aceptar `Id<Producto>`. El resultado de éxito MUST ser `Recomendaciones` tal como lo devuelve el puerto (tres bloques, `destacar_sustitutos`, stock/precio/ubicación reales). Los errores del puerto (`not_found`) MUST propagarse sin remapeo. MUST NOT filtrar de nuevo en el servicio (los filtros `activo` / `stock > 0` viven en el adaptador). MUST NOT hidratar imagen. Un producto existente sin aristas MUST devolver vectores vacíos (no `not_found`).
 
@@ -140,7 +140,7 @@ El caso de uso MUST aceptar `Id<Producto>`. El resultado de éxito MUST ser `Rec
 
 ### Requirement: Fachada RecommendationGateway object-safe
 
-El crate `recommend` MUST exponer un trait object-safe `RecommendationGateway` (`Send + Sync`) con `get` (consulta de recomendaciones), inyectable como `Arc<dyn RecommendationGateway>` desde el Gateway en T-04-07. El servicio de consulta MUST implementar ese trait. Los tests de `recommend` MUST usar un `RelationRepo` en memoria (MUST NOT abrir SurrealDB). MUST NOT registrar HTTP.
+El crate `recommend` MUST exponer un trait object-safe `RecommendationGateway` (`Send + Sync`) con `get` (consulta de recomendaciones), inyectable como `Arc<dyn RecommendationGateway>` desde el Gateway (T-04-07). El servicio de consulta MUST implementar ese trait. Los tests de `recommend` MUST usar un `RelationRepo` en memoria (MUST NOT abrir SurrealDB). MUST NOT registrar HTTP.
 
 #### Scenario: RecommendationGateway es object-safe (happy)
 
@@ -152,3 +152,9 @@ El crate `recommend` MUST exponer un trait object-safe `RecommendationGateway` (
 - **WHEN** se ejecutan los tests del package `recommend` de este change
 - **THEN** no se abre un `storage::Db`
 - **AND** el fake cubre `recommendations_for_product`
+
+#### Scenario: recommend no registra el endpoint HTTP (unhappy, DC-05)
+
+- **WHEN** se inspecciona el crate `recommend`
+- **THEN** no declara rutas Axum ni DTO JSON `Recommendations`
+- **AND** el mapper HTTP está en `api`
