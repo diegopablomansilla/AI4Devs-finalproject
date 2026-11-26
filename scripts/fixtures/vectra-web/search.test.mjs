@@ -945,6 +945,27 @@ describe("search", () => {
     unmount();
   });
 
+  test("search_by_code_miss_suppresses_one_edit_sku_typo_fuzzy", async () => {
+    const { root, results } = await buildOperator({ withOmnibox: false });
+    const unmount = searchMod.mountSearch(root, {
+      request: createRoutingRequest({
+        byCode: async () => ({ items: [] }),
+        search: async () =>
+          searchPayload("TOR-AUTO-10XI", [
+            fullHit({
+              sku: "TOR-AUTO-10X1",
+              name: "Tornillo autoperforante 10 x 1",
+            }),
+          ]),
+      }),
+      showError: () => {},
+    });
+    dispatchTextQuery(root, "TOR-AUTO-10XI");
+    await waitPaint();
+    assert.equal(results.querySelectorAll("vx-product-card").length, 0);
+    unmount();
+  });
+
   test("search_by_code_error_still_paints_search_hits", async () => {
     const { root, results } = await buildOperator({ withOmnibox: false });
     const errors = [];
