@@ -9,6 +9,7 @@ api = { path = "../../crates/api" }
 catalog = { path = "../../crates/catalog" }
 domain = { path = "../../crates/domain" }
 search = { path = "../../crates/search" }
+recommend = { path = "../../crates/recommend" }
 supervisor = { path = "../../crates/supervisor" }
 storage = { path = "../../crates/storage" }
 sync = { path = "../../crates/sync" }

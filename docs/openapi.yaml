@@ -778,6 +778,7 @@ paths:
                     type: array
                     items: { $ref: '#/components/schemas/Relation' }
         '404': { $ref: '#/components/responses/NotFound' }
+        '503': { $ref: '#/components/responses/Unavailable' }
 
   /api/v1/relations:
     post:
@@ -810,6 +811,7 @@ paths:
         '400': { $ref: '#/components/responses/BadRequest' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
+        '503': { $ref: '#/components/responses/Unavailable' }
 
   /api/v1/relations/{relationType}/{relationId}:
     parameters:
@@ -845,6 +847,7 @@ paths:
                     items: { $ref: '#/components/schemas/Relation' }
         '400': { $ref: '#/components/responses/BadRequest' }
         '404': { $ref: '#/components/responses/NotFound' }
+        '503': { $ref: '#/components/responses/Unavailable' }
     delete:
       tags: [Recommendations]
       operationId: deleteRelation
@@ -853,6 +856,7 @@ paths:
       responses:
         '204': { description: Relación eliminada. }
         '404': { $ref: '#/components/responses/NotFound' }
+        '503': { $ref: '#/components/responses/Unavailable' }
 
   # ───────────────────────────── AI ─────────────────────────────
   /api/v1/ai/ask:

@@ -968,7 +968,7 @@ MUST NOT reindexar Meilisearch. MUST NOT cambiar el esquema `0007`.
 
 ### Requirement: Adaptador RelationRepo update, delete y list_for_product
 
-El crate `storage` MUST implementar `RelationRepo::update`, `delete` y `list_for_product` contra las tablas `similar_a`, `sustituible_por` y `complementa` usando `storage::Tx` (T-03-02). Los `id` MUST ser ULID de 26 caracteres **sin** prefijo de tabla. Los errores MUST ser `DomainError`. MUST NOT mapear a HTTP ni a `problem+json`. MUST NOT emitir evento de outbox. MUST NOT reindexar Meilisearch. MUST NOT cambiar el esquema `0007`. MUST NOT declarar el adaptador en `catalog` ni en `recommend` (DC-05 se cablea en T-04-05). MUST NOT filtrar destinos inactivos ni por `stock` (eso es T-04-06). MUST NOT listar aristas **entrantes**.
+El crate `storage` MUST implementar `RelationRepo::update`, `delete` y `list_for_product` contra las tablas `similar_a`, `sustituible_por` y `complementa` usando `storage::Tx` (T-03-02). Los `id` MUST ser ULID de 26 caracteres **sin** prefijo de tabla. Los errores MUST ser `DomainError`. MUST NOT mapear a HTTP ni a `problem+json`. MUST NOT emitir evento de outbox. MUST NOT reindexar Meilisearch. MUST NOT cambiar el esquema `0007`. MUST NOT declarar el adaptador en `catalog` ni en `recommend` (DC-05 se cablea en T-04-05). MUST NOT filtrar destinos inactivos ni por `stock` (eso es T-04-06). El listado **entrante** MUST vivir en `list_incoming_for_product` (requirement «Adaptador RelationRepo list_incoming_for_product»); `list_for_product` MUST seguir devolviendo solo salientes.
 
 `update` MUST aplicar `UpdateRelacion` (`id`, `tipo`, `prioridad` opcional, `nota` opcional) en una sola transacción:
 
@@ -1553,3 +1553,21 @@ MUST usar `storage::testing::test_db()`. MUST NOT exigir Meilisearch.
 
 - **WHEN** se ejecuta `cargo test -p storage --test producto product_repo_find_by_code`
 - **THEN** todos los tests terminan con código 0
+
+### Requirement: Adaptador RelationRepo list_incoming_for_product
+
+El crate `storage` MUST implementar `RelationRepo::list_incoming_for_product` contra las tablas `similar_a`, `sustituible_por` y `complementa`. MUST devolver `RelacionesDeProducto` con las aristas **entrantes** (`out` = el producto pedido) de las tres tablas, agrupadas por tipo, ordenadas por `prioridad` ascendente (1 = más alta) y, a igualdad, por `id`. Cada ítem MUST ser `RelacionConDestino` cuyo `DestinoResumen` es el producto **origen** (`in`: `id`, `sku`, `nombre`, `activo`). MUST incluir orígenes inactivos y con `stock` 0. Un producto sin aristas entrantes, o un `Id<Producto>` que no existe, MUST devolver los tres grupos vacíos (el 404 de producto lo aplica `recommend` en T-04-05). MUST NOT hidratar `ProductSummary` completo. MUST NOT filtrar por `activo` ni `stock` (T-04-06). MUST NOT mapear a HTTP. MUST NOT cambiar el esquema `0007`.
+
+#### Scenario: Listado incoming con resumen del origen (happy)
+
+- **WHEN** existe una arista `A complement B` y se llama `list_incoming_for_product` con B
+- **THEN** la operación termina sin error
+- **AND** `complementa` contiene esa arista
+- **AND** el `DestinoResumen` es A (`sku` y `nombre` de A)
+- **AND** `list_for_product(B)` no incluye esa arista (sigue siendo solo salientes)
+
+#### Scenario: Incoming vacío (happy)
+
+- **WHEN** un producto no tiene aristas entrantes y se llama `list_incoming_for_product`
+- **THEN** la operación termina sin error
+- **AND** los tres grupos están vacíos

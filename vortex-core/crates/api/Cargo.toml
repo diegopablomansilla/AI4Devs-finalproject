@@ -9,6 +9,7 @@ axum = { workspace = true }
 catalog = { path = "../catalog" }
 domain = { path = "../domain" }
 search = { path = "../search" }
+recommend = { path = "../recommend" }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 thiserror = { workspace = true }

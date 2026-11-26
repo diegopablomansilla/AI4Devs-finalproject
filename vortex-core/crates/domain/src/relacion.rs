@@ -191,6 +191,11 @@ pub trait RelationRepo {
         &self,
         producto: Id<Producto>,
     ) -> impl Future<Output = Result<RelacionesDeProducto, DomainError>> + Send;
+
+    fn list_incoming_for_product(
+        &self,
+        producto: Id<Producto>,
+    ) -> impl Future<Output = Result<RelacionesDeProducto, DomainError>> + Send;
 }
 
 fn validate_prioridad(prioridad: i32) -> Result<(), DomainError> {
@@ -444,6 +449,13 @@ mod tests {
         ) -> impl Future<Output = Result<RelacionesDeProducto, DomainError>> + Send {
             async { Ok(RelacionesDeProducto::empty()) }
         }
+
+        fn list_incoming_for_product(
+            &self,
+            _producto: Id<Producto>,
+        ) -> impl Future<Output = Result<RelacionesDeProducto, DomainError>> + Send {
+            async { Ok(RelacionesDeProducto::empty()) }
+        }
     }
 
     #[test]
@@ -465,8 +477,17 @@ mod tests {
             });
             let _f3 = r.delete(TipoRelacion::SimilarA, Id::generate());
             let _f4 = r.list_for_product(Id::generate());
+            let _f5 = r.list_incoming_for_product(Id::generate());
         }
         assert_repo(&DummyRelationRepo);
+    }
+
+    #[test]
+    fn relation_repo_trait_exposes_list_incoming() {
+        fn assert_incoming<R: RelationRepo>(r: &R) {
+            let _ = r.list_incoming_for_product(Id::generate());
+        }
+        assert_incoming(&DummyRelationRepo);
     }
 
     #[test]

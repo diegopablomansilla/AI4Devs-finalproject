@@ -136,11 +136,11 @@ El crate `domain` MUST exponer `RelacionConDestino` con la arista (`Relacion`) y
 
 ### Requirement: Puerto RelationRepo sin persistencia
 
-El crate `domain` MUST exponer el puerto `RelationRepo` como *trait* con operaciones `create`, `update`, `delete` y `list_for_product`. Los `id` MUST ser `Id<Relacion>` / `Id<Producto>` sin prefijo de tabla. Los errores MUST ser `DomainError`. El consumidor previsto del puerto MUST ser el Recommendation Service (`recommend`, [DC-05](../../../../../docs/3-componentes.md#36-decisiones-de-diseño-transversales-a-los-componentes)), no Catalog.
+El crate `domain` MUST exponer el puerto `RelationRepo` como *trait* con operaciones `create`, `update`, `delete`, `list_for_product` y `list_incoming_for_product`. Los `id` MUST ser `Id<Relacion>` / `Id<Producto>` sin prefijo de tabla. Los errores MUST ser `DomainError`. El consumidor previsto del puerto MUST ser el Recommendation Service (`recommend`, [DC-05](../../../docs/3-componentes.md#36-decisiones-de-diseño-transversales-a-los-componentes)), no Catalog.
 
 `create` MUST aceptar `NewRelacion` con `origen`, `destino`, `tipo`, `prioridad`, `nota` y `bidireccional` (`Option<bool>`: ausente = `default_bidireccional(tipo)`). El resultado de éxito MUST ser `Relacion` (arista saliente origen→destino). MUST NOT crear la arista inversa en el crate `domain` (persistencia en `storage`).
 
-`update` MUST aceptar `UpdateRelacion` con `id`, `tipo`, `prioridad` opcional y `nota` opcional. El resultado de éxito MUST ser `Relacion`. `delete` MUST aceptar `tipo` y `id`. `list_for_product` MUST aceptar `Id<Producto>` y el resultado de éxito MUST ser `RelacionesDeProducto` (aristas salientes agrupadas por tipo, cada ítem con `DestinoResumen`; el adaptador en `storage` hidrata).
+`update` MUST aceptar `UpdateRelacion` con `id`, `tipo`, `prioridad` opcional y `nota` opcional. El resultado de éxito MUST ser `Relacion`. `delete` MUST aceptar `tipo` y `id`. `list_for_product` MUST aceptar `Id<Producto>` y el resultado de éxito MUST ser `RelacionesDeProducto` (aristas **salientes** agrupadas por tipo, cada ítem con `DestinoResumen`; el adaptador en `storage` hidrata). `list_incoming_for_product` MUST aceptar `Id<Producto>` y el resultado de éxito MUST ser `RelacionesDeProducto` (aristas **entrantes** agrupadas por tipo; cada `DestinoResumen` es el **origen** de la arista).
 
 El crate `domain` MUST NOT implementar el adaptador SurrealDB. MUST NOT mapear a HTTP. MUST NOT ejecutar `RELATE`. MUST NOT traducir el índice UNIQUE a `duplicate_relation`. MUST NOT depender de `surrealdb` ni de otros crates del workspace. MUST NOT declarar el puerto en `catalog`.
 
@@ -172,3 +172,11 @@ El crate `domain` MUST NOT implementar el adaptador SurrealDB. MUST NOT mapear a
 - **WHEN** se inspecciona el crate `catalog`
 - **THEN** no declara el trait `RelationRepo`
 - **AND** el puerto está en `domain` para consumo de `recommend`
+
+#### Scenario: El puerto declara list_incoming_for_product (happy, T-04-05)
+
+- **WHEN** se inspecciona el puerto `RelationRepo` en `domain`
+- **THEN** expone `list_incoming_for_product`
+- **AND** acepta `Id<Producto>`
+- **AND** el resultado de éxito usa `RelacionesDeProducto`
+

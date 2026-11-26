@@ -12,10 +12,11 @@ use catalog::{
     AttributeDefService, BrandService, CategoryService, ProductService, ProductionOccupancy,
 };
 use domain::{IndexUid, SyncTelemetry};
+use recommend::RelationService;
 use search::{MeiliTextSearch, SearchService};
 use storage::{
     AtributoDefRepo, CategoriaRepo, DB_DIR_NAME, Db, MarcaRepo, OutboxStore, ProductAttributeUsage,
-    ProductoRepo,
+    ProductoRepo, RelacionRepo,
 };
 use supervisor::{ComponentId, ComponentStatus, HealthRegistry};
 use sync::{DEFAULT_POLL_INTERVAL, MeiliProductWorker};
@@ -251,6 +252,10 @@ async fn serve_config(config: Config, _logging_guard: LoggingGuard) -> i32 {
     let stock_gateway: Arc<dyn catalog::StockGateway> = Arc::new(catalog::StockService::new(
         storage::MovimientoStockRepo::new(Arc::clone(&db)),
     ));
+    let relations_gateway: Arc<dyn recommend::RelationGateway> = Arc::new(RelationService::new(
+        RelacionRepo::new(Arc::clone(&db)),
+        ProductoRepo::new(Arc::clone(&db)),
+    ));
 
     let bind = match config.server.bind.parse::<std::net::SocketAddr>() {
         Ok(addr) => addr,
@@ -288,7 +293,8 @@ async fn serve_config(config: Config, _logging_guard: LoggingGuard) -> i32 {
         .with_attribute_defs(attribute_def_gateway)
         .with_products(product_gateway)
         .with_stock(stock_gateway)
-        .with_search(search_gateway);
+        .with_search(search_gateway)
+        .with_relations(relations_gateway);
     let router = build_router(state);
 
     let stop_worker = Arc::clone(&worker_stop);
