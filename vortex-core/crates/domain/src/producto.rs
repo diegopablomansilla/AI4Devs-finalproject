@@ -157,6 +157,34 @@ pub struct Ubicacion {
     pub posicion: Option<String>,
 }
 
+/// Formats `ubicacion` for search and recommendation panels (`P3 · E-B · 12`).
+pub fn format_ubicacion_linea(u: &Ubicacion) -> Option<String> {
+    let mut parts = Vec::new();
+    if let Some(p) = &u.pasillo {
+        let trimmed = p.trim();
+        if !trimmed.is_empty() {
+            parts.push(format!("P{trimmed}"));
+        }
+    }
+    if let Some(e) = &u.estante {
+        let trimmed = e.trim();
+        if !trimmed.is_empty() {
+            parts.push(format!("E-{trimmed}"));
+        }
+    }
+    if let Some(pos) = &u.posicion {
+        let trimmed = pos.trim();
+        if !trimmed.is_empty() {
+            parts.push(trimmed.to_string());
+        }
+    }
+    if parts.is_empty() {
+        None
+    } else {
+        Some(parts.join(" · "))
+    }
+}
+
 /// Attribute value on a product (model `atributos[*].valor`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ValorAtributo {

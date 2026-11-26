@@ -4,10 +4,12 @@ use std::future::Future;
 use std::str::FromStr as _;
 use std::sync::Arc;
 
+use domain::Decimal;
 use domain::{
-    DestinoResumen, DomainError, GrupoBidireccional, Id, NewRelacion, Producto, Relacion,
-    RelacionConDestino, RelacionDraft, RelacionesDeProducto, RelationRepo, Timestamp, TipoRelacion,
-    UnavailableCode, UpdateRelacion,
+    DestinoResumen, DomainError, GrupoBidireccional, Id, NewRelacion, Producto,
+    ProductoRecomendado, Recomendaciones, Relacion, RelacionConDestino, RelacionDraft,
+    RelacionesDeProducto, RelationRepo, Timestamp, TipoRelacion, Ubicacion, UnavailableCode,
+    UpdateRelacion, format_ubicacion_linea,
 };
 use serde::Deserialize;
 use surrealdb::{RecordId, RecordIdKey};
@@ -67,6 +69,14 @@ impl RelationRepo for RelacionRepo {
         let db = Arc::clone(&self.db);
         async move { list_incoming_for_product_impl(db.as_ref(), producto).await }
     }
+
+    fn recommendations_for_product(
+        &self,
+        producto: Id<Producto>,
+    ) -> impl Future<Output = Result<Recomendaciones, DomainError>> + Send {
+        let db = Arc::clone(&self.db);
+        async move { recommendations_for_product_impl(db.as_ref(), producto).await }
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -87,6 +97,41 @@ struct OutProductoFields {
     sku: String,
     nombre: String,
     activo: bool,
+}
+
+#[derive(Debug, Deserialize)]
+struct UbicacionRecord {
+    pasillo: Option<String>,
+    estante: Option<String>,
+    posicion: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+enum SurrealDecimal {
+    Text(String),
+    Number(f64),
+}
+
+#[derive(Debug, Deserialize)]
+struct RecommendListRecord {
+    id: RecordId,
+    prioridad: i32,
+    nota: Option<String>,
+    out_id: RecordId,
+    out_sku: Option<String>,
+    out_nombre: Option<String>,
+    out_stock: Option<SurrealDecimal>,
+    out_precio: Option<SurrealDecimal>,
+    out_ubicacion: Option<UbicacionRecord>,
+}
+
+#[derive(Debug, Deserialize)]
+struct RecommendationsPayload {
+    stock: Option<SurrealDecimal>,
+    similares: Vec<RecommendListRecord>,
+    sustitutos: Vec<RecommendListRecord>,
+    complementarios: Vec<RecommendListRecord>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -269,6 +314,129 @@ async fn list_incoming_for_product_impl(
         sustituible_por,
         complementa,
     })
+}
+
+async fn recommendations_for_product_impl(
+    db: &Db,
+    producto: Id<Producto>,
+) -> Result<Recomendaciones, DomainError> {
+    let pid = producto.to_string();
+    let stmt = format!(
+        "LET $p = type::thing('producto', '{pid}'); \
+         RETURN {{ \
+             stock: (SELECT VALUE stock FROM ONLY $p), \
+             similares: ( \
+                 SELECT id, prioridad, nota, \
+                     out.id AS out_id, out.sku AS out_sku, out.nombre AS out_nombre, \
+                     out.stock AS out_stock, out.precio AS out_precio, out.ubicacion AS out_ubicacion \
+                 FROM similar_a \
+                 WHERE in = $p AND out.activo = true \
+                 ORDER BY prioridad ASC, id ASC \
+             ), \
+             sustitutos: ( \
+                 SELECT id, prioridad, nota, \
+                     out.id AS out_id, out.sku AS out_sku, out.nombre AS out_nombre, \
+                     out.stock AS out_stock, out.precio AS out_precio, out.ubicacion AS out_ubicacion \
+                 FROM sustituible_por \
+                 WHERE in = $p AND out.activo = true AND out.stock > 0 \
+                 ORDER BY prioridad ASC, id ASC \
+             ), \
+             complementarios: ( \
+                 SELECT id, prioridad, nota, \
+                     out.id AS out_id, out.sku AS out_sku, out.nombre AS out_nombre, \
+                     out.stock AS out_stock, out.precio AS out_precio, out.ubicacion AS out_ubicacion \
+                 FROM complementa \
+                 WHERE in = $p AND out.activo = true \
+                 ORDER BY prioridad ASC, id ASC \
+             ) \
+         }};"
+    );
+    let response = db
+        .inner
+        .query(&stmt)
+        .await
+        .map_err(|e| map_surreal_message(&e.to_string(), std::slice::from_ref(&stmt)))?;
+    let mut checked = response
+        .check()
+        .map_err(|e| map_surreal_message(&e.to_string(), std::slice::from_ref(&stmt)))?;
+    let payload: Option<RecommendationsPayload> = checked.take(1).map_err(|e| {
+        map_surreal_message(&format!("deserialize: {e}"), std::slice::from_ref(&stmt))
+    })?;
+    let payload = payload.ok_or_else(DomainError::not_found)?;
+    let source_stock = payload
+        .stock
+        .as_ref()
+        .ok_or_else(DomainError::not_found)
+        .and_then(surreal_decimal_to_domain)?;
+    let zero: Decimal = "0"
+        .parse()
+        .map_err(|_| DomainError::unavailable(UnavailableCode::Unavailable))?;
+    Ok(Recomendaciones {
+        producto_id: producto,
+        destacar_sustitutos: source_stock == zero,
+        similares: map_recommend_rows(payload.similares)?,
+        sustitutos: map_recommend_rows(payload.sustitutos)?,
+        complementarios: map_recommend_rows(payload.complementarios)?,
+    })
+}
+
+fn map_recommend_rows(
+    rows: Vec<RecommendListRecord>,
+) -> Result<Vec<ProductoRecomendado>, DomainError> {
+    rows.into_iter().map(row_to_producto_recomendado).collect()
+}
+
+fn row_to_producto_recomendado(
+    row: RecommendListRecord,
+) -> Result<ProductoRecomendado, DomainError> {
+    let relacion_id = record_id_to_domain_id(&row.id)?;
+    let id = record_id_to_domain_id(&row.out_id)?;
+    let sku = row
+        .out_sku
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| DomainError::unavailable(UnavailableCode::Unavailable))?;
+    let nombre = row
+        .out_nombre
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| DomainError::unavailable(UnavailableCode::Unavailable))?;
+    let stock = row
+        .out_stock
+        .as_ref()
+        .ok_or_else(|| DomainError::unavailable(UnavailableCode::Unavailable))
+        .and_then(surreal_decimal_to_domain)?;
+    let precio = row
+        .out_precio
+        .as_ref()
+        .ok_or_else(|| DomainError::unavailable(UnavailableCode::Unavailable))
+        .and_then(surreal_decimal_to_domain)?;
+    let ubicacion = row.out_ubicacion.and_then(|u| {
+        format_ubicacion_linea(&Ubicacion {
+            pasillo: u.pasillo,
+            estante: u.estante,
+            posicion: u.posicion,
+        })
+    });
+    Ok(ProductoRecomendado {
+        relacion_id,
+        id,
+        sku,
+        nombre,
+        stock,
+        precio,
+        ubicacion,
+        prioridad: row.prioridad,
+        nota: row.nota,
+    })
+}
+
+fn surreal_decimal_to_domain(v: &SurrealDecimal) -> Result<Decimal, DomainError> {
+    match v {
+        SurrealDecimal::Text(s) => {
+            Decimal::from_str(s).map_err(|_| DomainError::unavailable(UnavailableCode::Unavailable))
+        }
+        SurrealDecimal::Number(n) => Decimal::from_str(&format!("{n}"))
+            .map_err(|_| DomainError::unavailable(UnavailableCode::Unavailable)),
+    }
 }
 
 async fn list_for_product_impl(

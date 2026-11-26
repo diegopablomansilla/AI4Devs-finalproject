@@ -238,8 +238,9 @@ mod tests {
 
     use domain::error::{ConflictCode, DomainCode};
     use domain::{
-        Categoria, DestinoResumen, GrupoBidireccional, NewProducto, Producto, ProductoDraft,
-        RelacionDraft, Timestamp, UnavailableCode, UnidadMedida,
+        Categoria, Decimal, DestinoResumen, GrupoBidireccional, NewProducto, Producto,
+        ProductoDraft, ProductoRecomendado, Recomendaciones, RelacionDraft, Timestamp,
+        UnavailableCode, UnidadMedida,
     };
 
     const TS: &str = "2026-09-24T21:33:00Z";
@@ -258,9 +259,23 @@ mod tests {
         map.iter().any(|(k, _)| k == id)
     }
 
+    type DecimalMap = Vec<(Id<Producto>, Decimal)>;
+    type LocationMap = Vec<(Id<Producto>, Option<String>)>;
+
+    fn map_decimal(map: &DecimalMap, id: &Id<Producto>) -> Option<Decimal> {
+        map.iter().find(|(k, _)| k == id).map(|(_, v)| *v)
+    }
+
+    fn map_location(map: &LocationMap, id: &Id<Producto>) -> Option<Option<String>> {
+        map.iter().find(|(k, _)| k == id).map(|(_, v)| v.clone())
+    }
+
     struct InMemoryRelationRepo {
         items: Arc<Mutex<Vec<RelacionConDestino>>>,
         products: Arc<ProductMap>,
+        stocks: Arc<DecimalMap>,
+        precios: Arc<DecimalMap>,
+        ubicaciones: Arc<LocationMap>,
     }
 
     impl InMemoryRelationRepo {
@@ -268,7 +283,48 @@ mod tests {
             Self {
                 items: Arc::new(Mutex::new(Vec::new())),
                 products: Arc::new(products),
+                stocks: Arc::new(Vec::new()),
+                precios: Arc::new(Vec::new()),
+                ubicaciones: Arc::new(Vec::new()),
             }
+        }
+
+        fn with_panel(
+            mut self,
+            stocks: DecimalMap,
+            precios: DecimalMap,
+            ubicaciones: LocationMap,
+        ) -> Self {
+            self.stocks = Arc::new(stocks);
+            self.precios = Arc::new(precios);
+            self.ubicaciones = Arc::new(ubicaciones);
+            self
+        }
+
+        fn push_outgoing(
+            &self,
+            origen: Id<Producto>,
+            destino: Id<Producto>,
+            tipo: TipoRelacion,
+            prioridad: i32,
+        ) {
+            let dest = map_get(self.products.as_ref(), &destino).expect("destino");
+            let relacion = Relacion::try_new(RelacionDraft {
+                id: Id::generate(),
+                origen,
+                destino: destino.clone(),
+                tipo,
+                prioridad,
+                nota: None,
+                grupo_bidireccional: None,
+                creado_en: ts(),
+                actualizado_en: ts(),
+            })
+            .expect("rel");
+            self.items.lock().expect("lock").push(RelacionConDestino {
+                relacion,
+                destino: dest,
+            });
         }
 
         fn bucket_mut(
@@ -466,6 +522,82 @@ mod tests {
                     Self::bucket_mut(&mut grouped, item.relacion.tipo).push(incoming);
                 }
                 Ok(grouped)
+            }
+        }
+
+        fn recommendations_for_product(
+            &self,
+            producto: Id<Producto>,
+        ) -> impl Future<Output = Result<Recomendaciones, DomainError>> + Send {
+            let items = Arc::clone(&self.items);
+            let products = Arc::clone(&self.products);
+            let stocks = Arc::clone(&self.stocks);
+            let precios = Arc::clone(&self.precios);
+            let ubicaciones = Arc::clone(&self.ubicaciones);
+            async move {
+                if !map_has(&products, &producto) {
+                    return Err(DomainError::not_found());
+                }
+                let zero: Decimal = "0".parse().expect("zero");
+                let source_stock = map_decimal(stocks.as_ref(), &producto).unwrap_or(zero);
+                let destacar_sustitutos = source_stock == zero;
+
+                let guard = items.lock().expect("lock");
+                let mut similares = Vec::new();
+                let mut sustitutos = Vec::new();
+                let mut complementarios = Vec::new();
+
+                for item in guard.iter().filter(|i| i.relacion.origen == producto) {
+                    let dest_id = item.relacion.destino.clone();
+                    let Some(resumen) = map_get(&products, &dest_id) else {
+                        continue;
+                    };
+                    if !resumen.activo {
+                        continue;
+                    }
+                    let dest_stock = map_decimal(stocks.as_ref(), &dest_id).unwrap_or(zero);
+                    if item.relacion.tipo == TipoRelacion::SustituiblePor && dest_stock == zero {
+                        continue;
+                    }
+                    let precio = map_decimal(precios.as_ref(), &dest_id)
+                        .unwrap_or_else(|| "0".parse().expect("precio"));
+                    let ubicacion = map_location(ubicaciones.as_ref(), &dest_id).flatten();
+                    let panel_item = ProductoRecomendado {
+                        relacion_id: item.relacion.id.clone(),
+                        id: dest_id,
+                        sku: resumen.sku,
+                        nombre: resumen.nombre,
+                        stock: dest_stock,
+                        precio,
+                        ubicacion,
+                        prioridad: item.relacion.prioridad,
+                        nota: item.relacion.nota.clone(),
+                    };
+                    match item.relacion.tipo {
+                        TipoRelacion::SimilarA => similares.push(panel_item),
+                        TipoRelacion::SustituiblePor => sustitutos.push(panel_item),
+                        TipoRelacion::Complementa => complementarios.push(panel_item),
+                    }
+                }
+
+                let sort = |v: &mut [ProductoRecomendado]| {
+                    v.sort_by(|a, b| {
+                        a.prioridad
+                            .cmp(&b.prioridad)
+                            .then_with(|| a.relacion_id.to_string().cmp(&b.relacion_id.to_string()))
+                    });
+                };
+                sort(&mut similares);
+                sort(&mut sustitutos);
+                sort(&mut complementarios);
+
+                Ok(Recomendaciones {
+                    producto_id: producto,
+                    destacar_sustitutos,
+                    similares,
+                    sustitutos,
+                    complementarios,
+                })
             }
         }
     }
@@ -843,6 +975,142 @@ mod tests {
             (b.clone(), resumen(b.clone(), "B", "B", true)),
         ];
         let gateway: Arc<dyn RelationGateway> = Arc::new(svc(map, vec![a, b]));
+        let _ = gateway.clone();
+    }
+
+    #[tokio::test]
+    async fn recommend_get_three_blocks_ordered() {
+        let perno = Id::<Producto>::generate();
+        let dest_a = Id::<Producto>::generate();
+        let dest_b = Id::<Producto>::generate();
+        let map = vec![
+            (
+                perno.clone(),
+                resumen(perno.clone(), "PER-M8", "Perno M8", true),
+            ),
+            (dest_a.clone(), resumen(dest_a.clone(), "SKU-A", "A", true)),
+            (dest_b.clone(), resumen(dest_b.clone(), "SKU-B", "B", true)),
+        ];
+        let stocks = vec![
+            (dest_a.clone(), "1".parse().expect("stock")),
+            (perno.clone(), "1".parse().expect("stock")),
+        ];
+        let repo = InMemoryRelationRepo::new(map).with_panel(stocks, vec![], vec![]);
+        repo.push_outgoing(perno.clone(), dest_b.clone(), TipoRelacion::SimilarA, 2);
+        repo.push_outgoing(perno.clone(), dest_a.clone(), TipoRelacion::SimilarA, 1);
+        repo.push_outgoing(
+            perno.clone(),
+            dest_a.clone(),
+            TipoRelacion::SustituiblePor,
+            1,
+        );
+        repo.push_outgoing(perno.clone(), dest_a.clone(), TipoRelacion::Complementa, 1);
+
+        let rec = crate::RecommendationService::new(repo);
+        let panel = rec.get(perno).await.expect("get");
+
+        assert_eq!(panel.similares.len(), 2);
+        assert_eq!(panel.similares[0].prioridad, 1);
+        assert_eq!(panel.similares[1].prioridad, 2);
+        assert_eq!(panel.sustitutos.len(), 1);
+        assert_eq!(panel.complementarios.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn recommend_get_excludes_inactive_target() {
+        let perno = Id::<Producto>::generate();
+        let activo = Id::<Producto>::generate();
+        let inactivo = Id::<Producto>::generate();
+        let map = vec![
+            (perno.clone(), resumen(perno.clone(), "P", "Perno", true)),
+            (activo.clone(), resumen(activo.clone(), "A", "Activo", true)),
+            (
+                inactivo.clone(),
+                resumen(inactivo.clone(), "I", "Inactivo", false),
+            ),
+        ];
+        let repo = InMemoryRelationRepo::new(map);
+        repo.push_outgoing(perno.clone(), inactivo, TipoRelacion::SimilarA, 1);
+        repo.push_outgoing(perno.clone(), activo, TipoRelacion::SimilarA, 1);
+
+        let panel = crate::RecommendationService::new(repo)
+            .get(perno)
+            .await
+            .expect("get");
+        assert_eq!(panel.similares.len(), 1);
+        assert_eq!(panel.similares[0].sku, "A");
+    }
+
+    #[tokio::test]
+    async fn recommend_get_highlights_substitutes_when_stock_zero() {
+        let perno = Id::<Producto>::generate();
+        let sub_a = Id::<Producto>::generate();
+        let sub_b = Id::<Producto>::generate();
+        let map = vec![
+            (
+                perno.clone(),
+                resumen(perno.clone(), "FIX", "Perno Fixser", true),
+            ),
+            (sub_a.clone(), resumen(sub_a.clone(), "SA", "Sub A", true)),
+            (sub_b.clone(), resumen(sub_b.clone(), "SB", "Sub B", true)),
+        ];
+        let stocks = vec![
+            (perno.clone(), "0".parse().expect("stock")),
+            (sub_a.clone(), "12".parse().expect("stock")),
+            (sub_b.clone(), "0".parse().expect("stock")),
+        ];
+        let repo = InMemoryRelationRepo::new(map).with_panel(stocks, vec![], vec![]);
+        repo.push_outgoing(perno.clone(), sub_a, TipoRelacion::SustituiblePor, 1);
+        repo.push_outgoing(perno.clone(), sub_b, TipoRelacion::SustituiblePor, 2);
+
+        let panel = crate::RecommendationService::new(repo)
+            .get(perno)
+            .await
+            .expect("get");
+        assert!(panel.destacar_sustitutos);
+        assert_eq!(panel.sustitutos.len(), 1);
+        assert_eq!(panel.sustitutos[0].stock.to_string(), "12");
+    }
+
+    #[tokio::test]
+    async fn recommend_get_does_not_highlight_when_in_stock() {
+        let perno = Id::<Producto>::generate();
+        let sub = Id::<Producto>::generate();
+        let map = vec![
+            (perno.clone(), resumen(perno.clone(), "P", "Perno", true)),
+            (sub.clone(), resumen(sub.clone(), "S", "Sub", true)),
+        ];
+        let stocks = vec![
+            (perno.clone(), "5".parse().expect("stock")),
+            (sub.clone(), "12".parse().expect("stock")),
+        ];
+        let repo = InMemoryRelationRepo::new(map).with_panel(stocks, vec![], vec![]);
+        repo.push_outgoing(perno.clone(), sub, TipoRelacion::SustituiblePor, 1);
+
+        let panel = crate::RecommendationService::new(repo)
+            .get(perno)
+            .await
+            .expect("get");
+        assert!(!panel.destacar_sustitutos);
+    }
+
+    #[tokio::test]
+    async fn recommend_get_unknown_product_is_not_found() {
+        let repo = InMemoryRelationRepo::new(vec![]);
+        let err = crate::RecommendationService::new(repo)
+            .get(Id::generate())
+            .await
+            .expect_err("missing");
+        assert_eq!(err.code(), DomainCode::NotFound);
+    }
+
+    #[test]
+    fn recommendation_gateway_is_object_safe() {
+        let perno = Id::<Producto>::generate();
+        let map = vec![(perno.clone(), resumen(perno.clone(), "P", "P", true))];
+        let gateway: Arc<dyn crate::RecommendationGateway> = Arc::new(
+            crate::RecommendationService::new(InMemoryRelationRepo::new(map)),
+        );
         let _ = gateway.clone();
     }
 }
