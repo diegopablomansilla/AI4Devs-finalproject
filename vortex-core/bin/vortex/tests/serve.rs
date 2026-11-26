@@ -704,6 +704,36 @@ fn vortex_serve_get_unknown_product_returns_404() {
 }
 
 #[test]
+fn vortex_serve_get_unknown_product_relations_returns_404() {
+    let bind = ephemeral_bind();
+    let dir = temp_dir();
+    let path = write_config(&dir, &bind);
+    let mut child = spawn_serve_production(&path);
+    let addr: SocketAddr = bind.parse().expect("bind addr");
+    let unknown = "01J9ZK4Q6Y3M2V8W0XAB1CD2EF";
+    let relations_path = format!("/api/v1/products/{unknown}/relations");
+    let start = Instant::now();
+    let mut ok = false;
+    while start.elapsed() < BOOT_WAIT {
+        if let Some((status, ctype, _, body)) = http_get_headers(addr, &relations_path) {
+            if status == 404 && ctype == "application/problem+json" {
+                let json: serde_json::Value = serde_json::from_str(&body).expect("problem json");
+                if json.get("code").and_then(|c| c.as_str()) == Some("not_found") {
+                    ok = true;
+                    break;
+                }
+            }
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    terminate_child(&mut child);
+    assert!(
+        ok,
+        "GET unknown product relations must return 404 not_found (service injected), not 503"
+    );
+}
+
+#[test]
 fn vortex_serve_post_stock_unknown_product_returns_404() {
     let bind = ephemeral_bind();
     let dir = temp_dir();

@@ -10,6 +10,7 @@ mod health;
 mod metrics;
 pub mod pagination;
 mod products;
+mod relations;
 mod search;
 mod static_files;
 mod stock;
@@ -18,6 +19,7 @@ mod sync_telemetry;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use ::recommend::RelationGateway;
 use ::search::SearchGateway;
 use axum::{
     Router,
@@ -60,6 +62,7 @@ struct AppStateInner {
     products: Option<Arc<dyn ProductGateway>>,
     stock: Option<Arc<dyn StockGateway>>,
     search: Option<Arc<dyn SearchGateway>>,
+    relations: Option<Arc<dyn RelationGateway>>,
 }
 
 impl AppState {
@@ -84,6 +87,7 @@ impl AppState {
                 products: None,
                 stock: None,
                 search: None,
+                relations: None,
             }),
         }
     }
@@ -180,6 +184,16 @@ impl AppState {
     pub(crate) fn search(&self) -> Option<Arc<dyn SearchGateway>> {
         self.inner.search.clone()
     }
+
+    #[must_use]
+    pub fn with_relations(mut self, relations: Arc<dyn RelationGateway>) -> Self {
+        Arc::make_mut(&mut self.inner).relations = Some(relations);
+        self
+    }
+
+    pub(crate) fn relations(&self) -> Option<Arc<dyn RelationGateway>> {
+        self.inner.relations.clone()
+    }
 }
 
 impl Default for AppState {
@@ -265,6 +279,15 @@ pub fn router_shell(state: AppState) -> Router {
         .route(
             "/api/v1/search/by-code/{code}",
             get(search::get_search_by_code),
+        )
+        .route("/api/v1/relations", post(relations::post_relation))
+        .route(
+            "/api/v1/relations/{relation_type}/{relation_id}",
+            patch(relations::patch_relation).delete(relations::delete_relation),
+        )
+        .route(
+            "/api/v1/products/{product_id}/relations",
+            get(relations::list_product_relations),
         )
         .fallback(fallback_not_found)
         .layer(middleware::from_fn(metrics::record_http_duration))

@@ -59,6 +59,14 @@ impl RelationRepo for RelacionRepo {
         let db = Arc::clone(&self.db);
         async move { list_for_product_impl(db.as_ref(), producto).await }
     }
+
+    fn list_incoming_for_product(
+        &self,
+        producto: Id<Producto>,
+    ) -> impl Future<Output = Result<RelacionesDeProducto, DomainError>> + Send {
+        let db = Arc::clone(&self.db);
+        async move { list_incoming_for_product_impl(db.as_ref(), producto).await }
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -97,6 +105,11 @@ struct RelacionListRecord {
     out_activo: Option<bool>,
     #[serde(default)]
     out_fetched: Option<OutProductoFields>,
+    in_sku: Option<String>,
+    in_nombre: Option<String>,
+    in_activo: Option<bool>,
+    #[serde(default)]
+    in_fetched: Option<OutProductoFields>,
 }
 
 async fn create_impl(db: &Db, input: NewRelacion) -> Result<Relacion, DomainError> {
@@ -236,6 +249,28 @@ async fn delete_impl(
     tx.commit().await
 }
 
+async fn list_incoming_for_product_impl(
+    db: &Db,
+    producto: Id<Producto>,
+) -> Result<RelacionesDeProducto, DomainError> {
+    let pid = producto.to_string();
+    let mut similar_a = list_incoming_edges_for_table(db, TipoRelacion::SimilarA, &pid).await?;
+    let mut sustituible_por =
+        list_incoming_edges_for_table(db, TipoRelacion::SustituiblePor, &pid).await?;
+    let mut complementa =
+        list_incoming_edges_for_table(db, TipoRelacion::Complementa, &pid).await?;
+
+    sort_relacion_items(&mut similar_a);
+    sort_relacion_items(&mut sustituible_por);
+    sort_relacion_items(&mut complementa);
+
+    Ok(RelacionesDeProducto {
+        similar_a,
+        sustituible_por,
+        complementa,
+    })
+}
+
 async fn list_for_product_impl(
     db: &Db,
     producto: Id<Producto>,
@@ -276,6 +311,57 @@ async fn list_edges_for_table(
         out.push(RelacionConDestino { relacion, destino });
     }
     Ok(out)
+}
+
+async fn list_incoming_edges_for_table(
+    db: &Db,
+    tipo: TipoRelacion,
+    producto_id: &str,
+) -> Result<Vec<RelacionConDestino>, DomainError> {
+    let tabla = tipo.as_str();
+    let stmt = format!(
+        "SELECT id, in, out, prioridad, nota, grupo_bidireccional, creado_en, actualizado_en, \
+         in.sku AS in_sku, in.nombre AS in_nombre, in.activo AS in_activo \
+         FROM {tabla} \
+         WHERE out = type::thing('producto', '{producto_id}');"
+    );
+    let rows = query_relacion_list(db, &stmt).await?;
+    let mut out = Vec::with_capacity(rows.len());
+    for row in rows {
+        let relacion = record_to_relacion(tipo, row_to_edge_record(&row))?;
+        let destino = destino_from_incoming_list_row(&row)?;
+        out.push(RelacionConDestino { relacion, destino });
+    }
+    Ok(out)
+}
+
+fn destino_from_incoming_list_row(row: &RelacionListRecord) -> Result<DestinoResumen, DomainError> {
+    let id = record_id_to_domain_id::<Producto>(&row.r#in)?;
+    if let Some(fields) = &row.in_fetched {
+        return Ok(DestinoResumen {
+            id,
+            sku: fields.sku.clone(),
+            nombre: fields.nombre.clone(),
+            activo: fields.activo,
+        });
+    }
+    let sku = row
+        .in_sku
+        .clone()
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| DomainError::unavailable(UnavailableCode::Unavailable))?;
+    let nombre = row
+        .in_nombre
+        .clone()
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| DomainError::unavailable(UnavailableCode::Unavailable))?;
+    let activo = row.in_activo.unwrap_or(true);
+    Ok(DestinoResumen {
+        id,
+        sku,
+        nombre,
+        activo,
+    })
 }
 
 fn row_to_edge_record(row: &RelacionListRecord) -> RelacionRecord {

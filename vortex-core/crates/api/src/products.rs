@@ -239,6 +239,23 @@ pub(crate) fn product_summary_response(row: ResumenProducto) -> ProductSummaryRe
     }
 }
 
+pub(crate) fn product_summary_from_destino(
+    destino: &domain::DestinoResumen,
+) -> ProductSummaryResponse {
+    ProductSummaryResponse {
+        id: destino.id.clone(),
+        sku: destino.sku.clone(),
+        name: destino.nombre.clone(),
+        product_type: String::new(),
+        brand: None,
+        category_path: vec![],
+        price: "0".parse().expect("zero"),
+        stock: "0".parse().expect("zero"),
+        active: destino.activo,
+        image_url: None,
+    }
+}
+
 pub async fn list_products(
     State(state): State<AppState>,
     Query(query): Query<ListProductsQuery>,

@@ -664,3 +664,50 @@ async fn relation_repo_update_rejects_nota_over_500() {
 
     assert_eq!(err.code(), DomainCode::InvalidInput);
 }
+
+#[tokio::test]
+async fn relation_repo_list_incoming_summarizes_origin() {
+    let db = Arc::new(test_db().await);
+    let (perno, arandela) = seed_perno_y_arandela(Arc::clone(&db)).await;
+    relation_repo(Arc::clone(&db))
+        .create(NewRelacion {
+            origen: perno.clone(),
+            destino: arandela.clone(),
+            tipo: TipoRelacion::Complementa,
+            prioridad: 1,
+            nota: None,
+            bidireccional: None,
+        })
+        .await
+        .expect("create");
+
+    let repo = relation_repo(Arc::clone(&db));
+    let incoming = repo
+        .list_incoming_for_product(arandela.clone())
+        .await
+        .expect("incoming");
+    assert_eq!(incoming.complementa.len(), 1);
+    assert_eq!(incoming.similar_a.len(), 0);
+    assert_eq!(incoming.complementa[0].relacion.origen, perno);
+    assert_eq!(incoming.complementa[0].destino.sku, "PER-M8X40-ZN");
+    assert_eq!(
+        incoming.complementa[0].destino.nombre,
+        "Perno hexagonal M8 x 40 zincado"
+    );
+
+    let outgoing = repo.list_for_product(arandela).await.expect("outgoing");
+    assert!(outgoing.complementa.is_empty());
+}
+
+#[tokio::test]
+async fn relation_repo_list_incoming_empty() {
+    let db = Arc::new(test_db().await);
+    let (perno, _) = seed_perno_y_arandela(Arc::clone(&db)).await;
+    let incoming = relation_repo(db)
+        .list_incoming_for_product(perno)
+        .await
+        .expect("incoming");
+    assert!(incoming.similar_a.is_empty());
+    assert!(incoming.sustituible_por.is_empty());
+    assert!(incoming.complementa.is_empty());
+}

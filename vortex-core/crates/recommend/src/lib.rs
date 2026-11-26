@@ -1,1 +1,5 @@
-//! Crate `recommend` (placeholder for T-00-01-02).
+//! Crate `recommend`: product relation use cases (T-04-05).
+
+mod relation;
+
+pub use relation::{ListRelationsParams, RelationGateway, RelationService};

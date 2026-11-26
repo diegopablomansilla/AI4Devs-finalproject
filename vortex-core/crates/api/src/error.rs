@@ -211,6 +211,37 @@ impl ApiError {
     }
 
     #[must_use]
+    pub fn invalid_relation_id(instance: String) -> Self {
+        Self::invalid_input_with_fields(
+            vec![FieldProblem {
+                field: "relationId".into(),
+                message: "must be a valid ULID".into(),
+            }],
+            Some("Invalid relation id".into()),
+            Some(instance),
+            "invalid_input",
+        )
+    }
+
+    #[must_use]
+    pub fn invalid_relation_type(instance: String) -> Self {
+        Self::invalid_input_with_fields(
+            vec![FieldProblem {
+                field: "relationType".into(),
+                message: "unknown relation type".into(),
+            }],
+            Some("Invalid relation type".into()),
+            Some(instance),
+            "invalid_input",
+        )
+    }
+
+    #[must_use]
+    pub fn from_domain_relation(err: DomainError, instance: impl Into<String>) -> Self {
+        Self::from(remap_domain_relation_errors(err)).with_instance(instance.into())
+    }
+
+    #[must_use]
     pub fn invalid_terminal_header(instance: String) -> Self {
         Self::invalid_input_with_fields(
             vec![FieldProblem {
@@ -442,7 +473,27 @@ fn remap_api_field(field: &str) -> String {
         "cantidad" => "quantity".into(),
         "motivo" => "reason".into(),
         "producto" => "productId".into(),
+        "origen" => "sourceProductId".into(),
+        "destino" => "targetProductId".into(),
+        "prioridad" => "priority".into(),
+        "nota" => "note".into(),
         other => other.to_string(),
+    }
+}
+
+fn remap_domain_relation_errors(err: DomainError) -> DomainError {
+    match err {
+        DomainError::InvalidInput { code, errors } => {
+            let errors = errors
+                .into_iter()
+                .map(|FieldError { field, message }| FieldError {
+                    field: remap_api_field(&field),
+                    message,
+                })
+                .collect();
+            DomainError::InvalidInput { code, errors }
+        }
+        other => other,
     }
 }
 

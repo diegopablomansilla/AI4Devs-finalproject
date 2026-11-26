@@ -231,6 +231,10 @@ assert_ok 'api declara path catalog' "${tmp}"
 cp "${REPO_ROOT}/vortex-core/crates/api/Cargo.toml" "${tmp}/vortex-core/crates/api/Cargo.toml"
 assert_ok 'api declara path search' "${tmp}"
 
+# happy: api declares path recommend (T-04-05)
+cp "${REPO_ROOT}/vortex-core/crates/api/Cargo.toml" "${tmp}/vortex-core/crates/api/Cargo.toml"
+assert_ok 'api declara path recommend' "${tmp}"
+
 # unhappy: api declares jsonschema in runtime dependencies
 cp "${REPO_ROOT}/vortex-core/crates/api/Cargo.toml" "${tmp}/vortex-core/crates/api/Cargo.toml"
 cat >"${tmp}/vortex-core/crates/api/Cargo.toml" <<'EOF'
@@ -509,6 +513,13 @@ assert_ok 'vortex declara path catalog' "${tmp}"
 
 # happy: vortex declares path search, sync, domain (T-00-27)
 assert_ok 'vortex declara path search sync domain' "${tmp}"
+
+cp "${REPO_ROOT}/vortex-core/crates/recommend/Cargo.toml" "${tmp}/vortex-core/crates/recommend/Cargo.toml"
+assert_ok 'recommend declara path domain' "${tmp}"
+
+# happy: vortex declares path recommend (T-04-05)
+cp "${REPO_ROOT}/vortex-core/bin/vortex/Cargo.toml" "${tmp}/vortex-core/bin/vortex/Cargo.toml"
+assert_ok 'vortex declara path recommend' "${tmp}"
 
 # happy: vortex dev-dependencies tokio for seed integration tests (T-02-42)
 assert_ok 'vortex dev-dependencies tokio' "${tmp}"

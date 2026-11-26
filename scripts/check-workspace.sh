@@ -228,6 +228,49 @@ search_deps_allowed() {
   return 0
 }
 
+# `recommend` allowlist (T-04-05): domain; [dev-dependencies] tokio only.
+recommend_deps_allowed() {
+  crate_toml=$1
+
+  if grep -Eq '^\[dev-dependencies\]' "${crate_toml}"; then
+    dev_other=$(
+      awk '
+        /^\[dev-dependencies\]/ { indev = 1; next }
+        /^\[/ { indev = 0 }
+        indev && /^[^[:space:]#]/ { print }
+      ' "${crate_toml}" | grep -v -E '^tokio[[:space:]]*=' || true
+    )
+    if [ -n "${dev_other}" ]; then
+      return 1
+    fi
+    if grep -E '^tokio[[:space:]]*=' "${crate_toml}" >/dev/null 2>&1; then
+      grep -E '^tokio[[:space:]]*=' "${crate_toml}" | grep -Eq 'workspace[[:space:]]*=[[:space:]]*true' \
+        || return 1
+    fi
+  fi
+
+  if ! grep -Eq '^\[dependencies\]' "${crate_toml}"; then
+    return 0
+  fi
+
+  other_deps=$(
+    awk '
+      /^\[dependencies\]/ { indeps = 1; next }
+      /^\[/ { indeps = 0 }
+      indeps && /^[^[:space:]#]/ { print }
+    ' "${crate_toml}" | grep -v -E '^(domain)[[:space:]]*=' || true
+  )
+  if [ -n "${other_deps}" ]; then
+    return 1
+  fi
+
+  if grep -E '^domain[[:space:]]*=' "${crate_toml}" >/dev/null 2>&1; then
+    grep -E '^domain[[:space:]]*=' "${crate_toml}" | grep -Eq 'path[[:space:]]*=' \
+      || return 1
+  fi
+  return 0
+}
+
 # `sync` allowlist (T-03-07): domain, storage, tokio; [dev-dependencies] search, tokio.
 sync_deps_allowed() {
   crate_toml=$1
@@ -344,7 +387,7 @@ api_deps_allowed() {
       /^\[dependencies\]/ { indeps = 1; next }
       /^\[/ { indeps = 0 }
       indeps && /^[^[:space:]#]/ { print }
-    ' "${crate_toml}" | grep -v -E '^(axum|domain|catalog|search|serde|serde_json|thiserror|tower-http|tracing|metrics|metrics-exporter-prometheus|tokio)[[:space:]]*=' || true
+    ' "${crate_toml}" | grep -v -E '^(axum|domain|catalog|search|recommend|serde|serde_json|thiserror|tower-http|tracing|metrics|metrics-exporter-prometheus|tokio)[[:space:]]*=' || true
   )
   if [ -n "${other_deps}" ]; then
     return 1
@@ -381,6 +424,10 @@ api_deps_allowed() {
   fi
   if grep -E '^search[[:space:]]*=' "${crate_toml}" >/dev/null 2>&1; then
     grep -E '^search[[:space:]]*=' "${crate_toml}" | grep -Eq 'path[[:space:]]*=' \
+      || return 1
+  fi
+  if grep -E '^recommend[[:space:]]*=' "${crate_toml}" >/dev/null 2>&1; then
+    grep -E '^recommend[[:space:]]*=' "${crate_toml}" | grep -Eq 'path[[:space:]]*=' \
       || return 1
   fi
   if grep -E '^tower-http[[:space:]]*=' "${crate_toml}" >/dev/null 2>&1; then
@@ -481,7 +528,7 @@ vortex_deps_allowed() {
       /^\[dependencies\]/ { indeps = 1; next }
       /^\[/ { indeps = 0 }
       indeps && /^[^[:space:]#]/ { print }
-    ' "${crate_toml}" | grep -v -E '^(toml|serde|thiserror|tracing|tracing-subscriber|tracing-appender|clap|api|supervisor|storage|catalog|search|sync|domain|tokio|axum)[[:space:]]*=' || true
+    ' "${crate_toml}" | grep -v -E '^(toml|serde|thiserror|tracing|tracing-subscriber|tracing-appender|clap|api|supervisor|storage|catalog|search|recommend|sync|domain|tokio|axum)[[:space:]]*=' || true
   )
   if [ -n "${other_deps}" ]; then
     return 1
@@ -515,6 +562,10 @@ vortex_deps_allowed() {
   fi
   if grep -E '^sync[[:space:]]*=' "${crate_toml}" >/dev/null 2>&1; then
     grep -E '^sync[[:space:]]*=' "${crate_toml}" | grep -Fq 'path' \
+      || return 1
+  fi
+  if grep -E '^recommend[[:space:]]*=' "${crate_toml}" >/dev/null 2>&1; then
+    grep -E '^recommend[[:space:]]*=' "${crate_toml}" | grep -Fq 'path' \
       || return 1
   fi
   if grep -E '^domain[[:space:]]*=' "${crate_toml}" >/dev/null 2>&1; then
@@ -657,6 +708,10 @@ for member in ${REQUIRED_MEMBERS}; do
     elif [ "${crate_name}" = "search" ]; then
       if ! search_deps_allowed "${crate_toml}"; then
         fail "el crate search declara dependencias fuera de la allowlist de Meilisearch"
+      fi
+    elif [ "${crate_name}" = "recommend" ]; then
+      if ! recommend_deps_allowed "${crate_toml}"; then
+        fail "el crate recommend declara dependencias fuera de la allowlist de relaciones"
       fi
     elif [ "${crate_name}" = "sync" ]; then
       if ! sync_deps_allowed "${crate_toml}"; then
