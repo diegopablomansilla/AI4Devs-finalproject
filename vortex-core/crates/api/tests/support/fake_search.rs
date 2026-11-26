@@ -121,6 +121,10 @@ impl FakeSearchGateway {
             .dropped
             .load(Ordering::SeqCst)
     }
+
+    pub fn search_started(&self) -> bool {
+        self.inner.lock().expect("lock").last.is_some()
+    }
 }
 
 fn empty_page() -> SearchPage {

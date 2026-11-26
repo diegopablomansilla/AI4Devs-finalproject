@@ -76,14 +76,25 @@ fn vortex_help_mentions_config_flag() {
 }
 
 #[test]
-fn vortex_reindex_unimplemented_ignores_missing_config() {
+fn vortex_reindex_missing_config_file_is_not_unimplemented() {
     let output = Command::new(vortex_bin())
         .args(["--config", "/nonexistent/vortex-config.toml", "reindex"])
         .output()
         .expect("spawn vortex");
-    assert_eq!(output.status.code(), Some(1));
+    assert_ne!(output.status.code(), Some(0));
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("no implementado"), "stderr: {stderr}");
+    assert!(!stderr.contains("no implementado"), "stderr: {stderr}");
+}
+
+#[test]
+fn vortex_reindex_without_config_is_error() {
+    let output = Command::new(vortex_bin())
+        .arg("reindex")
+        .output()
+        .expect("spawn vortex");
+    assert_ne!(output.status.code(), Some(0));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(!stderr.contains("no implementado"), "stderr: {stderr}");
 }
 
 #[test]
@@ -110,7 +121,7 @@ fn vortex_seed_missing_config_file_is_not_unimplemented() {
 
 #[test]
 fn vortex_top_level_stubs_print_unimplemented() {
-    for sub in ["reindex", "backup", "cert", "models", "verify"] {
+    for sub in ["backup", "cert", "models", "verify"] {
         let output = Command::new(vortex_bin())
             .arg(sub)
             .output()
