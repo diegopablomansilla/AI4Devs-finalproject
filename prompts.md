@@ -453,30 +453,29 @@ Incluí happy + unhappy path. Sin git commit hasta archive.
 Después proponé el commit Conventional Commits con scope (T-00-01-01) y footer Refs: T-00-01, HU-00-01; no lo ejecutes sin mi OK.
 Con el commit listo, proponé también el PR a develop.
 
-#### T-00-09
+#### Tickets del MVP
+
+Ajuste a los **prompts reales** usados en la **mayoría de los tickets del MVP** (ruta §7.5.1). No siempre fueron idénticos: hubo variaciones de modelo y de texto según el ticket, pero en general se respetó esta estructura (propose → apply TDD → archive → commit/PR).
 
 **Prompt 1:**
 
 **Rol:** Arquitecto/Desarrollador de Software especializado en aplicaciones web Rust/Axum, Meilisearch, SurrealDB y vanilla web.
-**Objetivo:** Ticket T-09-01 de docs/7-tickets.md (ruta MVP §7.5.1).
+**Objetivo:** Ticket T-03-11 de docs/7-tickets.md (ruta MVP §7.5.1).
 Planificá el change OpenSpec para el ticket que te mencione según docs/desarrollo-git-openspec.md y AGENTS.md:
 - Derivá alcance de Hace / No hace / Listo cuando del ticket
 - Incluí TDD: happy path y unhappy path
 - Referencias: docs/7-tickets.md, docs/desarrollo-git-openspec.md §5 (comandos de verificación), openspec/config.yaml
-
 Alcance: solo MVP del curso.
 Crea ramas, openspec propose, no implementes.
 Mostrame el plan y esperá mi OK.
 
 **Prompt 2:**
 
-**Rol:** Arquitecto/Desarrollador de Software especializado en aplicaciones web Rust/Axum, Mailosearch, SurrealDB y vanilla web. 
-**Objetivo:**  OK con la propuesta. openspec apply con TDD (red → green → refactor).
-Incluí happy + unhappy path. Sin git commit hasta archive.
+OK con la propuesta. openspec apply con TDD (red → green → refactor).
+Incluí happy + unhappy path. Sin git commit hasta archive
 
 **Prompt 3:**
 
-**Rol:** Arquitecto/Desarrollador de Software especializado en aplicaciones web Rust/Axum, Mailosearch, SurrealDB y vanilla web. 
-**Objetivo:**  Tests en verde. Autorizo openspec archive del ticket.
+Tests en verde. Autorizo openspec archive del ticket.
 Después proponé el commit Conventional Commits con scope (del ticket); no lo ejecutes sin mi OK.
-Con el commit listo, proponé también el PR a develop.
+Con el commit listo, proponé también el PR a develop
