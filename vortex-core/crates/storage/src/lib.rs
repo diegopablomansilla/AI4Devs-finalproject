@@ -8,6 +8,7 @@ mod migrate;
 mod movimiento_stock;
 mod outbox;
 mod producto;
+mod relacion;
 pub mod testing;
 mod tx;
 
@@ -23,6 +24,7 @@ pub use migrate::{
 pub use movimiento_stock::MovimientoStockRepo;
 pub use outbox::OutboxStore;
 pub use producto::ProductoRepo;
+pub use relacion::RelacionRepo;
 pub use tx::{OutboxNotifier, Tx};
 
 use std::path::{Path, PathBuf};
@@ -154,6 +156,34 @@ impl Db {
             .map_err(|e| OpenError::surreal(path, e))?;
         response.check().map_err(|e| OpenError::surreal(path, e))?;
         Ok(())
+    }
+
+    /// Evaluates a SurrealQL expression via `RETURN` and returns an `i64` (integration tests).
+    pub async fn query_return_i64(&self, expr: &str) -> Result<i64, OpenError> {
+        let path = Path::new(".");
+        let stmt = format!("RETURN {expr};");
+        let response = self
+            .inner
+            .query(&stmt)
+            .await
+            .map_err(|e| OpenError::surreal(path, e))?;
+        let mut checked = response.check().map_err(|e| OpenError::surreal(path, e))?;
+        let len: Option<i64> = checked.take(0).map_err(|e| OpenError::surreal(path, e))?;
+        Ok(len.unwrap_or(0))
+    }
+
+    /// Evaluates a SurrealQL expression via `RETURN` and returns a `string` (integration tests).
+    pub async fn query_return_string(&self, expr: &str) -> Result<String, OpenError> {
+        let path = Path::new(".");
+        let stmt = format!("RETURN {expr};");
+        let response = self
+            .inner
+            .query(&stmt)
+            .await
+            .map_err(|e| OpenError::surreal(path, e))?;
+        let mut checked = response.check().map_err(|e| OpenError::surreal(path, e))?;
+        let s: Option<String> = checked.take(0).map_err(|e| OpenError::surreal(path, e))?;
+        Ok(s.unwrap_or_default())
     }
 
     /// Record count for a table (`0` when the table is unknown or empty).
