@@ -11,9 +11,9 @@ use axum::serve;
 use catalog::{
     AttributeDefService, BrandService, CategoryService, ProductService, ProductionOccupancy,
 };
-use domain::{IndexUid, SyncTelemetry};
+use domain::{AttributeDefRepo, DomainError, IndexUid, OutboxRepo, SyncTelemetry, TextSearch};
 use recommend::{RecommendationService, RelationService};
-use search::{MeiliTextSearch, SearchService};
+use search::{MeiliTextSearch, SearchService, productos_index_settings};
 use storage::{
     AtributoDefRepo, CategoriaRepo, DB_DIR_NAME, Db, MarcaRepo, OutboxStore, ProductAttributeUsage,
     ProductoRepo, RelacionRepo,
@@ -116,6 +116,32 @@ impl RegistrySyncTelemetry {
     }
 }
 
+fn index_already_exists(err: &DomainError) -> bool {
+    let msg = err.to_string().to_ascii_lowercase();
+    msg.contains("already exists") || msg.contains("index_already_exists")
+}
+
+/// Ensures the Meilisearch `productos` index exists and has the 4.11.2 profile (T-03-05 / T-03-14).
+async fn bootstrap_productos_index(
+    text_search: MeiliTextSearch,
+    index: &IndexUid,
+    db: Arc<Db>,
+) -> Result<(), DomainError> {
+    if let Err(e) = text_search.create_index(index).await {
+        if !index_already_exists(&e) {
+            return Err(e);
+        }
+        tracing::debug!(error = %e, "productos index already exists");
+    }
+    let defs = AtributoDefRepo::new(Arc::clone(&db)).list_all().await?;
+    let claves = defs
+        .iter()
+        .filter(|d| d.activo && d.facetable)
+        .map(|d| d.clave.as_str());
+    let settings = productos_index_settings(claves)?;
+    text_search.apply_settings(index, settings).await
+}
+
 impl SyncTelemetry for RegistrySyncTelemetry {
     fn set_outbox_lag(&self, consumidor: &str, lag: u64) {
         self.prom.set_outbox_lag(consumidor, lag);
@@ -203,12 +229,24 @@ async fn serve_config(config: Config, _logging_guard: LoggingGuard) -> i32 {
             return 1;
         }
     };
-    let telemetry = RegistrySyncTelemetry::new(Arc::clone(&health));
     let outbox = OutboxStore::new(Arc::clone(&db));
+
+    if meili_up {
+        match bootstrap_productos_index(text_search.clone(), &index, Arc::clone(&db)).await {
+            Ok(()) => tracing::info!("bootstrap productos index ok"),
+            Err(e) => {
+                tracing::warn!(error = %e, "bootstrap productos index failed");
+            }
+        }
+    } else {
+        tracing::warn!("bootstrap productos index skipped: meilisearch down");
+    }
+
+    let telemetry = RegistrySyncTelemetry::new(Arc::clone(&health));
     let search_gateway: Arc<dyn search::SearchGateway> =
         Arc::new(SearchService::new(text_search.clone(), index.clone()));
     let worker = MeiliProductWorker::new(
-        outbox,
+        outbox.clone(),
         ProductoRepo::new(Arc::clone(&db)),
         AtributoDefRepo::new(Arc::clone(&db)),
         text_search,
@@ -219,7 +257,22 @@ async fn serve_config(config: Config, _logging_guard: LoggingGuard) -> i32 {
     );
     let worker_stop = Arc::new(AtomicBool::new(false));
     let stop_flag = Arc::clone(&worker_stop);
+    let catch_up = meili_up;
     let worker_handle: JoinHandle<()> = tokio::spawn(async move {
+        if catch_up {
+            for round in 0u32..64 {
+                match worker.drain_once().await {
+                    Ok(()) => {}
+                    Err(e) => {
+                        tracing::warn!(error = %e, round, "meilisearch catch-up drain paused");
+                        break;
+                    }
+                }
+                if outbox.meilisearch_lag().await.unwrap_or(0) == 0 {
+                    break;
+                }
+            }
+        }
         worker
             .run_while(|| !stop_flag.load(Ordering::Relaxed))
             .await;

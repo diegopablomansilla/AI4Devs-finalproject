@@ -4,6 +4,7 @@ import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { waitForSearchIndex } from "./search-ready.js";
 
 const e2eDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(e2eDir, "..");
@@ -174,6 +175,7 @@ export default async function globalSetup() {
   });
 
   await waitHttpOk(`${baseURL}/health`, 120_000);
+  await waitForSearchIndex(baseURL, { timeoutMs: 120_000 });
 
   const stack = {
     baseURL,

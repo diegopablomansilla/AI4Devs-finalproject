@@ -9,6 +9,40 @@ export function looksLikeCode(q) {
   return q.length >= 1 && q.length <= 64 && /^[A-Za-z0-9-]+$/.test(q);
 }
 
+/** True when the query is shaped like a product/SKU code (not a plain word such as `tornilo`). */
+export function looksLikeSkuCode(q) {
+  if (!looksLikeCode(q)) {
+    return false;
+  }
+  return /[A-Z]/.test(q) || (/-/.test(q) && /\d/.test(q));
+}
+
+/**
+ * When by-code misses, drop fuzzy hits that look like a one-edit SKU typo of the query.
+ *
+ * @param {string} q
+ * @param {Array<Record<string, unknown>>} searchHits
+ */
+function shouldSuppressNearSkuTypoHits(q, searchHits) {
+  if (!looksLikeSkuCode(q)) {
+    return false;
+  }
+  const qUpper = q.toUpperCase();
+  return searchHits.some((hit) => {
+    const sku = String(hit?.sku ?? "").toUpperCase();
+    if (!sku || sku === qUpper) {
+      return false;
+    }
+    let common = 0;
+    const limit = Math.min(qUpper.length, sku.length);
+    while (common < limit && qUpper[common] === sku[common]) {
+      common += 1;
+    }
+    const tail = Math.abs(qUpper.length - sku.length);
+    return common >= 8 && tail <= 2 && common >= limit - 2;
+  });
+}
+
 /**
  * @param {Element} el
  */
@@ -313,6 +347,15 @@ export function mountSearch(root, { request, showError }) {
         paintedSearch = true;
       } else if (searchOutcome.reason?.name !== "AbortError") {
         showError(searchOutcome.reason);
+      }
+
+      if (
+        byCodeOutcome?.status === "fulfilled" &&
+        exactItems.length === 0 &&
+        shouldSuppressNearSkuTypoHits(q, searchHits)
+      ) {
+        searchHits = [];
+        paintedSearch = false;
       }
 
       if (!paintedSearch && !paintedExact) {

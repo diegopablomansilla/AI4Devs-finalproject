@@ -334,6 +334,8 @@ async fn vortex_seed_dev_dataset_exit_0() {
     let db = Arc::new(Db::open(datos.join(DB_DIR_NAME)).await.expect("open db"));
     let count = count_products(&db).await;
     assert!((180..=220).contains(&count));
+    let outbox = db.record_count("outbox").await.expect("outbox count");
+    assert!(outbox > 0, "seed must emit outbox events");
 }
 
 #[test]
