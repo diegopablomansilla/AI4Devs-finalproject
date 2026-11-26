@@ -102,6 +102,10 @@ El API Gateway traduce entre el contrato (inglés) y el dominio (español, [4-mo
 | `quantity`, `resultingStock`, `reason`, `saleId`, `terminal` | `cantidad`, `stock_resultante`, `motivo`, `venta`, `terminal` |
 | `sourceProductId`, `targetProductId` (relación) | `in`, `out` |
 | `priority`, `note`, `bidirectionalGroup` | `prioridad`, `nota`, `grupo_bidireccional` |
+| `productId`, `highlightSubstitutes` (panel) | `producto_id`, `destacar_sustitutos` |
+| `similar`, `substitutes`, `complements` (panel) | `similares`, `sustitutos`, `complementarios` |
+| `relationId` (`RecommendedProduct`) | `relacion_id` |
+| `location` (línea en `RecommendedProduct`, p. ej. `P3 · E-B · 12`) | `ubicacion` (string formateado; no el objeto `ubicacion.*` de la ficha) |
 | `facetable`, `searchable`, `options`, `order` | `facetable`, `buscable`, `opciones`, `orden` |
 | `isPrimary`, `origin`, `width`, `height` (imagen) | `es_principal`, `origen`, `ancho`, `alto` |
 

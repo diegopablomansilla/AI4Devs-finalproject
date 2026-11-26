@@ -10,6 +10,7 @@ mod health;
 mod metrics;
 pub mod pagination;
 mod products;
+mod recommendations;
 mod relations;
 mod search;
 mod static_files;
@@ -19,7 +20,7 @@ mod sync_telemetry;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use ::recommend::RelationGateway;
+use ::recommend::{RecommendationGateway, RelationGateway};
 use ::search::SearchGateway;
 use axum::{
     Router,
@@ -63,6 +64,7 @@ struct AppStateInner {
     stock: Option<Arc<dyn StockGateway>>,
     search: Option<Arc<dyn SearchGateway>>,
     relations: Option<Arc<dyn RelationGateway>>,
+    recommendations: Option<Arc<dyn RecommendationGateway>>,
 }
 
 impl AppState {
@@ -88,6 +90,7 @@ impl AppState {
                 stock: None,
                 search: None,
                 relations: None,
+                recommendations: None,
             }),
         }
     }
@@ -194,6 +197,16 @@ impl AppState {
     pub(crate) fn relations(&self) -> Option<Arc<dyn RelationGateway>> {
         self.inner.relations.clone()
     }
+
+    #[must_use]
+    pub fn with_recommendations(mut self, recommendations: Arc<dyn RecommendationGateway>) -> Self {
+        Arc::make_mut(&mut self.inner).recommendations = Some(recommendations);
+        self
+    }
+
+    pub(crate) fn recommendations(&self) -> Option<Arc<dyn RecommendationGateway>> {
+        self.inner.recommendations.clone()
+    }
 }
 
 impl Default for AppState {
@@ -288,6 +301,10 @@ pub fn router_shell(state: AppState) -> Router {
         .route(
             "/api/v1/products/{product_id}/relations",
             get(relations::list_product_relations),
+        )
+        .route(
+            "/api/v1/products/{product_id}/recommendations",
+            get(recommendations::get_product_recommendations),
         )
         .fallback(fallback_not_found)
         .layer(middleware::from_fn(metrics::record_http_duration))

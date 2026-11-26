@@ -592,14 +592,23 @@ async fn post_relation_without_service_returns_503() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn get_recommendations_is_not_registered() {
+async fn get_recommendations_without_recommendation_gateway_returns_503() {
     let (addr, handle, fx) = setup_perno_arandela().await;
     let path = format!("/api/v1/products/{}/recommendations", fx.perno);
-    let (status, _, resp) = http_send(addr, "GET", &path, None).await;
+    let (status, ctype, resp) = http_send(addr, "GET", &path, None).await;
     handle.abort();
     let json = json_body(&resp);
-    assert_eq!(status, 404);
-    assert_eq!(json["code"], "not_found");
+    assert_eq!(status, 503);
+    assert_ne!(status, 404);
+    assert_eq!(ctype, "application/problem+json");
+    assert_eq!(json["code"], "unavailable");
+    assert_conforms(
+        "GET",
+        "/api/v1/products/{productId}/recommendations",
+        503,
+        "application/problem+json",
+        &json,
+    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
