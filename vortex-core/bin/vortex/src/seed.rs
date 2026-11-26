@@ -1,14 +1,17 @@
-//! `vortex seed` — import master catalog rows and products (T-02-42, T-02-43).
+//! `vortex seed` — import master catalog rows, products and relations (T-02-42, T-02-43, T-04-11).
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use catalog::{
     AttributeDefService, BrandService, CategoryService, ProductService, ProductionOccupancy,
-    import_masters, import_products,
+    RelationSeedGateway, import_masters, import_products, import_relations,
 };
+use domain::NewRelacion;
+use recommend::RelationService;
 use storage::{
-    AtributoDefRepo, CategoriaRepo, DB_DIR_NAME, Db, MarcaRepo, ProductAttributeUsage, ProductoRepo,
+    AtributoDefRepo, CategoriaRepo, DB_DIR_NAME, Db, MarcaRepo, ProductAttributeUsage,
+    ProductoRepo, RelacionRepo,
 };
 
 use crate::config::Config;
@@ -127,8 +130,42 @@ async fn run_import(config: Config, dir: &Path) -> i32 {
         summary.importados, summary.rechazados
     );
 
-    if summary.rechazados > 0 {
+    let relation_seed = RelationSeedCli {
+        inner: RelationService::new(
+            RelacionRepo::new(Arc::clone(&db)),
+            ProductoRepo::new(Arc::clone(&db)),
+        ),
+    };
+    let relations: Arc<dyn RelationSeedGateway> = Arc::new(relation_seed);
+
+    let rel_summary = import_relations(dir, products.as_ref(), relations.as_ref()).await;
+
+    if !rel_summary.issues.is_empty() {
+        print_issues(&rel_summary.issues);
+    }
+    eprintln!(
+        "relaciones: importados={} omitidas={} rechazados={}",
+        rel_summary.importados, rel_summary.omitidas, rel_summary.rechazados
+    );
+
+    if summary.rechazados > 0 || rel_summary.rechazados > 0 {
         return 1;
     }
     0
+}
+
+struct RelationSeedCli {
+    inner: RelationService<RelacionRepo, ProductoRepo>,
+}
+
+impl RelationSeedGateway for RelationSeedCli {
+    fn create(
+        &self,
+        input: NewRelacion,
+    ) -> std::pin::Pin<
+        Box<dyn std::future::Future<Output = Result<(), domain::DomainError>> + Send + '_>,
+    > {
+        let svc = &self.inner;
+        Box::pin(async move { RelationService::create(svc, input).await.map(|_| ()) })
+    }
 }
