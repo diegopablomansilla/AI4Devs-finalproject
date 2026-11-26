@@ -373,10 +373,7 @@ fn vortex_seed_invalid_precio_rejected_alone() {
     let db = rt.block_on(async { Db::open(datos.join(DB_DIR_NAME)).await.expect("open") });
     let db = Arc::new(db);
     let count = rt.block_on(count_products(&db));
-    assert_eq!(
-        count, 1,
-        "only the valid SKU should persist; got {count}"
-    );
+    assert_eq!(count, 1, "only the valid SKU should persist; got {count}");
 }
 
 #[test]

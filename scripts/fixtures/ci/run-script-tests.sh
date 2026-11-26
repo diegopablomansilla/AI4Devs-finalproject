@@ -39,6 +39,8 @@ assert_fails_with "${SCENARIOS}/missing-meilisearch-job" meilisearch
 assert_fails_with "${SCENARIOS}/missing-include-ignored" include-ignored
 assert_fails_with "${SCENARIOS}/unpinned-meilisearch" meilisearch-version
 assert_fails_with "${SCENARIOS}/ollama-extra" Ollama
+assert_fails_with "${SCENARIOS}/missing-e2e-job" e2e
+assert_fails_with "${SCENARIOS}/missing-playwright" Playwright
 assert_fails_with "${SCENARIOS}/missing-redocly-yaml" redocly.yaml
 
 CHECK_ROOT="${REPO_ROOT}" "${SCRIPT}"
