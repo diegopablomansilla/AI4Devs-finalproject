@@ -8,6 +8,7 @@ import {
   mergePatchCodes,
   readProductCreate,
   readProductUpdate,
+  readRelationPatch,
   readStockMovement,
   renderCreateProductSheet,
   renderEditProductSheet,
@@ -220,12 +221,18 @@ export async function mountProducts(el, { request, showError = () => {} }) {
   let attributeDefs = [];
   /** @type {Array<{ definitionId: string, value: unknown }>} */
   let lastPostedAttributes = [];
-  /** @type {"datos" | "stock"} */
+  /** @type {"datos" | "stock" | "relaciones"} */
   let sheetTab = "datos";
   /** @type {Record<string, string>} */
   let stockFieldErrors = {};
   /** @type {string | null} */
   let lastResultingStock = null;
+  /** @type {Array<Record<string, unknown>>} */
+  let relationItems = [];
+  /** @type {Record<string, { priority?: string, note?: string }>} */
+  let relationFieldErrors = {};
+  /** @type {AbortController | null} */
+  let relationsAbort = null;
 
   const paint = () => {
     if (mode === "create") {
@@ -252,6 +259,8 @@ export async function mountProducts(el, { request, showError = () => {} }) {
           activeTab: sheetTab,
           stockFieldErrors,
           lastResultingStock,
+          relationItems,
+          relationFieldErrors,
         },
       );
       return;
@@ -277,6 +286,35 @@ export async function mountProducts(el, { request, showError = () => {} }) {
       showError(err);
       categories = [];
       brands = [];
+    }
+  };
+
+  const loadRelations = async () => {
+    if (!editProductId || sheetTab !== "relaciones") {
+      return;
+    }
+    relationsAbort?.abort();
+    const controller = new AbortController();
+    relationsAbort = controller;
+    const { signal } = controller;
+    try {
+      const data = await request(
+        "GET",
+        `/api/v1/products/${editProductId}/relations`,
+        { signal },
+      );
+      if (signal.aborted || sheetTab !== "relaciones") {
+        return;
+      }
+      relationItems = Array.isArray(data?.items) ? data.items : [];
+      relationFieldErrors = {};
+      paint();
+    } catch (err) {
+      if (err?.name === "AbortError") {
+        return;
+      }
+      showError(err);
+      paint();
     }
   };
 
@@ -347,9 +385,15 @@ export async function mountProducts(el, { request, showError = () => {} }) {
         return;
       }
       const tab = tabEl.getAttribute?.("data-tab");
-      if (tab === "datos" || tab === "stock") {
+      if (tab === "datos" || tab === "stock" || tab === "relaciones") {
         sheetTab = tab;
         paint();
+        if (tab === "relaciones") {
+          void loadRelations();
+        } else {
+          relationsAbort?.abort();
+          relationsAbort = null;
+        }
       }
       return;
     }
@@ -357,6 +401,90 @@ export async function mountProducts(el, { request, showError = () => {} }) {
     const actionEl = target?.closest?.("[data-action]") ?? target;
     const action = actionEl?.getAttribute?.("data-action");
     if (!action) {
+      return;
+    }
+
+    if (action === "save-relation" || action === "delete-relation") {
+      if (mode !== "edit" || !editProductId || sheetTab !== "relaciones") {
+        return;
+      }
+      const row = actionEl.closest?.("[data-relation-id]");
+      const relationId = row?.getAttribute?.("data-relation-id");
+      const relationType = row?.getAttribute?.("data-relation-type");
+      if (!relationId || !relationType) {
+        return;
+      }
+      if (action === "delete-relation") {
+        void (async () => {
+          try {
+            await request(
+              "DELETE",
+              `/api/v1/relations/${relationType}/${relationId}`,
+            );
+            if (sheetTab !== "relaciones") {
+              return;
+            }
+            await loadRelations();
+          } catch (err) {
+            showError(err);
+            paint();
+          }
+        })();
+        return;
+      }
+      const parsed = readRelationPatch(el, actionEl);
+      if (parsed == null) {
+        return;
+      }
+      if ("error" in parsed && parsed.error === "priority") {
+        relationFieldErrors = {
+          ...relationFieldErrors,
+          [relationId]: {
+            ...(relationFieldErrors[relationId] ?? {}),
+            priority: "La prioridad debe ser un entero mayor o igual a 1",
+          },
+        };
+        paint();
+        const localErr = {
+          code: "invalid_input",
+          status: 400,
+          title: "invalid_input",
+          errors: [{ field: "priority", message: "inválida" }],
+        };
+        showError(localErr);
+        return;
+      }
+      void (async () => {
+        try {
+          await request(
+            "PATCH",
+            `/api/v1/relations/${relationType}/${relationId}`,
+            { body: parsed },
+          );
+          if (sheetTab !== "relaciones") {
+            return;
+          }
+          await loadRelations();
+        } catch (err) {
+          if (err?.code === "invalid_input") {
+            const list = Array.isArray(err.errors) ? err.errors : [];
+            /** @type {{ priority?: string, note?: string }} */
+            const rowErrs = { ...(relationFieldErrors[relationId] ?? {}) };
+            for (const item of list) {
+              const field = item?.field;
+              if (field === "priority" || field === "note") {
+                rowErrs[field] = String(item.message ?? "");
+              }
+            }
+            relationFieldErrors = {
+              ...relationFieldErrors,
+              [relationId]: rowErrs,
+            };
+            paint();
+          }
+          showError(err);
+        }
+      })();
       return;
     }
 
@@ -381,6 +509,8 @@ export async function mountProducts(el, { request, showError = () => {} }) {
     }
 
     if (action === "cancel-sheet") {
+      relationsAbort?.abort();
+      relationsAbort = null;
       mode = "list";
       editProductId = null;
       editSnapshot = null;
@@ -389,6 +519,8 @@ export async function mountProducts(el, { request, showError = () => {} }) {
       sheetTab = "datos";
       stockFieldErrors = {};
       lastResultingStock = null;
+      relationItems = [];
+      relationFieldErrors = {};
       fieldErrors = {};
       lastPostedAttributes = [];
       paint();
@@ -406,11 +538,15 @@ export async function mountProducts(el, { request, showError = () => {} }) {
     }
 
     if (action === "edit") {
+      relationsAbort?.abort();
+      relationsAbort = null;
       mode = "edit";
       editProductId = productId;
       sheetTab = "datos";
       stockFieldErrors = {};
       lastResultingStock = null;
+      relationItems = [];
+      relationFieldErrors = {};
       fieldErrors = {};
       conflictLabels = [];
       changedFieldKeys = [];
@@ -639,6 +775,10 @@ export async function mountProducts(el, { request, showError = () => {} }) {
         sheetTab = "datos";
         stockFieldErrors = {};
         lastResultingStock = null;
+        relationItems = [];
+        relationFieldErrors = {};
+        relationsAbort?.abort();
+        relationsAbort = null;
         fieldErrors = {};
         lastPostedAttributes = [];
         await reloadFirstPage();

@@ -611,7 +611,7 @@ export function readProductCreate(root, form) {
  * @param {Record<string, string>} fieldErrors
  * @param {string[]} [changedFieldKeys]
  * @param {string[]} [conflictLabels]
- * @param {{ activeTab?: "datos" | "stock", stockFieldErrors?: Record<string, string>, lastResultingStock?: string | null }} [sheetUi]
+ * @param {{ activeTab?: "datos" | "stock" | "relaciones", stockFieldErrors?: Record<string, string>, lastResultingStock?: string | null, relationItems?: Array<Record<string, unknown>>, relationFieldErrors?: Record<string, { priority?: string, note?: string }> }} [sheetUi]
  */
 export function renderEditProductSheet(
   product,
@@ -654,6 +654,9 @@ export function renderEditProductSheet(
 
   const datosSelected = activeTab === "datos";
   const stockSelected = activeTab === "stock";
+  const relacionesSelected = activeTab === "relaciones";
+  const relationItems = sheetUi.relationItems ?? [];
+  const relationFieldErrors = sheetUi.relationFieldErrors ?? {};
 
   const datosForm = `<form data-form="edit-product" class="vx-product-sheet-form" data-product-version="${escapeHtml(String(product.version))}">
     <p class="vx-product-stock-readonly">Stock actual: ${escapeHtml(String(product.stock ?? ""))}</p>
@@ -696,7 +699,9 @@ ${unitOptions}
   const bodyPanel =
     activeTab === "stock"
       ? renderStockPanel(product.stock, stockFieldErrors, lastResultingStock)
-      : datosForm;
+      : activeTab === "relaciones"
+        ? renderRelationsPanel(relationItems, relationFieldErrors)
+        : datosForm;
 
   return `<div class="vx-product-sheet">
   <h1 class="vx-product-sheet-title">Editar producto</h1>
@@ -704,10 +709,136 @@ ${unitOptions}
   <div class="vx-product-tabs" role="tablist" aria-label="Ficha de producto">
     <button type="button" class="vx-product-tab" role="tab" aria-selected="${datosSelected ? "true" : "false"}" data-tab="datos">Datos</button>
     <button type="button" class="vx-product-tab" role="tab" aria-selected="${stockSelected ? "true" : "false"}" data-tab="stock">Stock</button>
-    <button type="button" class="vx-product-tab" role="tab" aria-selected="false" aria-disabled="true" data-tab="relaciones">Relaciones</button>
+    <button type="button" class="vx-product-tab" role="tab" aria-selected="${relacionesSelected ? "true" : "false"}" data-tab="relaciones">Relaciones</button>
   </div>
   ${bodyPanel}
 </div>`;
+}
+
+const RELATION_GROUPS = [
+  { type: "similar", title: "Similares" },
+  { type: "substitute", title: "Sustitutos" },
+  { type: "complement", title: "Se usa junto con" },
+];
+
+/**
+ * @param {Array<Record<string, unknown>>} items
+ */
+export function groupRelationItems(items) {
+  /** @type {Record<string, Array<Record<string, unknown>>>} */
+  const byType = { similar: [], substitute: [], complement: [] };
+  const list = Array.isArray(items) ? items : [];
+  for (const item of list) {
+    const t = String(item?.type ?? "");
+    if (byType[t]) {
+      byType[t].push(item);
+    }
+  }
+  for (const key of Object.keys(byType)) {
+    byType[key].sort((a, b) => {
+      const pa = Number(a.priority);
+      const pb = Number(b.priority);
+      const na = Number.isFinite(pa) ? pa : 0;
+      const nb = Number.isFinite(pb) ? pb : 0;
+      return na - nb;
+    });
+  }
+  return byType;
+}
+
+/**
+ * @param {Record<string, unknown>} rel
+ * @param {{ priority?: string, note?: string }} rowErrors
+ */
+function renderRelationRow(rel, rowErrors = {}) {
+  const id = String(rel.id ?? "");
+  const type = String(rel.type ?? "");
+  const target = rel.target;
+  const targetSku =
+    target && typeof target === "object" && target.sku != null
+      ? String(target.sku)
+      : String(rel.targetProductId ?? "");
+  const targetName =
+    target && typeof target === "object" && target.name != null
+      ? String(target.name)
+      : "";
+  const note = rel.note == null ? "" : String(rel.note);
+  const priority = rel.priority == null ? "1" : String(rel.priority);
+  const bidir =
+    rel.bidirectionalGroup != null &&
+    String(rel.bidirectionalGroup).trim().length > 0
+      ? '<span class="vx-product-relation-bidir">Bidireccional</span>'
+      : "";
+  const fieldErrors = {
+    priority: rowErrors.priority ?? "",
+    note: rowErrors.note ?? "",
+  };
+  return `<div class="vx-product-relation-row" data-relation-id="${escapeHtml(id)}" data-relation-type="${escapeHtml(type)}">
+    <p class="vx-product-relation-target">${escapeHtml(targetSku)} — ${escapeHtml(targetName)}</p>
+    ${bidir}
+    ${vxField("priority", "Prioridad", fieldErrors, { required: true, value: priority })}
+    ${vxField("note", "Nota", fieldErrors, { value: note })}
+    <div class="vx-product-relation-actions">
+      <button type="button" data-action="save-relation">Guardar</button>
+      <button type="button" data-action="delete-relation">Eliminar</button>
+    </div>
+  </div>`;
+}
+
+/**
+ * @param {Array<Record<string, unknown>>} [items]
+ * @param {Record<string, { priority?: string, note?: string }>} [fieldErrorsById]
+ */
+export function renderRelationsPanel(items = [], fieldErrorsById = {}) {
+  const byType = groupRelationItems(items);
+  const sections = RELATION_GROUPS.map(({ type, title }) => {
+    const rows = byType[type]
+      .map((rel) =>
+        renderRelationRow(
+          rel,
+          fieldErrorsById[String(rel.id ?? "")] ?? {},
+        ),
+      )
+      .join("\n");
+    return `<section class="vx-product-relations-group" data-relation-group="${escapeHtml(type)}">
+      <h2 class="vx-product-relations-heading">${escapeHtml(title)}</h2>
+      ${rows}
+    </section>`;
+  }).join("\n");
+  return `<div class="vx-product-relations-panel vx-product-sheet-form" data-panel="relations">
+    ${sections}
+  </div>`;
+}
+
+/**
+ * @param {ParentNode & { querySelector?: typeof Document.prototype.querySelector }} root
+ * @param {Element | { closest?: Function, querySelector?: Function }} actionEl
+ * @returns {Record<string, number | string | null> | { error: "priority" } | null}
+ */
+export function readRelationPatch(root, actionEl) {
+  const row =
+    actionEl?.closest?.("[data-relation-id]") ??
+    actionEl?.querySelector?.("[data-relation-id]");
+  if (!row) {
+    return null;
+  }
+  const query = (sel) =>
+    row.querySelector?.(sel) ?? root?.querySelector?.(sel) ?? null;
+  const priorityField = query('vx-field[name="priority"]');
+  const noteField = query('vx-field[name="note"]');
+  const priorityRaw = String(priorityField?.getAttribute?.("value") ?? "").trim();
+  if (priorityRaw.length === 0) {
+    return { error: "priority" };
+  }
+  const priority = Number(priorityRaw);
+  if (!Number.isInteger(priority) || priority < 1) {
+    return { error: "priority" };
+  }
+  const noteRaw = String(noteField?.getAttribute?.("value") ?? "").trim();
+  return {
+    priority,
+    note: noteRaw.length > 0 ? noteRaw : null,
+  };
 }
 
 /**

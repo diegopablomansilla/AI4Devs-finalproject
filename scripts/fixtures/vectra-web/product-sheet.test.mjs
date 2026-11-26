@@ -101,6 +101,11 @@ function createCallTracker(responses) {
   let step = 0;
 
   async function request(method, url, options = {}) {
+    if (options.signal?.aborted) {
+      const err = new Error("The operation was aborted");
+      err.name = "AbortError";
+      throw err;
+    }
     calls.push({
       method,
       path: url,
@@ -108,7 +113,13 @@ function createCallTracker(responses) {
     });
     const handler = responses[step++];
     if (typeof handler === "function") {
-      return handler({ method, path: url, body: options.body, calls });
+      return handler({
+        method,
+        path: url,
+        body: options.body,
+        calls,
+        signal: options.signal,
+      });
     }
     if (handler && handler.throw) {
       throw handler.throw;
@@ -378,12 +389,48 @@ function queryStub(html, selector) {
       },
     },
     {
-      re: /^\[data-action="([^"]+)"\]$/,
+      re: /^\[data-relation-id="([^"]+)"\] \[data-action="([^"]+)"\]$/,
       run(m) {
-        const action = m[1];
-        if (!html.includes(`data-action="${action}"`)) {
+        const relationId = m[1];
+        const action = m[2];
+        if (
+          !html.includes(`data-relation-id="${relationId}"`) ||
+          !html.includes(`data-action="${action}"`)
+        ) {
           return null;
         }
+        const typeMatch = html.match(
+          new RegExp(
+            `data-relation-id="${relationId}"[^>]*data-relation-type="([^"]+)"|data-relation-type="([^"]+)"[^>]*data-relation-id="${relationId}"`,
+          ),
+        );
+        const relationType = typeMatch?.[1] ?? typeMatch?.[2] ?? null;
+        const rowFieldBag = {};
+        const rowStub = {
+          getAttribute(name) {
+            if (name === "data-relation-id") {
+              return relationId;
+            }
+            if (name === "data-relation-type") {
+              return relationType;
+            }
+            return null;
+          },
+          querySelector(sel) {
+            const fm = sel.match(/^vx-field\[name="([^"]+)"\]$/);
+            if (fm) {
+              return createFieldStub(fm[1], rowFieldBag);
+            }
+            return null;
+          },
+          closest(sel) {
+            if (sel === "[data-relation-id]") {
+              return this;
+            }
+            return null;
+          },
+          fieldBag: rowFieldBag,
+        };
         return {
           getAttribute(name) {
             if (name === "data-action") {
@@ -395,8 +442,79 @@ function queryStub(html, selector) {
             if (sel === "[data-action]") {
               return this;
             }
+            if (sel === "[data-relation-id]") {
+              return rowStub;
+            }
             return null;
           },
+          rowFieldBag,
+        };
+      },
+    },
+    {
+      re: /^\[data-action="([^"]+)"\]$/,
+      run(m) {
+        const action = m[1];
+        if (!html.includes(`data-action="${action}"`)) {
+          return null;
+        }
+        const rowMatch = html.match(
+          new RegExp(
+            `data-relation-id="([^"]+)"[^>]*>[\\s\\S]*?data-action="${action}"|data-action="${action}"[\\s\\S]*?data-relation-id="([^"]+)"`,
+          ),
+        );
+        const relationId = rowMatch?.[1] ?? rowMatch?.[2] ?? null;
+        const typeMatch = relationId
+          ? html.match(
+              new RegExp(
+                `data-relation-id="${relationId}"[^>]*data-relation-type="([^"]+)"|data-relation-type="([^"]+)"[^>]*data-relation-id="${relationId}"`,
+              ),
+            )
+          : null;
+        const relationType = typeMatch?.[1] ?? typeMatch?.[2] ?? null;
+        const rowFieldBag = {};
+        const rowStub =
+          relationId != null
+            ? {
+                getAttribute(name) {
+                  if (name === "data-relation-id") {
+                    return relationId;
+                  }
+                  if (name === "data-relation-type") {
+                    return relationType;
+                  }
+                  return null;
+                },
+                querySelector(sel) {
+                  const fm = sel.match(/^vx-field\[name="([^"]+)"\]$/);
+                  if (fm) {
+                    return createFieldStub(fm[1], rowFieldBag);
+                  }
+                  return null;
+                },
+                closest() {
+                  return null;
+                },
+                fieldBag: rowFieldBag,
+              }
+            : null;
+        return {
+          getAttribute(name) {
+            if (name === "data-action") {
+              return action;
+            }
+            return null;
+          },
+          closest(sel) {
+            if (sel === "[data-action]") {
+              return this;
+            }
+            if (sel === "[data-relation-id]" && rowStub) {
+              return rowStub;
+            }
+            return null;
+          },
+          rowFieldBag,
         };
       },
     },
@@ -571,6 +689,97 @@ function fillStockForm(form, opts = {}) {
   } else {
     form.fieldBag.reason = "";
   }
+}
+
+const REL_TARGET_ACTIVE = {
+  id: "01J9TARGETACTIVE000001",
+  sku: "ARA-M8",
+  name: "Arandela M8",
+  productType: "",
+  brand: null,
+  categoryPath: [],
+  price: "0",
+  stock: "0",
+  active: true,
+  imageUrl: null,
+};
+
+const REL_TARGET_INACTIVE = {
+  id: "01J9TARGETINACT000001",
+  sku: "OBS-01",
+  name: "Producto baja",
+  productType: "",
+  brand: null,
+  categoryPath: [],
+  price: "0",
+  stock: "0",
+  active: false,
+  imageUrl: null,
+};
+
+const REL_SIMILAR = {
+  id: "01J9RELSIM00000000001",
+  type: "similar",
+  sourceProductId: PERN_LIST_ROW.id,
+  targetProductId: REL_TARGET_ACTIVE.id,
+  priority: 2,
+  note: "Similar A",
+  bidirectionalGroup: "01J9BIDIRGROUP0000001",
+  target: REL_TARGET_ACTIVE,
+  createdAt: "2026-01-01T00:00:00Z",
+  updatedAt: "2026-01-01T00:00:00Z",
+};
+
+const REL_SUBSTITUTE = {
+  id: "01J9RELSUB00000000001",
+  type: "substitute",
+  sourceProductId: PERN_LIST_ROW.id,
+  targetProductId: REL_TARGET_INACTIVE.id,
+  priority: 1,
+  note: null,
+  bidirectionalGroup: null,
+  target: REL_TARGET_INACTIVE,
+  createdAt: "2026-01-01T00:00:00Z",
+  updatedAt: "2026-01-01T00:00:00Z",
+};
+
+const REL_COMPLEMENT = {
+  id: "01J9RELCOMP0000000001",
+  type: "complement",
+  sourceProductId: PERN_LIST_ROW.id,
+  targetProductId: "01J9TARGETCOMP0000001",
+  priority: 3,
+  note: "Va junto",
+  bidirectionalGroup: null,
+  target: {
+    id: "01J9TARGETCOMP0000001",
+    sku: "TUER-M8",
+    name: "Tuerca M8",
+    active: true,
+  },
+  createdAt: "2026-01-01T00:00:00Z",
+  updatedAt: "2026-01-01T00:00:00Z",
+};
+
+const RELATIONS_THREE_TYPES = [REL_SIMILAR, REL_SUBSTITUTE, REL_COMPLEMENT];
+
+function mountWithRelationsResponses(extraAfterEdit = [], relations = RELATIONS_THREE_TYPES) {
+  return [
+    ...defaultEditMountResponses(extraAfterEdit),
+    { items: relations },
+  ];
+}
+
+async function openEditRelationsTab(el, deps, productId = PERN_LIST_ROW.id) {
+  const request = deps.request ?? deps;
+  await openEditSheet(el, { request, showError: deps.showError ?? (() => {}) }, productId);
+  const tab = el.querySelector('[role="tab"][data-tab="relaciones"]');
+  assert.ok(tab, "pestaña Relaciones");
+  el.dispatchClick(tab);
+  for (let i = 0; i < 10; i++) {
+    await new Promise((r) => setTimeout(r, 0));
+  }
+  return el;
 }
 
 async function openEditStockTab(el, deps, productId = PERN_LIST_ROW.id) {
@@ -1343,7 +1552,10 @@ describe("sheet_edit_stock_tab_is_operable", () => {
       el.html,
       /data-tab="stock"[^>]*aria-disabled="true"|aria-disabled="true"[^>]*data-tab="stock"/,
     );
-    assert.match(el.html, /data-tab="relaciones"[^>]*aria-disabled="true"|aria-disabled="true"[^>]*data-tab="relaciones"/);
+    assert.doesNotMatch(
+      el.html,
+      /data-tab="relaciones"[^>]*aria-disabled="true"|aria-disabled="true"[^>]*data-tab="relaciones"/,
+    );
   });
 });
 
@@ -1600,5 +1812,363 @@ describe("sheet_stock_does_not_get_or_export_history", () => {
     );
     assert.doesNotMatch(el.html, /Exportar/i);
     assert.doesNotMatch(el.html, /Historial/i);
+  });
+});
+
+describe("sheet_edit_relations_tab_is_operable", () => {
+  test("Relaciones sin aria-disabled en edición", async () => {
+    const { request } = createCallTracker(mountWithRelationsResponses());
+    const el = createMountEl();
+    await openEditSheet(el, request);
+    assert.doesNotMatch(
+      el.html,
+      /data-tab="relaciones"[^>]*aria-disabled="true"|aria-disabled="true"[^>]*data-tab="relaciones"/,
+    );
+  });
+});
+
+describe("sheet_relations_lists_grouped_by_type", () => {
+  test("tres grupos y GET relations", async () => {
+    const { request, calls } = createCallTracker(mountWithRelationsResponses());
+    const el = createMountEl();
+    await openEditRelationsTab(el, { request, calls });
+    const relGet = calls.find(
+      (c) => c.method === "GET" && c.path.includes("/relations"),
+    );
+    assert.ok(relGet);
+    assert.doesNotMatch(relGet.path, /direction=incoming/);
+    assert.doesNotMatch(relGet.path, /recommendations/);
+    assert.match(el.html, /Similares/);
+    assert.match(el.html, /Sustitutos/);
+    assert.match(el.html, /Se usa junto con/);
+    assert.match(el.html, /ARA-M8/);
+    assert.match(el.html, /OBS-01/);
+    assert.match(el.html, /TUER-M8/);
+    assert.match(
+      el.html,
+      /aria-selected="true"[^>]*data-tab="relaciones"|data-tab="relaciones"[^>]*aria-selected="true"/,
+    );
+  });
+});
+
+describe("sheet_relations_empty_items_still_show_headings", () => {
+  test("títulos sin filas", async () => {
+    const { request } = createCallTracker(
+      mountWithRelationsResponses([], []),
+    );
+    const el = createMountEl();
+    await openEditRelationsTab(el, request);
+    assert.match(el.html, /Similares/);
+    assert.match(el.html, /Sustitutos/);
+    assert.match(el.html, /Se usa junto con/);
+    assert.doesNotMatch(el.html, /data-relation-id=/);
+  });
+});
+
+describe("sheet_relations_shows_inactive_target", () => {
+  test("destino inactivo visible", async () => {
+    const { request } = createCallTracker(mountWithRelationsResponses());
+    const el = createMountEl();
+    await openEditRelationsTab(el, request);
+    assert.match(el.html, /Producto baja/);
+    assert.match(el.html, /OBS-01/);
+  });
+});
+
+describe("sheet_relations_shows_bidirectional_indicator", () => {
+  test("texto Bidireccional", async () => {
+    const { request } = createCallTracker(mountWithRelationsResponses());
+    const el = createMountEl();
+    await openEditRelationsTab(el, request);
+    assert.match(el.html, /Bidireccional/);
+    const simBlock = el.html.split(`data-relation-id="${REL_SIMILAR.id}"`)[1];
+    assert.ok(simBlock);
+    assert.match(simBlock.split("data-relation-id=")[0], /Bidireccional/);
+  });
+});
+
+describe("sheet_relations_patch_priority_updates_row", () => {
+  test("PATCH substitute prioridad 1", async () => {
+  let items = [...RELATIONS_THREE_TYPES];
+  const tracker = createCallTracker([
+      ...defaultEditMountResponses(),
+      () => ({ items }),
+      ({ method, path, body }) => {
+        if (method === "PATCH" && path.includes("/relations/substitute/")) {
+          const idx = items.findIndex((i) => i.id === REL_SUBSTITUTE.id);
+          items[idx] = { ...items[idx], priority: body.priority };
+          return { items: [items[idx]] };
+        }
+        return { items };
+      },
+      () => ({ items }),
+    ]);
+    const { request, calls } = tracker;
+    const el = createMountEl();
+    await openEditRelationsTab(el, { request, calls });
+    const saveBtn = el.querySelector(
+      `[data-relation-id="${REL_SUBSTITUTE.id}"] [data-action="save-relation"]`,
+    );
+    assert.ok(saveBtn);
+    if (saveBtn.rowFieldBag) {
+      saveBtn.rowFieldBag.priority = "1";
+      saveBtn.rowFieldBag.note = REL_SUBSTITUTE.note ?? "";
+    }
+    el.dispatchClick(saveBtn);
+    for (let i = 0; i < 10; i++) {
+      await new Promise((r) => setTimeout(r, 0));
+    }
+    const patch = calls.find((c) => c.method === "PATCH");
+    assert.ok(patch);
+    assert.match(patch.path, /\/relations\/substitute\//);
+    assert.equal(patch.body.priority, 1);
+    assert.equal(typeof patch.body.priority, "number");
+    assert.match(
+      el.html,
+      new RegExp(
+        `data-relation-id="${REL_SUBSTITUTE.id}"[\\s\\S]*name="priority"[^>]*value="1"|value="1"[^>]*name="priority"`,
+      ),
+    );
+  });
+});
+
+describe("sheet_relations_patch_note_updates_row", () => {
+  test("PATCH nota", async () => {
+    let items = [...RELATIONS_THREE_TYPES];
+    const { request, calls } = createCallTracker([
+      ...defaultEditMountResponses(),
+      () => ({ items }),
+      ({ body }) => {
+        items = items.map((i) =>
+          i.id === REL_COMPLEMENT.id ? { ...i, note: body.note } : i,
+        );
+        return { items: [items.find((i) => i.id === REL_COMPLEMENT.id)] };
+      },
+      () => ({ items }),
+    ]);
+    const el = createMountEl();
+    await openEditRelationsTab(el, { request, calls });
+    const saveBtn = el.querySelector(
+      `[data-relation-id="${REL_COMPLEMENT.id}"] [data-action="save-relation"]`,
+    );
+    assert.ok(saveBtn?.rowFieldBag);
+    saveBtn.rowFieldBag.priority = String(REL_COMPLEMENT.priority);
+    saveBtn.rowFieldBag.note = "Arandela plana M8";
+    el.dispatchClick(saveBtn);
+    for (let i = 0; i < 10; i++) {
+      await new Promise((r) => setTimeout(r, 0));
+    }
+    const patch = calls.find((c) => c.method === "PATCH");
+    assert.equal(patch?.body?.note, "Arandela plana M8");
+    assert.match(el.html, /Arandela plana M8/);
+  });
+});
+
+describe("sheet_relations_delete_removes_row", () => {
+  test("DELETE y fila ausente", async () => {
+    let items = [...RELATIONS_THREE_TYPES];
+    const { request, calls } = createCallTracker([
+      ...defaultEditMountResponses(),
+      () => ({ items }),
+      () => undefined,
+      () => ({ items: items.filter((i) => i.id !== REL_COMPLEMENT.id) }),
+    ]);
+    const el = createMountEl();
+    await openEditRelationsTab(el, { request, calls });
+    const delBtn = el.querySelector(
+      `[data-relation-id="${REL_COMPLEMENT.id}"] [data-action="delete-relation"]`,
+    );
+    assert.ok(delBtn);
+    el.dispatchClick(delBtn);
+    for (let i = 0; i < 10; i++) {
+      await new Promise((r) => setTimeout(r, 0));
+    }
+    const del = calls.find((c) => c.method === "DELETE");
+    assert.ok(del);
+    assert.match(del.path, /\/relations\//);
+    assert.doesNotMatch(el.html, new RegExp(`data-relation-id="${REL_COMPLEMENT.id}"`));
+    assert.equal(
+      calls.filter((c) => c.method === "DELETE").length,
+      1,
+    );
+  });
+});
+
+describe("sheet_relations_priority_below_one_does_not_patch", () => {
+  test("prioridad 0 sin PATCH", async () => {
+    const { request, calls } = createCallTracker(mountWithRelationsResponses());
+    const el = createMountEl();
+    await openEditRelationsTab(el, { request, calls });
+    const saveBtn = el.querySelector(
+      `[data-relation-id="${REL_SUBSTITUTE.id}"] [data-action="save-relation"]`,
+    );
+    saveBtn.rowFieldBag.priority = "0";
+    saveBtn.rowFieldBag.note = "";
+    el.dispatchClick(saveBtn);
+    for (let i = 0; i < 8; i++) {
+      await new Promise((r) => setTimeout(r, 0));
+    }
+    assert.equal(calls.filter((c) => c.method === "PATCH").length, 0);
+    assert.match(el.html, /name="priority"[^>]*error=/);
+  });
+});
+
+describe("sheet_relations_invalid_input_sets_field_error", () => {
+  test("note invalid_input", async () => {
+    const { request, calls } = createCallTracker([
+      ...mountWithRelationsResponses(),
+      {
+        throw: apiError("invalid_input", [
+          { field: "note", message: "demasiado larga" },
+        ]),
+      },
+    ]);
+    const el = createMountEl();
+    const root = { querySelector: (s) => el.querySelector(s) };
+    const { showError } = createErrorUi({ root });
+    await openEditRelationsTab(el, { request, calls, showError });
+    const saveBtn = el.querySelector(
+      `[data-relation-id="${REL_COMPLEMENT.id}"] [data-action="save-relation"]`,
+    );
+    saveBtn.rowFieldBag.priority = String(REL_COMPLEMENT.priority);
+    saveBtn.rowFieldBag.note = "x".repeat(600);
+    el.dispatchClick(saveBtn);
+    for (let i = 0; i < 10; i++) {
+      await new Promise((r) => setTimeout(r, 0));
+    }
+    assert.match(el.html, /name="note"[^>]*error="demasiado larga"/);
+    assert.match(el.html, /data-panel="relations"/);
+  });
+});
+
+describe("sheet_relations_not_found_shows_not_found", () => {
+  test("GET 404", async () => {
+    const errors = [];
+    const { request } = createCallTracker([
+      ...defaultEditMountResponses(),
+      { throw: apiError("not_found") },
+    ]);
+    const el = createMountEl();
+    await openEditRelationsTab(el, {
+      request,
+      showError: (e) => errors.push(e.code),
+    });
+    assert.deepEqual(errors, ["not_found"]);
+  });
+});
+
+describe("sheet_relations_unavailable_shows_unavailable", () => {
+  test("503", async () => {
+    const errors = [];
+    const { request } = createCallTracker([
+      ...defaultEditMountResponses(),
+      { throw: { ...apiError("unavailable"), status: 503 } },
+    ]);
+    const el = createMountEl();
+    await openEditRelationsTab(el, {
+      request,
+      showError: (e) => errors.push(e.code),
+    });
+    assert.deepEqual(errors, ["unavailable"]);
+  });
+});
+
+describe("sheet_relations_network_shows_network", () => {
+  test("network en guardar", async () => {
+    const errors = [];
+    const tracker = createCallTracker([
+      ...mountWithRelationsResponses(),
+      { throw: apiError("network") },
+    ]);
+    const el = createMountEl();
+    await openEditRelationsTab(el, {
+      request: tracker.request,
+      showError: (e) => errors.push(e.code),
+    });
+    const saveBtn = el.querySelector(
+      `[data-relation-id="${REL_COMPLEMENT.id}"] [data-action="save-relation"]`,
+    );
+    saveBtn.rowFieldBag.priority = String(REL_COMPLEMENT.priority);
+    el.dispatchClick(saveBtn);
+    for (let i = 0; i < 10; i++) {
+      await new Promise((r) => setTimeout(r, 0));
+    }
+    assert.deepEqual(errors, ["network"]);
+  });
+});
+
+describe("sheet_relations_abort_does_not_paint_stale", () => {
+  test("cambio de pestaña aborta GET", async () => {
+    const { request, calls } = createCallTracker([
+      ...defaultEditMountResponses(),
+      ({ signal }) =>
+        new Promise((resolve, reject) => {
+          const t = setTimeout(
+            () => resolve({ items: [{ ...REL_SIMILAR, note: "STALE" }] }),
+            80,
+          );
+          signal?.addEventListener("abort", () => {
+            clearTimeout(t);
+            const err = new Error("aborted");
+            err.name = "AbortError";
+            reject(err);
+          });
+        }),
+    ]);
+    const el = createMountEl();
+    await openEditSheet(el, { request, calls });
+    const relTab = el.querySelector('[role="tab"][data-tab="relaciones"]');
+    el.dispatchClick(relTab);
+    const datosTab = el.querySelector('[role="tab"][data-tab="datos"]');
+    el.dispatchClick(datosTab);
+    await new Promise((r) => setTimeout(r, 120));
+    assert.doesNotMatch(el.html, /STALE/);
+  });
+});
+
+describe("sheet_create_relations_tab_stays_disabled", () => {
+  test("alta mantiene Relaciones disabled", async () => {
+    const { request, calls } = createCallTracker(defaultMountResponses());
+    const el = createMountEl();
+    await openCreateSheet(el, request);
+    assert.match(
+      el.html,
+      /data-tab="relaciones"[^>]*aria-disabled="true"|aria-disabled="true"[^>]*data-tab="relaciones"/,
+    );
+    const tab = el.querySelector('[role="tab"][data-tab="relaciones"]');
+    const before = el.html;
+    el.dispatchClick(tab);
+    await new Promise((r) => setTimeout(r, 0));
+    assert.equal(el.html, before);
+    assert.equal(
+      calls.filter((c) => c.path.includes("/relations")).length,
+      0,
+    );
+  });
+});
+
+describe("sheet_relations_has_no_create_controls", () => {
+  test("sin POST ni buscador", async () => {
+    const { request, calls } = createCallTracker(mountWithRelationsResponses());
+    const el = createMountEl();
+    await openEditRelationsTab(el, { request, calls });
+    assert.doesNotMatch(el.html, /data-form="create-relation"/i);
+    assert.doesNotMatch(el.html, /Buscar producto/i);
+    assert.doesNotMatch(el.html, /Nueva relación/i);
+    assert.equal(
+      calls.filter((c) => c.method === "POST" && c.path.includes("/relations")).length,
+      0,
+    );
+  });
+});
+
+describe("sheet_relations_does_not_get_incoming", () => {
+  test("GET sin direction=incoming", async () => {
+    const { request, calls } = createCallTracker(mountWithRelationsResponses());
+    const el = createMountEl();
+    await openEditRelationsTab(el, { request, calls });
+    const relGet = calls.find((c) => c.path.includes("/relations"));
+    assert.ok(relGet);
+    assert.doesNotMatch(relGet.path, /incoming/);
   });
 });

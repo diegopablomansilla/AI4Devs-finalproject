@@ -474,6 +474,43 @@ textarea:focus-visible {
   margin-top: var(--vx-space-2);
 }
 
+.vx-product-relations-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vx-space-lg, 1.5rem);
+}
+
+.vx-product-relations-heading {
+  font-size: 1rem;
+  margin: 0 0 var(--vx-space-sm, 0.5rem);
+}
+
+.vx-product-relation-row {
+  border: 1px solid color-mix(in srgb, var(--vx-color-text) 12%, transparent);
+  border-radius: var(--vx-radius-md, 8px);
+  padding: var(--vx-space-md, 1rem);
+  margin-bottom: var(--vx-space-sm, 0.5rem);
+}
+
+.vx-product-relation-bidir {
+  display: inline-block;
+  font-size: 0.85rem;
+  margin-bottom: var(--vx-space-xs, 0.25rem);
+  color: var(--vx-color-accent, #7dd3fc);
+}
+
+.vx-product-relation-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--vx-space-sm, 0.5rem);
+  margin-top: var(--vx-space-sm, 0.5rem);
+}
+
+.vx-product-relation-actions button {
+  min-height: var(--vx-touch-min, 44px);
+  min-width: var(--vx-touch-min, 44px);
+}
+
 .vx-product-stock-result {
   margin: 0 0 var(--vx-space-md);
   color: var(--vx-color-text);
