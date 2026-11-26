@@ -1,9 +1,9 @@
 # domain-relacion Specification
 
 ## Purpose
-Define la entidad `Relacion`, los tres tipos de arista del grafo, el default de bidireccionalidad, las reglas `self_relation` / `prioridad` / `nota` y el puerto `RelationRepo` en el crate `domain`, para que el adaptador (T-04-03 / T-04-04) y `recommend` (DC-05, T-04-05) implementen un contrato hexagonal sin persistir en este ticket.
+Define la entidad `Relacion`, los tres tipos de arista del grafo, el default de bidireccionalidad, las reglas `self_relation` / `prioridad` / `nota`, el puerto `RelationRepo` y los tipos de listado (`DestinoResumen`, `RelacionConDestino`, `RelacionesDeProducto`) en el crate `domain`, para que el adaptador SurrealDB (`storage`) y `recommend` (DC-05, T-04-05) implementen un contrato hexagonal.
 
-Ticket padre: T-04-02. Change: T-04-02. HU: HU-04-01, HU-04-02.
+Ticket padre: T-04-02, T-04-04. HU: HU-04-01, HU-04-02, HU-04-03.
 
 ## Requirements
 
@@ -115,15 +115,34 @@ Al construir un `Relacion`, `prioridad` MUST ser un entero ≥ 1 (1 = más alta,
 - **AND** el `FieldError.field` es `nota`
 - **AND** no se produce un `Relacion`
 
+### Requirement: DestinoResumen y RelacionesDeProducto
+
+El crate `domain` MUST exponer `DestinoResumen` con `id` (`Id<Producto>`), `sku`, `nombre` y `activo`. MUST NOT incluir `precio`, `stock`, `tipo`, `marca`, `categoryPath` ni `imageUrl` (eso es `ProductSummary` en T-04-05). MUST NOT usar nombres de API en inglés (`sku`/`nombre`/`activo` coinciden con el modelo).
+
+El crate `domain` MUST exponer `RelacionConDestino` con la arista (`Relacion`) y su `DestinoResumen`. MUST exponer `RelacionesDeProducto` con tres vectores: `similar_a`, `sustituible_por` y `complementa`, cada uno de `RelacionConDestino`. MUST NOT persistir. MUST NOT mapear a HTTP.
+
+#### Scenario: DestinoResumen cubre identidad administrativa (happy, HU-04-03)
+
+- **WHEN** se construye un `DestinoResumen` con `sku`, `nombre` y `activo` falso
+- **THEN** la construcción termina sin error
+- **AND** `activo` es falso
+- **AND** el `id` no contiene `:`
+
+#### Scenario: RelacionesDeProducto agrupa los tres tipos (happy, HU-04-03)
+
+- **WHEN** se construye un `RelacionesDeProducto` con un ítem en cada vector
+- **THEN** `similar_a`, `sustituible_por` y `complementa` exponen esos ítems
+- **AND** cada ítem tiene `Relacion` y `DestinoResumen`
+
 ### Requirement: Puerto RelationRepo sin persistencia
 
 El crate `domain` MUST exponer el puerto `RelationRepo` como *trait* con operaciones `create`, `update`, `delete` y `list_for_product`. Los `id` MUST ser `Id<Relacion>` / `Id<Producto>` sin prefijo de tabla. Los errores MUST ser `DomainError`. El consumidor previsto del puerto MUST ser el Recommendation Service (`recommend`, [DC-05](../../../../../docs/3-componentes.md#36-decisiones-de-diseño-transversales-a-los-componentes)), no Catalog.
 
-`create` MUST aceptar `NewRelacion` con `origen`, `destino`, `tipo`, `prioridad`, `nota` y `bidireccional` (`Option<bool>`: ausente = `default_bidireccional(tipo)`). El resultado de éxito MUST ser `Relacion` (arista saliente origen→destino). MUST NOT crear la arista inversa en este ticket (T-04-03).
+`create` MUST aceptar `NewRelacion` con `origen`, `destino`, `tipo`, `prioridad`, `nota` y `bidireccional` (`Option<bool>`: ausente = `default_bidireccional(tipo)`). El resultado de éxito MUST ser `Relacion` (arista saliente origen→destino). MUST NOT crear la arista inversa en el crate `domain` (persistencia en `storage`).
 
-`update` MUST aceptar `UpdateRelacion` con `id`, `tipo`, `prioridad` opcional y `nota` opcional. `delete` MUST aceptar `tipo` y `id`. `list_for_product` MUST aceptar `Id<Producto>` y el resultado de éxito MUST ser `Vec<Relacion>` (aristas salientes; el agrupado por tipo y el resumen del destino los hidrata T-04-04).
+`update` MUST aceptar `UpdateRelacion` con `id`, `tipo`, `prioridad` opcional y `nota` opcional. El resultado de éxito MUST ser `Relacion`. `delete` MUST aceptar `tipo` y `id`. `list_for_product` MUST aceptar `Id<Producto>` y el resultado de éxito MUST ser `RelacionesDeProducto` (aristas salientes agrupadas por tipo, cada ítem con `DestinoResumen`; el adaptador en `storage` hidrata).
 
-El crate `domain` MUST NOT implementar el adaptador SurrealDB. MUST NOT mapear a HTTP. MUST NOT ejecutar `RELATE`. MUST NOT traducir el índice UNIQUE a `duplicate_relation` (T-04-03). MUST NOT depender de `surrealdb` ni de otros crates del workspace. MUST NOT declarar el puerto en `catalog`.
+El crate `domain` MUST NOT implementar el adaptador SurrealDB. MUST NOT mapear a HTTP. MUST NOT ejecutar `RELATE`. MUST NOT traducir el índice UNIQUE a `duplicate_relation`. MUST NOT depender de `surrealdb` ni de otros crates del workspace. MUST NOT declarar el puerto en `catalog`.
 
 #### Scenario: El puerto declara create, update, delete y list_for_product (happy)
 
@@ -132,7 +151,7 @@ El crate `domain` MUST NOT implementar el adaptador SurrealDB. MUST NOT mapear a
 - **AND** `create` acepta `NewRelacion` y el resultado de éxito usa `Relacion`
 - **AND** `update` acepta `UpdateRelacion` y el resultado de éxito usa `Relacion`
 - **AND** `delete` acepta `TipoRelacion` e `Id<Relacion>`
-- **AND** `list_for_product` acepta `Id<Producto>` y el resultado de éxito usa `Vec<Relacion>`
+- **AND** `list_for_product` acepta `Id<Producto>` y el resultado de éxito usa `RelacionesDeProducto`
 - **AND** los resultados de error usan `DomainError`
 
 #### Scenario: NewRelacion omite bidireccional y usa el default del tipo (happy, HU-04-02)

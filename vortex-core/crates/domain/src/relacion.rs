@@ -140,6 +140,36 @@ pub struct UpdateRelacion {
     pub nota: Option<Option<String>>,
 }
 
+/// Minimal product snapshot for relation admin lists (T-04-04).
+#[derive(Debug, Clone, PartialEq)]
+pub struct DestinoResumen {
+    pub id: Id<Producto>,
+    pub sku: String,
+    pub nombre: String,
+    pub activo: bool,
+}
+
+/// Outgoing edge with destination summary (T-04-04).
+#[derive(Debug, Clone, PartialEq)]
+pub struct RelacionConDestino {
+    pub relacion: Relacion,
+    pub destino: DestinoResumen,
+}
+
+/// Outgoing relations grouped by type (T-04-04).
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct RelacionesDeProducto {
+    pub similar_a: Vec<RelacionConDestino>,
+    pub sustituible_por: Vec<RelacionConDestino>,
+    pub complementa: Vec<RelacionConDestino>,
+}
+
+impl RelacionesDeProducto {
+    pub fn empty() -> Self {
+        Self::default()
+    }
+}
+
 pub trait RelationRepo {
     fn create(
         &self,
@@ -160,7 +190,7 @@ pub trait RelationRepo {
     fn list_for_product(
         &self,
         producto: Id<Producto>,
-    ) -> impl Future<Output = Result<Vec<Relacion>, DomainError>> + Send;
+    ) -> impl Future<Output = Result<RelacionesDeProducto, DomainError>> + Send;
 }
 
 fn validate_prioridad(prioridad: i32) -> Result<(), DomainError> {
@@ -411,8 +441,8 @@ mod tests {
         fn list_for_product(
             &self,
             _producto: Id<Producto>,
-        ) -> impl Future<Output = Result<Vec<Relacion>, DomainError>> + Send {
-            async { Ok(vec![]) }
+        ) -> impl Future<Output = Result<RelacionesDeProducto, DomainError>> + Send {
+            async { Ok(RelacionesDeProducto::empty()) }
         }
     }
 
@@ -466,5 +496,55 @@ mod tests {
     fn relation_repo_not_declared_in_catalog() {
         let src = include_str!("../../catalog/src/lib.rs");
         assert!(!src.contains("RelationRepo"));
+    }
+
+    #[test]
+    fn destino_resumen_exposes_sku_nombre_activo() {
+        let id = Id::<Producto>::generate();
+        let resumen = DestinoResumen {
+            id: id.clone(),
+            sku: "ARA-M8-ZN".into(),
+            nombre: "Arandela M8".into(),
+            activo: false,
+        };
+        assert!(!id.to_string().contains(':'));
+        assert!(!resumen.activo);
+        assert_eq!(resumen.sku, "ARA-M8-ZN");
+        assert_eq!(resumen.nombre, "Arandela M8");
+    }
+
+    #[test]
+    fn relaciones_de_producto_groups_three_types() {
+        let origen = Id::<Producto>::generate();
+        let destino = Id::<Producto>::generate();
+        let rel = Relacion::try_new(relacion_draft(
+            origen,
+            destino.clone(),
+            TipoRelacion::Complementa,
+            1,
+            None,
+            None,
+        ))
+        .expect("rel");
+        let destino_resumen = DestinoResumen {
+            id: destino,
+            sku: "SKU".into(),
+            nombre: "Nombre".into(),
+            activo: true,
+        };
+        let item = RelacionConDestino {
+            relacion: rel,
+            destino: destino_resumen,
+        };
+        let list = RelacionesDeProducto {
+            similar_a: vec![item.clone()],
+            sustituible_por: vec![item.clone()],
+            complementa: vec![item],
+        };
+        assert_eq!(list.similar_a.len(), 1);
+        assert_eq!(list.sustituible_por.len(), 1);
+        assert_eq!(list.complementa.len(), 1);
+        assert_eq!(list.similar_a[0].relacion.tipo, TipoRelacion::Complementa);
+        assert!(list.similar_a[0].destino.activo);
     }
 }

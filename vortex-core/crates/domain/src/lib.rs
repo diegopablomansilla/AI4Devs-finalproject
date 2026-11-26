@@ -51,8 +51,9 @@ pub use producto::{
 };
 pub use productos_index_settings::productos_index_settings;
 pub use relacion::{
-    GrupoBidireccional, NewRelacion, Relacion, RelacionDraft, RelationRepo, TipoRelacion,
-    UpdateRelacion, default_bidireccional, resolve_bidireccional,
+    DestinoResumen, GrupoBidireccional, NewRelacion, Relacion, RelacionConDestino, RelacionDraft,
+    RelacionesDeProducto, RelationRepo, TipoRelacion, UpdateRelacion, default_bidireccional,
+    resolve_bidireccional,
 };
 pub use search_document::{CategoriaMeiliLevels, SearchDocument, build_search_document};
 pub use sync_telemetry::{NoopSyncTelemetry, SyncTelemetry};

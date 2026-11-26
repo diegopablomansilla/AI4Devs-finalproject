@@ -2,9 +2,9 @@
 
 ## Purpose
 
-Abre SurrealDB embebido con RocksDB en el crate `storage`, selecciona el namespace `vectra` y la base `comercio`, aplica migraciones `.surql` embebidas con registro y checksum SHA-256 (incl. `categoria`, `marca`, `atributo_def`, `producto`, `movimiento_stock`, `similar_a`, `sustituible_por`, `complementa`), expone un harness de tests (`storage::testing`) con motor en memoria o RocksDB temporal, ofrece transacciones atómicas dato + outbox con aviso post-commit, e implementa adaptadores de repositorio de catálogo (incl. `ProductRepo` con alta, stock inicial y baja lógica), el adaptador `StockLedger` (append transaccional) y `RelationRepo::create` (RELATE simple o bidireccional).
+Abre SurrealDB embebido con RocksDB en el crate `storage`, selecciona el namespace `vectra` y la base `comercio`, aplica migraciones `.surql` embebidas con registro y checksum SHA-256 (incl. `categoria`, `marca`, `atributo_def`, `producto`, `movimiento_stock`, `similar_a`, `sustituible_por`, `complementa`), expone un harness de tests (`storage::testing`) con motor en memoria o RocksDB temporal, ofrece transacciones atómicas dato + outbox con aviso post-commit, e implementa adaptadores de repositorio de catálogo (incl. `ProductRepo` con alta, stock inicial y baja lógica), el adaptador `StockLedger` (append transaccional) y `RelationRepo` completo (`create`, `update`, `delete`, `list_for_product` con grupo bidireccional y resumen del destino).
 
-Ticket padre: T-00-08, T-00-09, T-09-02, T-03-01, T-03-02, T-02-01, T-02-03, T-02-08, T-02-11, T-02-14, T-02-15, T-02-18, T-02-24, T-04-01, T-04-03. HU: HU-00-02, HU-09-01, HU-03-01, HU-02-01, HU-02-02, HU-02-03, HU-02-04, HU-02-07, HU-04-01, HU-04-02.
+Ticket padre: T-00-08, T-00-09, T-09-02, T-03-01, T-03-02, T-02-01, T-02-03, T-02-08, T-02-11, T-02-14, T-02-15, T-02-18, T-02-24, T-04-01, T-04-03, T-04-04. HU: HU-00-02, HU-09-01, HU-03-01, HU-02-01, HU-02-02, HU-02-03, HU-02-04, HU-02-07, HU-04-01, HU-04-02, HU-04-03.
 
 ## Requirements
 
@@ -884,7 +884,7 @@ MUST NOT sembrar aristas. MUST NOT implementar entidad de dominio, `self_relatio
 
 ### Requirement: Adaptador RelationRepo create
 
-El crate `storage` MUST implementar el puerto `RelationRepo` contra las tablas `similar_a`, `sustituible_por` y `complementa` ya migradas (T-04-01) usando `storage::Tx` (T-03-02). Los `id` MUST ser ULID de 26 caracteres **sin** prefijo de tabla (`similar_a:`, `sustituible_por:` o `complementa:`). Los errores MUST ser `DomainError`. MUST NOT mapear a HTTP ni a `problem+json`. MUST NOT emitir evento de outbox (el grafo no está en `OutboxEntity` ni en [4.8.1](../../../docs/4-modelo.md#481-outbox); T-04-06 lee SurrealDB). MUST NOT implementar el comportamiento de `update`, `delete` ni `list_for_product` (T-04-04): esas operaciones MUST devolver `DomainError::Unavailable` con `code` `unavailable`. MUST NOT declarar el adaptador en `catalog` ni en `recommend` (DC-05 se cablea en T-04-05). MUST NOT ampliar `DomainError`, `Relacion` ni `NewRelacion`.
+El crate `storage` MUST implementar el puerto `RelationRepo` contra las tablas `similar_a`, `sustituible_por` y `complementa` ya migradas (T-04-01) usando `storage::Tx` (T-03-02). Los `id` MUST ser ULID de 26 caracteres **sin** prefijo de tabla (`similar_a:`, `sustituible_por:` o `complementa:`). Los errores MUST ser `DomainError`. MUST NOT mapear a HTTP ni a `problem+json`. MUST NOT emitir evento de outbox (el grafo no está en `OutboxEntity` ni en [4.8.1](../../../docs/4-modelo.md#481-outbox); T-04-06 lee SurrealDB). `update`, `delete` y `list_for_product` MUST comportarse según el requirement «Adaptador RelationRepo update, delete y list_for_product» (T-04-04); MUST NOT devolver `unavailable` para esas operaciones. MUST NOT declarar el adaptador en `catalog` ni en `recommend` (DC-05 se cablea en T-04-05). MUST NOT ampliar `DomainError`, `Relacion` ni `NewRelacion`.
 
 `create` MUST persistir `NewRelacion` en una sola transacción:
 
@@ -962,10 +962,106 @@ MUST NOT reindexar Meilisearch. MUST NOT cambiar el esquema `0007`.
 
 #### Scenario: update, delete y list_for_product no persisten (unhappy)
 
-- **WHEN** se llama `update`, `delete` o `list_for_product` en el adaptador de este ticket
-- **THEN** `update` y `delete` fallan con `DomainError` `code` `unavailable`
-- **AND** `list_for_product` falla con `DomainError` `code` `unavailable`
+- **WHEN** se llama `update`, `delete` o `list_for_product` en el adaptador
+- **THEN** esas operaciones MUST NOT devolver `DomainError` `code` `unavailable` por falta de implementación
+- **AND** el comportamiento MUST ser el del requirement «Adaptador RelationRepo update, delete y list_for_product» (T-04-04)
+
+### Requirement: Adaptador RelationRepo update, delete y list_for_product
+
+El crate `storage` MUST implementar `RelationRepo::update`, `delete` y `list_for_product` contra las tablas `similar_a`, `sustituible_por` y `complementa` usando `storage::Tx` (T-03-02). Los `id` MUST ser ULID de 26 caracteres **sin** prefijo de tabla. Los errores MUST ser `DomainError`. MUST NOT mapear a HTTP ni a `problem+json`. MUST NOT emitir evento de outbox. MUST NOT reindexar Meilisearch. MUST NOT cambiar el esquema `0007`. MUST NOT declarar el adaptador en `catalog` ni en `recommend` (DC-05 se cablea en T-04-05). MUST NOT filtrar destinos inactivos ni por `stock` (eso es T-04-06). MUST NOT listar aristas **entrantes**.
+
+`update` MUST aplicar `UpdateRelacion` (`id`, `tipo`, `prioridad` opcional, `nota` opcional) en una sola transacción:
+
+1. Resolver la arista `tipo`+`id`. Si no existe, MUST fallar con `DomainError` `code` `not_found` y MUST NOT modificar tablas.
+2. Validar el parche con las reglas de dominio **antes** de abrir la `Tx`: `prioridad` presente MUST ser ≥ 1; `nota` presente MUST cumplir 1..=500 tras recortar (o ausente si solo espacios). Si fallan, MUST NOT persistir.
+3. Campos omitidos (`None`) MUST conservar el valor actual de la arista.
+4. Si la arista tiene `grupo_bidireccional`, el mismo parche MUST aplicarse a **ambas** aristas del grupo en esa `Tx` ([4.6.1](../../../docs/4-modelo.md#461-tablas-de-relación); HU-04-02). Si no tiene grupo, MUST actualizar solo esa arista.
+5. El resultado de éxito MUST ser el `Relacion` de la arista identificada por `id` (no el par). `actualizado_en` MUST refrescarse. MUST NOT cambiar `origen`, `destino`, `tipo` ni `grupo_bidireccional`.
+
+`delete` MUST borrar **físicamente** (no baja lógica) la arista `tipo`+`id`. Si no existe, MUST fallar con `code` `not_found`. Si tiene `grupo_bidireccional`, MUST borrar ambas aristas del grupo en la misma `Tx`. Si no tiene grupo, MUST borrar solo esa arista. MUST NOT dejar aristas huérfanas del grupo. MUST NOT tocar `producto`.
+
+`list_for_product` MUST devolver `RelacionesDeProducto` con las aristas **salientes** (`in` = el producto) de las tres tablas, agrupadas en `similar_a`, `sustituible_por` y `complementa`. Cada grupo MUST ordenarse por `prioridad` ascendente (1 = más alta) y, a igualdad, por `id`. Cada ítem MUST ser `RelacionConDestino` con el `Relacion` de la arista y `DestinoResumen` del `out` (`id`, `sku`, `nombre`, `activo`). MUST incluir destinos inactivos y con `stock` 0. Un producto sin aristas salientes, o un `Id<Producto>` que no existe, MUST devolver los tres grupos vacíos (el 404 de producto es T-04-05). MUST NOT hidratar `ProductSummary` completo.
+
+#### Scenario: Cambiar prioridad desde B modifica ambas aristas (happy, HU-04-02, Listo cuando)
+
+- **WHEN** existe el par bidireccional `A similar B` y se llama `update` con el `id` de la arista `B → A`, `tipo` `similar_a` y `prioridad` 3
+- **THEN** la operación termina sin error
+- **AND** la arista `B → A` tiene `prioridad` 3
+- **AND** la arista `A → B` tiene `prioridad` 3
+- **AND** ambas conservan el mismo `grupo_bidireccional`
+- **AND** el `Relacion` devuelto es la arista `B → A`
+- **AND** no existe fila nueva en `outbox`
+
+#### Scenario: Editar nota de un complement unidireccional no toca inversa (happy)
+
+- **WHEN** existe solo `Perno → Arandela` en `complementa` y se llama `update` con esa arista, `nota` `"Arandela plana M8"` y `prioridad` ausente
+- **THEN** la operación termina sin error
+- **AND** esa arista tiene la nota nueva y la misma `prioridad`
+- **AND** no existe arista inversa
+- **AND** `record_count("complementa")` sigue siendo 1
+
+#### Scenario: Eliminar el grupo bidireccional desde B borra ambas (happy, HU-04-02)
+
+- **WHEN** existe el par bidireccional `A similar B` y se llama `delete` con el `id` de la arista `B → A` y `tipo` `similar_a`
+- **THEN** la operación termina sin error
+- **AND** no existe la arista `A → B`
+- **AND** no existe la arista `B → A`
+- **AND** `record_count("similar_a")` es 0
+
+#### Scenario: Eliminar complement unidireccional no borra otras aristas (happy)
+
+- **WHEN** existe `Perno → Arandela` en `complementa` y un par `similar_a` entre los mismos productos
+- **AND** se llama `delete` sobre la arista `complementa`
+- **THEN** la operación termina sin error
+- **AND** `record_count("complementa")` es 0
+- **AND** el par `similar_a` permanece
+
+#### Scenario: Listado agrupado con resumen del destino (happy, HU-04-03)
+
+- **WHEN** un producto tiene al menos una arista saliente de cada tipo (incl. un destino inactivo)
+- **AND** se llama `list_for_product` con ese producto
+- **THEN** la operación termina sin error
+- **AND** `similar_a`, `sustituible_por` y `complementa` contienen esas aristas salientes
+- **AND** cada ítem expone `prioridad`, `nota`, `grupo_bidireccional` y `DestinoResumen` con `id`, `sku`, `nombre` y `activo`
+- **AND** el destino inactivo aparece con `activo` falso
+- **AND** no aparecen aristas entrantes
+- **AND** cada grupo está ordenado por `prioridad` ascendente
+
+#### Scenario: Producto sin relaciones lista grupos vacíos (happy)
+
+- **WHEN** existe un producto sin aristas y se llama `list_for_product`
+- **THEN** la operación termina sin error
+- **AND** los tres grupos están vacíos
+
+#### Scenario: update id desconocido (unhappy)
+
+- **WHEN** se llama `update` con un `id` que no existe en la tabla de `tipo`
+- **THEN** la operación falla
+- **AND** el error es `DomainError` con `code` `not_found`
 - **AND** no se modifican las tablas de relación
+
+#### Scenario: delete id desconocido (unhappy)
+
+- **WHEN** se llama `delete` con un `id` que no existe en la tabla de `tipo`
+- **THEN** la operación falla
+- **AND** el error es `DomainError` con `code` `not_found`
+- **AND** no se modifican las tablas de relación
+
+#### Scenario: update con prioridad menor que 1 (unhappy)
+
+- **WHEN** existe una arista y se llama `update` con `prioridad` 0
+- **THEN** la operación falla
+- **AND** el error es `DomainError` con `code` `invalid_input`
+- **AND** el `FieldError.field` es `prioridad`
+- **AND** la arista conserva su `prioridad` anterior
+
+#### Scenario: update con nota de más de 500 caracteres (unhappy)
+
+- **WHEN** existe una arista y se llama `update` con `nota` de 501 caracteres
+- **THEN** la operación falla
+- **AND** el error es `DomainError` con `code` `invalid_input`
+- **AND** el `FieldError.field` es `nota`
+- **AND** la arista conserva su `nota` anterior
 
 ### Requirement: ProductRepo set_activo conserva historial
 
