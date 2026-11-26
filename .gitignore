@@ -27,8 +27,11 @@ e2e/.stack.json
 e2e/data.ms/
 e2e/dumps/
 
-# Meilisearch binary descargado localmente para e2e/CI
+# Meilisearch binary descargado localmente para e2e/CI y scripts/up.sh
 /meilisearch
+
+# Config local generada por scripts/up.sh (rutas absolutas de la máquina)
+/vortex.toml
 
 # Vortex Core local (T-00-01-01)
 models/

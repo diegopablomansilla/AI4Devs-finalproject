@@ -81,11 +81,33 @@ impl MeiliTextSearch {
     }
 
     async fn complete_task(&self, task: TaskInfo) -> Result<(), DomainError> {
-        let result = task
-            .wait_for_completion(&self.client, None, Some(self.task_timeout))
+        let result = self.wait_task(task).await?;
+        if matches!(result, meilisearch_sdk::tasks::Task::Failed { .. }) {
+            return Err(meili_invalid_input("meilisearch task failed"));
+        }
+        Ok(())
+    }
+
+    async fn wait_task(
+        &self,
+        task: TaskInfo,
+    ) -> Result<meilisearch_sdk::tasks::Task, DomainError> {
+        task.wait_for_completion(&self.client, None, Some(self.task_timeout))
+            .await
+            .map_err(|e| map_meili_error(&e))
+    }
+
+    async fn delete_index_inner(&self, uid: &str) -> Result<(), DomainError> {
+        let task = self
+            .client
+            .delete_index(uid)
             .await
             .map_err(|e| map_meili_error(&e))?;
-        if matches!(result, meilisearch_sdk::tasks::Task::Failed { .. }) {
+        let result = self.wait_task(task).await?;
+        if let meilisearch_sdk::tasks::Task::Failed { content } = result {
+            if content.error.error_code == ErrorCode::IndexNotFound {
+                return Ok(());
+            }
             return Err(meili_invalid_input("meilisearch task failed"));
         }
         Ok(())
@@ -474,14 +496,7 @@ impl TextSearch for MeiliTextSearch {
     ) -> impl Future<Output = Result<(), DomainError>> + Send {
         let this = self.clone();
         let uid = index.as_str().to_string();
-        async move {
-            let task = this
-                .client
-                .delete_index(&uid)
-                .await
-                .map_err(|e| map_meili_error(&e))?;
-            this.complete_task(task).await
-        }
+        async move { this.delete_index_inner(&uid).await }
     }
 
     fn health(&self) -> impl Future<Output = Result<ComponentHealth, DomainError>> + Send {

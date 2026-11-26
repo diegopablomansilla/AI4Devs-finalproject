@@ -77,115 +77,28 @@ Dar al mostrador de ferreterías y repuestos una forma rápida y fiable de encon
 
 ### **1.4. Instrucciones de instalación:**
 
-Guía para levantar el **MVP del curso (H1)** en un Mac con Apple Silicon. En este alcance Vortex Core se sirve por **HTTP en `localhost`**; Meilisearch se levanta a mano; no hace falta Ollama, Whisper ni HTTPS/`vectra.local` (v2). Detalle de red: [docs/2 § 2.7](docs/2-arquitectura.md#27-red-local-y-seguridad-mínima).
+Guía para levantar el **MVP del curso (H1)** en un Mac con Apple Silicon. En este alcance Vortex Core se sirve por **HTTP en `localhost`**. El script arranca Meilisearch al lado; Vortex lo consume por URL y no lo supervisa. No hace falta Ollama, Whisper ni HTTPS/`vectra.local` (v2). Detalle de red: [docs/2 § 2.7](docs/2-arquitectura.md#27-red-local-y-seguridad-mínima).
 
 #### Requisitos
 
 | Requisito | Notas |
 |---|---|
-| **macOS** Apple Silicon | CI y e2e asumen `macos-14` / binario Meilisearch Apple Silicon. |
+| **macOS** Apple Silicon | CI, e2e y `scripts/up.sh` asumen `macos-14` / binario Meilisearch Apple Silicon. |
 | **Rust** | Canal fijado en [`rust-toolchain.toml`](rust-toolchain.toml) (`1.99.0` + `rustfmt` / `clippy`). Con [rustup](https://rustup.rs/) alcanza: al entrar a `vortex-core/` se instala solo. |
-| **Meilisearch** | Versión fijada en [`scripts/meilisearch-version`](scripts/meilisearch-version) (hoy `v1.58.0`). |
+| **Red** | Solo la primera vez, para bajar Meilisearch. Versión fijada en [`scripts/meilisearch-version`](scripts/meilisearch-version) (hoy `v1.58.0`). |
 | **Node.js** (opcional) | Solo para e2e Playwright en `e2e/` (Node 20+). La PWA no tiene paso de build. |
 
-#### 1. Clonar y compilar Vortex Core
+#### Arranque
+
+Desde la raíz del clone:
 
 ```bash
 git clone https://github.com/diegopablomansilla/AI4Devs-finalproject.git
 cd AI4Devs-finalproject
-cd vortex-core
-cargo build --bin vortex
+./scripts/up.sh
 ```
 
-El binario queda en `vortex-core/target/debug/vortex`. Para desarrollo habitual: `cargo run --bin vortex -- …`.
-
-#### 2. Descargar y arrancar Meilisearch
-
-Desde la raíz del repo (misma versión que CI):
-
-```bash
-TAG=$(tr -d '[:space:]' < scripts/meilisearch-version)
-curl -fsSL -o meilisearch \
-  "https://github.com/meilisearch/meilisearch/releases/download/${TAG}/meilisearch-macos-apple-silicon"
-chmod +x meilisearch
-MEILI_NO_ANALYTICS=true ./meilisearch --http-addr 127.0.0.1:7700
-```
-
-Dejar ese proceso en una terminal. `/health` debe responder `available` en `http://127.0.0.1:7700/health`.
-
-#### 3. Configuración local
-
-Copiar el ejemplo y ajustar **rutas absolutas** (obligatorias):
-
-```bash
-cp vortex-core/config.example.toml ./vortex.toml
-```
-
-Ejemplo mínimo para desarrollo en el repo (reemplazar `$PWD` por la ruta real del clone):
-
-```toml
-[paths]
-datos = "/ABS/AI4Devs-finalproject/data"
-modelos = "/ABS/AI4Devs-finalproject/models"
-backups = "/ABS/AI4Devs-finalproject/backups"
-web = "/ABS/AI4Devs-finalproject/vectra-web"
-
-[server]
-bind = "127.0.0.1:8080"
-hostname = "localhost"
-
-[negocio]
-moneda = "ARS"
-
-[meilisearch]
-url = "http://127.0.0.1:7700"
-
-[ollama]
-url = "http://127.0.0.1:11434"
-
-[backup]
-hora = "03:00"
-retencion = 14
-
-[logs]
-nivel = "info"
-retencion = 14
-```
-
-- `paths.web` debe apuntar a `vectra-web/` (la API sirve la PWA y `/media` desde ahí).
-- `paths.datos` es donde SurrealDB embebido (RocksDB) y los logs viven; se crea al primer arranque.
-- Alternativa a `--config`: variable `VORTEX_CONFIG` con la ruta al TOML.
-
-Crear el directorio de datos si hace falta: `mkdir -p data models backups`.
-
-#### 4. Dataset semilla (`vortex seed`)
-
-Con **Meilisearch arriba** y el **servidor detenido** (SurrealDB embebido no admite dos procesos sobre la misma base):
-
-```bash
-cd vortex-core
-cargo run --bin vortex -- --config ../vortex.toml seed ../seed
-```
-
-Importa categorías, marcas, atributos, ~200 productos con stock inicial y relaciones. Formato y reglas: [`seed/README.md`](seed/README.md).
-
-#### 5. Reindexar Meilisearch (`vortex reindex`) — opcional pero recomendado
-
-También con el **servidor detenido**:
-
-```bash
-cargo run --bin vortex -- --config ../vortex.toml reindex
-```
-
-Reconstruye el índice `productos` con *swap* atómico. Si preferís, al primer `vortex serve` el arranque puede hacer *catch-up* del outbox / bootstrap del índice cuando Meilisearch está `up`.
-
-#### 6. Arrancar la API y la PWA (`vortex serve`)
-
-```bash
-cargo run --bin vortex -- --config ../vortex.toml serve
-```
-
-Orden de arranque (MVP): configuración → Storage + migraciones → sonda de Meilisearch (hasta 20 s; si no responde, sigue **degradado**) → Index Sync Worker → API + estáticos.
+El script compila `vortex` en debug, descarga `./meilisearch` si falta, escribe `vortex.toml` con rutas absolutas de este clone (no lo pisa si ya existe) y crea `data/`, `models/` y `backups/`. Arranca Meilisearch en `127.0.0.1:7700` con datos en `data/meili` (si ese puerto ya responde `available`, lo reutiliza). Si todavía no hay `data/db`, importa el dataset de [`seed/`](seed/README.md) con el servidor detenido. Después deja `vortex serve` en primer plano. `Ctrl+C` detiene la API y el Meilisearch que haya iniciado el script.
 
 | URL | Uso |
 |---|---|
@@ -194,14 +107,55 @@ Orden de arranque (MVP): configuración → Storage + migraciones → sonda de M
 | http://127.0.0.1:8080/health | Salud agregada |
 | http://127.0.0.1:8080/metrics | Métricas Prometheus |
 
-No hay *build* del frontend: `vectra-web` son estáticos (ES modules + Web Components).
+No hay *build* del frontend: `vectra-web` son estáticos (ES modules + Web Components). `paths.web` apunta ahí; `paths.datos` es la base embebida (SurrealDB en `data/db`) y los logs. Meilisearch persiste en `data/meili/`; el log del sidecar que arranca `up.sh` va a `data/meili.log`. `vortex.toml` es local (está en `.gitignore`).
 
-#### 7. Verificación rápida
+#### Catálogo e índice de búsqueda
+
+Son dos capas:
+
+| Capa | Dónde vive | Qué habilita |
+|---|---|---|
+| **Catálogo** | SurrealDB (`data/db`) | Listados y edición en Administrador, API `GET /products`, recomendaciones que lean la base. |
+| **Búsqueda** | Meilisearch (`data/meili`) | Omnibox y `GET /api/v1/search` (texto tolerante a typos). |
+
+`./scripts/up.sh` importa el [`seed/`](seed/README.md) solo si **no** existe `data/db`. **No** ejecuta `vortex reindex`. Si ya tenés catálogo pero Meilisearch está vacío (p. ej. borraste `data/meili/` o cambiaste de ruta de datos del sidecar), la UI de administración puede verse bien y la búsqueda devolver **cero resultados**.
+
+Al arrancar, `vortex serve` sincroniza el **outbox** hacia Meilisearch; eso no reconstruye el índice completo cuando el cursor ya está al día y el índice `productos` no tiene documentos.
+
+#### Reindex (cuando la búsqueda está vacía)
+
+Condiciones: **Meilisearch arriba** en `http://127.0.0.1:7700` y **`vortex serve` detenido** (SurrealDB no admite dos procesos sobre `data/db`). Detené `up.sh` con `Ctrl+C` si corre en primer plano.
+
+```bash
+# Desde la raíz del repo, con Meilisearch escuchando en :7700
+cargo build --bin vortex --manifest-path vortex-core/Cargo.toml
+./vortex-core/target/debug/vortex --config vortex.toml reindex
+./scripts/up.sh   # o solo: ./vortex-core/target/debug/vortex --config vortex.toml serve
+```
+
+Reconstruye el índice `productos` desde SurrealDB (swap atómico). Tras un reindex correcto deberías ver del orden de **~220** documentos en Meilisearch y búsquedas como `tornilo` con hits.
+
+Si ampliaste `seed/relaciones.jsonl` y la base ya existía, con el servidor detenido podés volver a ejecutar `vortex-core/target/debug/vortex --config vortex.toml seed seed` para importar aristas nuevas (omite duplicados; no reescribe productos).
+
+Comprobación rápida (opcional):
+
+```bash
+curl -fsS http://127.0.0.1:7700/indexes/productos/stats
+curl -fsS 'http://127.0.0.1:8080/api/v1/search?q=tornilo&limit=2'
+```
+
+Si `up.sh` sale con *el puerto 8080 ya está ocupado*, liberá ese puerto o frená el otro `vortex` antes de volver a arrancar.
+
+#### Verificación rápida
 
 1. Abrir http://127.0.0.1:8080/ → vista Operador con Omnibox.
 2. Buscar p. ej. `tornilo` o un SKU semilla (`PER-M8X40-ZN`) y abrir recomendaciones.
 3. Ir a Administrador y listar / editar productos.
 4. `GET /health` debe reportar componentes; con Meilisearch caído la API igual arranca y `meilisearch` queda `down`.
+
+#### Alternativa manual
+
+Si preferís levantar cada proceso vos: `cargo build --bin vortex --manifest-path vortex-core/Cargo.toml`, descargá el binario Apple Silicon del tag en `scripts/meilisearch-version` a `./meilisearch` y dejalo con `MEILI_NO_ANALYTICS=true ./meilisearch --http-addr 127.0.0.1:7700 --db-path data/meili`. Copiá [`vortex-core/config.example.toml`](vortex-core/config.example.toml) a `vortex.toml` y poné rutas absolutas en `paths` (`data`, `models`, `backups`, `vectra-web`). Con Meilisearch arriba y el servidor detenido: `vortex-core/target/debug/vortex --config vortex.toml seed seed`, luego `reindex` (ver arriba). Después: `vortex-core/target/debug/vortex --config vortex.toml serve`.
 
 #### Tests locales (opcional)
 
@@ -308,7 +262,7 @@ flowchart LR
 | **Datos** | SurrealDB embebido bajo `paths.datos`; índice Meilisearch reconstruible con `vortex reindex`. |
 | **CI** | GitHub Actions en `macos-14`: fmt, clippy, test, regla `domain`, lint OpenAPI (Redocly), tests ignored `meilisearch`, e2e Playwright. |
 
-**Proceso de “despliegue” local** (misma secuencia que § 1.4): Meilisearch → `seed` (servidor off) → opcional `reindex` → `serve` → abrir `http://127.0.0.1:8080/`.
+**Proceso de “despliegue” local** (§ 1.4): `./scripts/up.sh` compila, deja Meilisearch en `:7700`, escribe `vortex.toml`, corre `seed` si no hay base y deja `serve` en primer plano. Abrir `http://127.0.0.1:8080/`.
 
 **Hacia producción en el local (v2):** HTTPS + CA propia, mDNS `vectra.local`, `launchd`, supervisor de sidecars (Meilisearch/Ollama), backups programados y descarga de modelos ([docs/2 § 2.7](docs/2-arquitectura.md#27-red-local-y-seguridad-mínima), tickets EP-00 / EP-09 fuera del MVP).
 

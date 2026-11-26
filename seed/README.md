@@ -84,4 +84,13 @@ Ejemplo de error (precio no numérico):
 
 ## Dataset de desarrollo en este repositorio
 
-Este árbol es el **dataset de desarrollo** del MVP (~200 SKUs, ferretería y repuestos): maestros, productos, relaciones, sinónimos, notas técnicas e imágenes livianas de ejemplo. Conserva el perno ancla `PER-M8X40-ZN` de T-02-40. El catálogo del comercio piloto (2–5 k SKUs) se importará en v2 (T-02-46), mismo formato.
+Este árbol es el **dataset de desarrollo** del MVP (~220 SKUs, ferretería y repuestos): maestros, productos y **relaciones precargadas** para demostrar el panel de recomendaciones.
+
+- `relaciones.jsonl`: ~130 aristas (similares por medida/largo en tornillos, sustitutos OEM, complementos perno→arandela; anclas `PER-M8X40-ZN`, `PER-ACERO-01`, `TOR-4-16-AC-001`).
+- `TOR-4-16-AC-001` lleva `stock_inicial: "0"` y sustitutos en el grafo, para probar sustitutos destacados en la ficha.
+
+Los archivos `sinonimos.jsonl`, `notas.jsonl` e `imagenes/` validan el formato pero **no** se importan en el MVP (`vortex seed` los omite; ver tickets v2).
+
+Conserva el perno ancla `PER-M8X40-ZN` de T-02-40. El catálogo del comercio piloto (2–5 k SKUs) se importará en v2 (T-02-46), mismo formato.
+
+Si ya importaste el seed antes y solo querés sumar relaciones nuevas: con el servidor detenido, `vortex seed seed` importa aristas adicionales sin duplicar las existentes (no actualiza stock ni fichas ya cargadas).

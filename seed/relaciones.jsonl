@@ -1,3 +1,130 @@
-{"origen":"PER-M8X40-ZN","destino":"ARA-PERNO-01","tipo":"complementa","nota":"Kit fijación"}
-{"origen":"PER-ACERO-01","destino":"PER-ACERO-02","tipo":"sustituible_por","prioridad":1,"bidireccional":false}
-{"origen":"TOR-AUTO-10X1","destino":"TOR-4-16-AC-001","tipo":"similar_a"}
+{"origen": "PER-M8X40-ZN", "destino": "ARA-PERNO-01", "tipo": "complementa", "nota": "Kit fijación"}
+{"origen": "PER-ACERO-01", "destino": "PER-ACERO-02", "tipo": "sustituible_por", "prioridad": 1, "bidireccional": false}
+{"origen": "TOR-AUTO-10X1", "destino": "TOR-4-16-AC-001", "tipo": "similar_a"}
+{"origen": "BUJ-NGK-2586", "destino": "BUJ-NGK-2587", "tipo": "sustituible_por", "prioridad": 1, "nota": "Alternativa mismo OEM"}
+{"origen": "BUJ-NGK-2587", "destino": "BUJ-NGK-2586", "tipo": "sustituible_por", "prioridad": 2, "bidireccional": false}
+{"origen": "TOR-10-16-AC-121", "destino": "TOR-10-16-IN-123", "tipo": "similar_a", "bidireccional": true}
+{"origen": "TOR-10-16-AC-121", "destino": "TOR-10-16-ZI-122", "tipo": "similar_a", "bidireccional": true}
+{"origen": "TOR-10-20-AC-124", "destino": "TOR-10-20-IN-126", "tipo": "similar_a", "bidireccional": true}
+{"origen": "TOR-10-20-AC-124", "destino": "TOR-10-20-ZI-125", "tipo": "similar_a", "bidireccional": true}
+{"origen": "TOR-10-25-AC-127", "destino": "TOR-10-25-IN-129", "tipo": "similar_a", "bidireccional": true}
+{"origen": "TOR-10-25-AC-127", "destino": "TOR-10-25-ZI-128", "tipo": "similar_a", "bidireccional": true}
+{"origen": "TOR-10-30-AC-130", "destino": "TOR-10-30-IN-132", "tipo": "similar_a", "bidireccional": true}
+{"origen": "TOR-10-30-AC-130", "destino": "TOR-10-30-ZI-131", "tipo": "similar_a", "bidireccional": true}
+{"origen": "TOR-10-35-AC-133", "destino": "TOR-10-35-IN-135", "tipo": "similar_a", "bidireccional": true}
+{"origen": "TOR-10-35-AC-133", "destino": "TOR-10-35-ZI-134", "tipo": "similar_a", "bidireccional": true}
+{"origen": "TOR-10-40-AC-136", "destino": "TOR-10-40-IN-138", "tipo": "similar_a", "bidireccional": true}
+{"origen": "TOR-10-40-AC-136", "destino": "TOR-10-40-ZI-137", "tipo": "similar_a", "bidireccional": true}
+{"origen": "TOR-10-45-AC-139", "destino": "TOR-10-45-IN-141", "tipo": "similar_a", "bidireccional": true}
+{"origen": "TOR-10-45-AC-139", "destino": "TOR-10-45-ZI-140", "tipo": "similar_a", "bidireccional": true}
+{"origen": "TOR-10-50-AC-142", "destino": "TOR-10-50-IN-144", "tipo": "similar_a", "bidireccional": true}
+{"origen": "TOR-10-50-AC-142", "destino": "TOR-10-50-ZI-143", "tipo": "similar_a", "bidireccional": true}
+{"origen": "TOR-10-60-AC-145", "destino": "TOR-10-60-IN-147", "tipo": "similar_a", "bidireccional": true}
+{"origen": "TOR-10-60-AC-145", "destino": "TOR-10-60-ZI-146", "tipo": "similar_a", "bidireccional": true}
+{"origen": "TOR-10-70-AC-148", "destino": "TOR-10-70-IN-150", "tipo": "similar_a", "bidireccional": true}
+{"origen": "TOR-10-70-AC-148", "destino": "TOR-10-70-ZI-149", "tipo": "similar_a", "bidireccional": true}
+{"origen": "TOR-12-16-AC-151", "destino": "TOR-12-16-IN-153", "tipo": "similar_a", "bidireccional": true}
+{"origen": "TOR-12-16-AC-151", "destino": "TOR-12-16-ZI-152", "tipo": "similar_a", "bidireccional": true}
+{"origen": "TOR-12-20-AC-154", "destino": "TOR-12-20-IN-156", "tipo": "similar_a", "bidireccional": true}
+{"origen": "TOR-12-20-AC-154", "destino": "TOR-12-20-ZI-155", "tipo": "similar_a", "bidireccional": true}
+{"origen": "TOR-12-25-AC-157", "destino": "TOR-12-25-IN-159", "tipo": "similar_a", "bidireccional": true}
+{"origen": "TOR-12-25-AC-157", "destino": "TOR-12-25-ZI-158", "tipo": "similar_a", "bidireccional": true}
+{"origen": "TOR-12-30-AC-160", "destino": "TOR-12-30-IN-162", "tipo": "similar_a", "bidireccional": true}
+{"origen": "TOR-12-30-AC-160", "destino": "TOR-12-30-ZI-161", "tipo": "similar_a", "bidireccional": true}
+{"origen": "TOR-12-35-AC-163", "destino": "TOR-12-35-IN-165", "tipo": "similar_a", "bidireccional": true}
+{"origen": "TOR-12-35-AC-163", "destino": "TOR-12-35-ZI-164", "tipo": "similar_a", "bidireccional": true}
+{"origen": "TOR-12-40-AC-166", "destino": "TOR-12-40-IN-168", "tipo": "similar_a", "bidireccional": true}
+{"origen": "TOR-12-40-AC-166", "destino": "TOR-12-40-ZI-167", "tipo": "similar_a", "bidireccional": true}
+{"origen": "TOR-12-45-AC-169", "destino": "TOR-12-45-IN-171", "tipo": "similar_a", "bidireccional": true}
+{"origen": "TOR-12-45-AC-169", "destino": "TOR-12-45-ZI-170", "tipo": "similar_a", "bidireccional": true}
+{"origen": "TOR-12-50-AC-172", "destino": "TOR-12-50-IN-174", "tipo": "similar_a", "bidireccional": true}
+{"origen": "TOR-12-50-AC-172", "destino": "TOR-12-50-ZI-173", "tipo": "similar_a", "bidireccional": true}
+{"origen": "TOR-12-60-AC-175", "destino": "TOR-12-60-IN-177", "tipo": "similar_a", "bidireccional": true}
+{"origen": "TOR-12-60-AC-175", "destino": "TOR-12-60-ZI-176", "tipo": "similar_a", "bidireccional": true}
+{"origen": "TOR-12-70-AC-178", "destino": "TOR-12-70-IN-180", "tipo": "similar_a", "bidireccional": true}
+{"origen": "TOR-12-70-AC-178", "destino": "TOR-12-70-ZI-179", "tipo": "similar_a", "bidireccional": true}
+{"origen": "TOR-4-16-AC-001", "destino": "TOR-4-16-IN-003", "tipo": "similar_a", "bidireccional": true}
+{"origen": "TOR-4-16-AC-001", "destino": "TOR-4-16-ZI-002", "tipo": "similar_a", "bidireccional": true}
+{"origen": "TOR-4-20-AC-004", "destino": "TOR-4-20-IN-006", "tipo": "similar_a", "bidireccional": true}
+{"origen": "TOR-4-20-AC-004", "destino": "TOR-4-20-ZI-005", "tipo": "similar_a", "bidireccional": true}
+{"origen": "TOR-4-25-AC-007", "destino": "TOR-4-25-IN-009", "tipo": "similar_a", "bidireccional": true}
+{"origen": "TOR-4-25-AC-007", "destino": "TOR-4-25-ZI-008", "tipo": "similar_a", "bidireccional": true}
+{"origen": "TOR-4-30-AC-010", "destino": "TOR-4-30-IN-012", "tipo": "similar_a", "bidireccional": true}
+{"origen": "TOR-4-30-AC-010", "destino": "TOR-4-30-ZI-011", "tipo": "similar_a", "bidireccional": true}
+{"origen": "TOR-4-35-AC-013", "destino": "TOR-4-35-IN-015", "tipo": "similar_a", "bidireccional": true}
+{"origen": "TOR-4-35-AC-013", "destino": "TOR-4-35-ZI-014", "tipo": "similar_a", "bidireccional": true}
+{"origen": "TOR-4-40-AC-016", "destino": "TOR-4-40-IN-018", "tipo": "similar_a", "bidireccional": true}
+{"origen": "TOR-4-40-AC-016", "destino": "TOR-4-40-ZI-017", "tipo": "similar_a", "bidireccional": true}
+{"origen": "TOR-4-45-AC-019", "destino": "TOR-4-45-IN-021", "tipo": "similar_a", "bidireccional": true}
+{"origen": "TOR-4-45-AC-019", "destino": "TOR-4-45-ZI-020", "tipo": "similar_a", "bidireccional": true}
+{"origen": "TOR-4-50-AC-022", "destino": "TOR-4-50-IN-024", "tipo": "similar_a", "bidireccional": true}
+{"origen": "TOR-4-50-AC-022", "destino": "TOR-4-50-ZI-023", "tipo": "similar_a", "bidireccional": true}
+{"origen": "TOR-4-60-AC-025", "destino": "TOR-4-60-IN-027", "tipo": "similar_a", "bidireccional": true}
+{"origen": "TOR-4-60-AC-025", "destino": "TOR-4-60-ZI-026", "tipo": "similar_a", "bidireccional": true}
+{"origen": "TOR-4-70-AC-028", "destino": "TOR-4-70-IN-030", "tipo": "similar_a", "bidireccional": true}
+{"origen": "TOR-4-70-AC-028", "destino": "TOR-4-70-ZI-029", "tipo": "similar_a", "bidireccional": true}
+{"origen": "TOR-5-16-AC-031", "destino": "TOR-5-16-IN-033", "tipo": "similar_a", "bidireccional": true}
+{"origen": "TOR-5-16-AC-031", "destino": "TOR-5-16-ZI-032", "tipo": "similar_a", "bidireccional": true}
+{"origen": "TOR-5-20-AC-034", "destino": "TOR-5-20-IN-036", "tipo": "similar_a", "bidireccional": true}
+{"origen": "TOR-5-20-AC-034", "destino": "TOR-5-20-ZI-035", "tipo": "similar_a", "bidireccional": true}
+{"origen": "TOR-5-25-AC-037", "destino": "TOR-5-25-IN-039", "tipo": "similar_a", "bidireccional": true}
+{"origen": "TOR-5-25-AC-037", "destino": "TOR-5-25-ZI-038", "tipo": "similar_a", "bidireccional": true}
+{"origen": "TOR-5-30-AC-040", "destino": "TOR-5-30-IN-042", "tipo": "similar_a", "bidireccional": true}
+{"origen": "TOR-5-30-AC-040", "destino": "TOR-5-30-ZI-041", "tipo": "similar_a", "bidireccional": true}
+{"origen": "TOR-5-35-AC-043", "destino": "TOR-5-35-IN-045", "tipo": "similar_a", "bidireccional": true}
+{"origen": "TOR-5-35-AC-043", "destino": "TOR-5-35-ZI-044", "tipo": "similar_a", "bidireccional": true}
+{"origen": "TOR-5-40-AC-046", "destino": "TOR-5-40-IN-048", "tipo": "similar_a", "bidireccional": true}
+{"origen": "TOR-5-40-AC-046", "destino": "TOR-5-40-ZI-047", "tipo": "similar_a", "bidireccional": true}
+{"origen": "TOR-5-45-AC-049", "destino": "TOR-5-45-IN-051", "tipo": "similar_a", "bidireccional": true}
+{"origen": "TOR-5-45-AC-049", "destino": "TOR-5-45-ZI-050", "tipo": "similar_a", "bidireccional": true}
+{"origen": "TOR-5-50-AC-052", "destino": "TOR-5-50-IN-054", "tipo": "similar_a", "bidireccional": true}
+{"origen": "TOR-5-50-AC-052", "destino": "TOR-5-50-ZI-053", "tipo": "similar_a", "bidireccional": true}
+{"origen": "TOR-5-60-AC-055", "destino": "TOR-5-60-IN-057", "tipo": "similar_a", "bidireccional": true}
+{"origen": "TOR-5-60-AC-055", "destino": "TOR-5-60-ZI-056", "tipo": "similar_a", "bidireccional": true}
+{"origen": "TOR-5-70-AC-058", "destino": "TOR-5-70-IN-060", "tipo": "similar_a", "bidireccional": true}
+{"origen": "TOR-5-70-AC-058", "destino": "TOR-5-70-ZI-059", "tipo": "similar_a", "bidireccional": true}
+{"origen": "TOR-6-16-AC-061", "destino": "TOR-6-16-IN-063", "tipo": "similar_a", "bidireccional": true}
+{"origen": "TOR-6-16-AC-061", "destino": "TOR-6-16-ZI-062", "tipo": "similar_a", "bidireccional": true}
+{"origen": "TOR-6-20-AC-064", "destino": "TOR-6-20-IN-066", "tipo": "similar_a", "bidireccional": true}
+{"origen": "TOR-6-20-AC-064", "destino": "TOR-6-20-ZI-065", "tipo": "similar_a", "bidireccional": true}
+{"origen": "TOR-6-25-AC-067", "destino": "TOR-6-25-IN-069", "tipo": "similar_a", "bidireccional": true}
+{"origen": "TOR-6-25-AC-067", "destino": "TOR-6-25-ZI-068", "tipo": "similar_a", "bidireccional": true}
+{"origen": "TOR-6-30-AC-070", "destino": "TOR-6-30-IN-072", "tipo": "similar_a", "bidireccional": true}
+{"origen": "TOR-6-30-AC-070", "destino": "TOR-6-30-ZI-071", "tipo": "similar_a", "bidireccional": true}
+{"origen": "TOR-6-35-AC-073", "destino": "TOR-6-35-IN-075", "tipo": "similar_a", "bidireccional": true}
+{"origen": "TOR-6-35-AC-073", "destino": "TOR-6-35-ZI-074", "tipo": "similar_a", "bidireccional": true}
+{"origen": "TOR-6-40-AC-076", "destino": "TOR-6-40-IN-078", "tipo": "similar_a", "bidireccional": true}
+{"origen": "TOR-6-40-AC-076", "destino": "TOR-6-40-ZI-077", "tipo": "similar_a", "bidireccional": true}
+{"origen": "TOR-6-45-AC-079", "destino": "TOR-6-45-IN-081", "tipo": "similar_a", "bidireccional": true}
+{"origen": "TOR-6-45-AC-079", "destino": "TOR-6-45-ZI-080", "tipo": "similar_a", "bidireccional": true}
+{"origen": "TOR-6-50-AC-082", "destino": "TOR-6-50-IN-084", "tipo": "similar_a", "bidireccional": true}
+{"origen": "TOR-6-50-AC-082", "destino": "TOR-6-50-ZI-083", "tipo": "similar_a", "bidireccional": true}
+{"origen": "TOR-6-60-AC-085", "destino": "TOR-6-60-IN-087", "tipo": "similar_a", "bidireccional": true}
+{"origen": "TOR-6-60-AC-085", "destino": "TOR-6-60-ZI-086", "tipo": "similar_a", "bidireccional": true}
+{"origen": "TOR-6-70-AC-088", "destino": "TOR-6-70-IN-090", "tipo": "similar_a", "bidireccional": true}
+{"origen": "TOR-6-70-AC-088", "destino": "TOR-6-70-ZI-089", "tipo": "similar_a", "bidireccional": true}
+{"origen": "TOR-8-16-AC-091", "destino": "TOR-8-16-IN-093", "tipo": "similar_a", "bidireccional": true}
+{"origen": "TOR-8-16-AC-091", "destino": "TOR-8-16-ZI-092", "tipo": "similar_a", "bidireccional": true}
+{"origen": "TOR-8-20-AC-094", "destino": "TOR-8-20-IN-096", "tipo": "similar_a", "bidireccional": true}
+{"origen": "TOR-8-20-AC-094", "destino": "TOR-8-20-ZI-095", "tipo": "similar_a", "bidireccional": true}
+{"origen": "TOR-8-25-AC-097", "destino": "TOR-8-25-IN-099", "tipo": "similar_a", "bidireccional": true}
+{"origen": "TOR-8-25-AC-097", "destino": "TOR-8-25-ZI-098", "tipo": "similar_a", "bidireccional": true}
+{"origen": "TOR-8-30-AC-100", "destino": "TOR-8-30-IN-102", "tipo": "similar_a", "bidireccional": true}
+{"origen": "TOR-8-30-AC-100", "destino": "TOR-8-30-ZI-101", "tipo": "similar_a", "bidireccional": true}
+{"origen": "TOR-8-35-AC-103", "destino": "TOR-8-35-IN-105", "tipo": "similar_a", "bidireccional": true}
+{"origen": "TOR-8-35-AC-103", "destino": "TOR-8-35-ZI-104", "tipo": "similar_a", "bidireccional": true}
+{"origen": "TOR-8-40-AC-106", "destino": "TOR-8-40-IN-108", "tipo": "similar_a", "bidireccional": true}
+{"origen": "TOR-8-40-AC-106", "destino": "TOR-8-40-ZI-107", "tipo": "similar_a", "bidireccional": true}
+{"origen": "TOR-8-45-AC-109", "destino": "TOR-8-45-IN-111", "tipo": "similar_a", "bidireccional": true}
+{"origen": "TOR-8-45-AC-109", "destino": "TOR-8-45-ZI-110", "tipo": "similar_a", "bidireccional": true}
+{"origen": "TOR-8-50-AC-112", "destino": "TOR-8-50-IN-114", "tipo": "similar_a", "bidireccional": true}
+{"origen": "TOR-8-50-AC-112", "destino": "TOR-8-50-ZI-113", "tipo": "similar_a", "bidireccional": true}
+{"origen": "TOR-8-60-AC-115", "destino": "TOR-8-60-IN-117", "tipo": "similar_a", "bidireccional": true}
+{"origen": "TOR-8-60-AC-115", "destino": "TOR-8-60-ZI-116", "tipo": "similar_a", "bidireccional": true}
+{"origen": "TOR-8-70-AC-118", "destino": "TOR-8-70-IN-120", "tipo": "similar_a", "bidireccional": true}
+{"origen": "TOR-8-70-AC-118", "destino": "TOR-8-70-ZI-119", "tipo": "similar_a", "bidireccional": true}
+{"origen": "PER-ACERO-01", "destino": "ARA-PERNO-01", "tipo": "complementa", "nota": "Arandela a juego"}
+{"origen": "PER-ACERO-02", "destino": "ARA-PERNO-01", "tipo": "complementa", "nota": "Arandela a juego"}
+{"origen": "PER-M8X40-ZN", "destino": "TOR-8-30-AC-100", "tipo": "complementa", "nota": "Fijación tornillo M8"}
+{"origen": "TOR-4-16-AC-001", "destino": "TOR-4-16-ZI-002", "tipo": "sustituible_por", "prioridad": 1, "nota": "Mismo paso, zincado"}
+{"origen": "TOR-4-16-AC-001", "destino": "TOR-4-16-IN-003", "tipo": "sustituible_por", "prioridad": 2, "nota": "Mismo paso, inox"}
