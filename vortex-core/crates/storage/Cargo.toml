@@ -1,0 +1,19 @@
+[package]
+name = "storage"
+version = "0.1.0"
+edition.workspace = true
+publish = false
+
+[dependencies]
+domain = { path = "../domain" }
+serde = { workspace = true, features = ["derive"] }
+surrealdb = { workspace = true, default-features = false, features = ["kv-rocksdb", "kv-mem"] }
+thiserror = { workspace = true }
+sha2 = { workspace = true }
+tokio = { workspace = true, features = ["sync"] }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+
+[lints]
+workspace = true

@@ -1,0 +1,10 @@
+DEFINE TABLE IF NOT EXISTS movimiento_stock SCHEMAFULL CHANGEFEED 3d;
+DEFINE FIELD IF NOT EXISTS producto ON movimiento_stock TYPE record<producto> READONLY;
+DEFINE FIELD IF NOT EXISTS tipo ON movimiento_stock TYPE string ASSERT $value IN ['inicial', 'ingreso', 'ajuste', 'venta'] READONLY;
+DEFINE FIELD IF NOT EXISTS cantidad ON movimiento_stock TYPE decimal ASSERT $value != 0 READONLY;
+DEFINE FIELD IF NOT EXISTS stock_resultante ON movimiento_stock TYPE decimal ASSERT $value >= 0 READONLY;
+DEFINE FIELD IF NOT EXISTS motivo ON movimiento_stock TYPE option<string> READONLY;
+DEFINE FIELD IF NOT EXISTS venta ON movimiento_stock TYPE option<record> READONLY;
+DEFINE FIELD IF NOT EXISTS terminal ON movimiento_stock TYPE option<string> READONLY;
+DEFINE FIELD IF NOT EXISTS creado_en ON movimiento_stock TYPE datetime DEFAULT time::now() READONLY;
+DEFINE INDEX IF NOT EXISTS idx_mov_producto ON movimiento_stock FIELDS producto, creado_en;

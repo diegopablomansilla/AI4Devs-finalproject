@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  pull_request:
+
+jobs:
+  clippy:
+    runs-on: macos-14
+    defaults:
+      run:
+        working-directory: vortex-core
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            vortex-core/target
+          key: macos-14-clippy-x
+      - run: cargo clippy --workspace -- -D warnings
+  test:
+    runs-on: macos-14
+    defaults:
+      run:
+        working-directory: vortex-core
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            vortex-core/target
+          key: macos-14-test-x
+      - run: cargo test --workspace

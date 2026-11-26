@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Vectra — componentes</title>
+    <link rel="stylesheet" href="../css/tokens.css" />
+    <link rel="stylesheet" href="../css/base.css" />
+    <style>
+      body {
+        padding: var(--vx-space-4);
+        max-width: 40rem;
+      }
+      h1 {
+        margin-top: 0;
+      }
+      section {
+        margin-bottom: var(--vx-space-4);
+      }
+      .row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--vx-space-2);
+        align-items: center;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Design system — muestra</h1>
+    <p>Navegá con Tab; controles con mínimo 44 px.</p>
+
+    <section aria-labelledby="sec-omnibox">
+      <h2 id="sec-omnibox">Omnibox</h2>
+      <vx-omnibox></vx-omnibox>
+      <p>Con capacidad <code>vision</code> (modo Imagen visible):</p>
+      <vx-omnibox vision></vx-omnibox>
+    </section>
+
+    <section aria-labelledby="sec-button">
+      <h2 id="sec-button">Botones</h2>
+      <div class="row">
+        <vx-button variant="primary">Primario</vx-button>
+        <vx-button variant="ghost">Fantasma</vx-button>
+        <vx-button variant="danger">Peligro</vx-button>
+        <vx-button loading>Cargando</vx-button>
+        <vx-button disabled>Deshabilitado</vx-button>
+      </div>
+    </section>
+
+    <section aria-labelledby="sec-field">
+      <h2 id="sec-field">Campos</h2>
+      <vx-field label="Nombre" help="Texto visible en el mostrador" name="nombre"></vx-field>
+      <vx-field
+        label="SKU"
+        help="Código interno"
+        error="El SKU es obligatorio"
+        name="sku"
+      ></vx-field>
+    </section>
+
+    <section aria-labelledby="sec-chip">
+      <h2 id="sec-chip">Chips</h2>
+      <div class="row">
+        <vx-chip count="12">Marcas</vx-chip>
+        <vx-chip selected>Con stock</vx-chip>
+        <vx-chip disabled>No disponible</vx-chip>
+      </div>
+    </section>
+
+    <section aria-labelledby="sec-keyboard-list">
+      <h2 id="sec-keyboard-list">Lista por teclado</h2>
+      <p>Flechas, Enter (abrir panel) y Escape (volver al Omnibox).</p>
+      <div id="demo-keyboard-list" class="vx-surface" role="listbox" tabindex="0">
+        <vx-product-card
+          variant="full"
+          sku="TOR-M6X20"
+          name="Tornillo autoperforante M6 x 20"
+          brand="Fixser"
+          price="89.00"
+          stock="25"
+          location="P1 · A-02"
+        ></vx-product-card>
+        <vx-product-card
+          variant="full"
+          sku="PER-M8X40-ZN"
+          name="Perno hexagonal M8 x 40 zincado"
+          brand="Tornip"
+          price="120.00"
+          stock="8"
+          location="P3 · E-B · 12"
+        ></vx-product-card>
+      </div>
+    </section>
+
+    <section aria-labelledby="sec-product-card">
+      <h2 id="sec-product-card">Tarjetas de producto</h2>
+      <vx-product-card
+        variant="full"
+        sku="BRO-W8-150"
+        name="Broca widia 8 x 150 mm"
+        brand="Fixser"
+        price="3450.00"
+        stock="12"
+        location="P2 · E-A · 04"
+      ></vx-product-card>
+      <vx-product-card
+        variant="full"
+        sku="PER-M8X40-ZN"
+        name="Perno hexagonal M8 x 40 zincado"
+        brand="Tornip"
+        price="120.00"
+        stock="0"
+        location="P3 · E-B · 12"
+      ></vx-product-card>
+      <vx-product-card
+        variant="compact"
+        sku="ARA-M8"
+        name="Arandela plana M8"
+        price="25.00"
+        stock="40"
+      ></vx-product-card>
+    </section>
+
+    <section aria-labelledby="sec-overlay">
+      <h2 id="sec-overlay">Superposiciones</h2>
+      <div class="row">
+        <vx-button id="btn-open-modal" variant="ghost">Abrir modal</vx-button>
+        <vx-button id="btn-open-panel" variant="primary">Abrir panel lateral</vx-button>
+      </div>
+      <vx-modal id="demo-modal">Contenido de ejemplo del modal.</vx-modal>
+      <vx-side-panel id="demo-panel">Contenido del panel lateral.</vx-side-panel>
+      <vx-toast variant="info">Operación completada.</vx-toast>
+      <vx-toast variant="error">No se pudo guardar.</vx-toast>
+    </section>
+
+    <script type="module" src="../js/components/index.js"></script>
+    <script type="module">
+      import { bindKeyboardList } from "../js/keyboard-list.js";
+
+      const modal = document.getElementById("demo-modal");
+      const panel = document.getElementById("demo-panel");
+      document.getElementById("btn-open-modal")?.addEventListener("click", (e) => {
+        modal?.show(e.currentTarget);
+      });
+      document.getElementById("btn-open-panel")?.addEventListener("click", (e) => {
+        panel?.show(e.currentTarget);
+      });
+
+      const list = document.getElementById("demo-keyboard-list");
+      const omnibox = document.querySelector("section#sec-omnibox > vx-omnibox");
+      const omniboxInput = omnibox?.shadowRoot?.querySelector("input") ?? null;
+      if (list && panel) {
+        const controllers = [list];
+        if (omniboxInput) {
+          controllers.push(omniboxInput);
+        }
+        bindKeyboardList({
+          list,
+          getItems: () => [...list.querySelectorAll("vx-product-card")],
+          controllers,
+          restoreFocus: omnibox ?? null,
+          onOpen: (item) => {
+            const name = item.getAttribute("name") ?? "Producto";
+            const sku = item.getAttribute("sku") ?? "";
+            panel.textContent = sku ? `${name} (${sku})` : name;
+            panel.show(item);
+          },
+        });
+      }
+    </script>
+  </body>
+</html>

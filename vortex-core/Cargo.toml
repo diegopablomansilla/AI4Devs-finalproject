@@ -1,0 +1,53 @@
+[workspace]
+resolver = "3"
+members = [
+    "crates/api",
+    "crates/domain",
+    "crates/catalog",
+    "crates/search",
+    "crates/recommend",
+    "crates/ai",
+    "crates/speech",
+    "crates/vision",
+    "crates/sync",
+    "crates/storage",
+    "crates/supervisor",
+    "bin/vortex",
+]
+
+[workspace.package]
+edition = "2024"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+
+[workspace.dependencies]
+tokio = "=1.54.1"
+axum = "=0.8.9"
+tower-http = "=0.7.1"
+axum-server = "=0.9.0"
+surrealdb = "=2.7.0"
+meilisearch-sdk = "=0.33.0"
+reqwest = "=0.13.5"
+ort = "=2.0.0-rc.15"
+tokenizers = "=0.23.2"
+whisper-rs = "=0.16.0"
+rust_decimal = "=1.43.0"
+ulid = "=3.0.0"
+thiserror = "=2.0.21"
+serde = "=1.0.229"
+serde_json = "=1.0.154"
+tracing = "=0.1.44"
+tracing-subscriber = "=0.3.23"
+tracing-appender = "=0.2.5"
+metrics = "=0.24.6"
+metrics-exporter-prometheus = "=0.18.3"
+rcgen = "=0.14.10"
+clap = "=4.6.7"
+toml = "=1.2.1"
+sha2 = "=0.10.9"
+jsonschema = "=0.61.1"
+serde_yaml = "=0.9.34"

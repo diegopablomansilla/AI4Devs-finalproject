@@ -1,5 +1,5 @@
 ---
-description: Gitflow main/develop and branch naming T-XX-YY-ZZ
+description: Gitflow main/develop and branch naming T-XX-YY
 alwaysApply: true
 ---
 
@@ -11,17 +11,16 @@ Canonical detail: [docs/desarrollo-git-openspec.md](docs/desarrollo-git-openspec
 
 - **`main`**: stable line; do not commit directly unless the user explicitly asks.
 - **`develop`**: integration branch; **create all work branches from `develop`**.
-- **Work branch name**: `T-XX-YY-ZZ` only (no `feature/` prefix). Same name as the OpenSpec change.
+- **Work branch name**: `T-XX-YY` only (no `feature/` prefix, no `-01` suffix). Same name as the ticket and the OpenSpec change.
 
 ## Flow
 
-1. Update `develop`, then `git checkout -b T-XX-YY-ZZ`.
-2. One OpenSpec change = one spec = one branch.
+1. Update `develop`, then `git checkout -b T-XX-YY`.
+2. One OpenSpec change = one ticket = one branch.
 3. Merge into **`develop`** via Pull Request (target `develop`, not `main`).
 4. Updates to **`main`** come from `develop` at each course delivery or hito, followed by an annotated SemVer tag (see doc § 10).
 5. No HU branches (`develop → hu → spec` is not used); HUs are tracked with GitHub issues and milestones (doc § 11).
 
 ## Ticket traceability
 
-- `T-XX-YY` = ticket in [docs/7-tickets.md](docs/7-tickets.md).
-- `ZZ` = spec index within that ticket (`01`, `02`, …).
+- `T-XX-YY` = ticket in [docs/7-tickets.md](docs/7-tickets.md) and name of the OpenSpec change + Git branch.

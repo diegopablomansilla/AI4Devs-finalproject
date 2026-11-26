@@ -1,0 +1,193 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - develop
+      - main
+
+jobs:
+  fmt:
+    runs-on: macos-14
+    defaults:
+      run:
+        working-directory: vortex-core
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust
+        run: rustup show
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            vortex-core/target
+          key: macos-14-fmt-${{ hashFiles('vortex-core/Cargo.lock') }}
+          restore-keys: |
+            macos-14-fmt-
+      - name: rustfmt
+        run: cargo fmt --all -- --check
+
+  clippy:
+    runs-on: macos-14
+    defaults:
+      run:
+        working-directory: vortex-core
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust
+        run: rustup show
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            vortex-core/target
+          key: macos-14-clippy-${{ hashFiles('vortex-core/Cargo.lock') }}
+          restore-keys: |
+            macos-14-clippy-
+      - name: clippy
+        run: cargo clippy --workspace -- -D warnings
+
+  test:
+    runs-on: macos-14
+    defaults:
+      run:
+        working-directory: vortex-core
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust
+        run: rustup show
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            vortex-core/target
+          key: macos-14-test-${{ hashFiles('vortex-core/Cargo.lock') }}
+          restore-keys: |
+            macos-14-test-
+      - name: test
+        run: cargo test --workspace
+
+  domain-deps:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust
+        run: rustup show
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            vortex-core/target
+          key: macos-14-domain-deps-${{ hashFiles('vortex-core/Cargo.lock') }}
+          restore-keys: |
+            macos-14-domain-deps-
+      - name: domain dependency tree
+        run: ./scripts/check-domain-deps.sh
+
+  openapi-lint:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - name: OpenAPI lint
+        run: npx --yes @redocly/cli@1 lint docs/openapi.yaml
+
+  meilisearch:
+    runs-on: macos-14
+    defaults:
+      run:
+        working-directory: vortex-core
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust
+        run: rustup show
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            vortex-core/target
+          key: macos-14-meilisearch-${{ hashFiles('vortex-core/Cargo.lock') }}
+          restore-keys: |
+            macos-14-meilisearch-
+      - name: Meilisearch version
+        id: meili
+        working-directory: ${{ github.workspace }}
+        run: echo "tag=$(tr -d '[:space:]' < scripts/meilisearch-version)" >> "$GITHUB_OUTPUT"
+      - name: Download Meilisearch
+        working-directory: ${{ github.workspace }}
+        run: |
+          TAG="${{ steps.meili.outputs.tag }}"
+          curl -fsSL -o meilisearch "https://github.com/meilisearch/meilisearch/releases/download/${TAG}/meilisearch-macos-apple-silicon"
+          chmod +x meilisearch
+      - name: Start Meilisearch
+        working-directory: ${{ github.workspace }}
+        run: |
+          MEILI_NO_ANALYTICS=true ./meilisearch --http-addr 127.0.0.1:7700 &
+          for i in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:7700/health | grep -q '"status":"available"'; then
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Meilisearch /health no respondió a tiempo" >&2
+          exit 1
+      - name: Integration tests (meilisearch)
+        run: cargo test --workspace -- --include-ignored meilisearch
+
+  e2e:
+    runs-on: macos-14
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust
+        run: rustup show
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            vortex-core/target
+          key: macos-14-e2e-${{ hashFiles('vortex-core/Cargo.lock') }}
+          restore-keys: |
+            macos-14-e2e-
+      - name: Build vortex
+        working-directory: vortex-core
+        run: cargo build --bin vortex
+      - name: Meilisearch version
+        id: meili_e2e
+        working-directory: ${{ github.workspace }}
+        run: echo "tag=$(tr -d '[:space:]' < scripts/meilisearch-version)" >> "$GITHUB_OUTPUT"
+      - name: Download Meilisearch
+        working-directory: ${{ github.workspace }}
+        run: |
+          TAG="${{ steps.meili_e2e.outputs.tag }}"
+          curl -fsSL -o meilisearch "https://github.com/meilisearch/meilisearch/releases/download/${TAG}/meilisearch-macos-apple-silicon"
+          chmod +x meilisearch
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: e2e/package-lock.json
+      - name: Install e2e dependencies
+        working-directory: e2e
+        run: npm ci
+      - name: Install Playwright Chromium
+        working-directory: e2e
+        run: npx playwright install chromium
+      - name: Playwright e2e
+        working-directory: e2e
+        env:
+          VORTEX_BIN: ${{ github.workspace }}/vortex-core/target/debug/vortex
+          MEILI_BIN: ${{ github.workspace }}/meilisearch
+        run: npx playwright test

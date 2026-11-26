@@ -30,7 +30,7 @@ Vectra
 
 https://github.com/diegopablomansilla/AI4Devs-finalproject
 
-
+No hay URL de deploy en la nube. Para probarla en local (Mac Apple Silicon): [§ 1.4](#14-instrucciones-de-instalación).
 
 ---
 
@@ -73,10 +73,143 @@ Dar al mostrador de ferreterías y repuestos una forma rápida y fiable de encon
 3. Pregunta técnica en el mostrador: escribe *¿qué broca para taco de 8 en hormigón?* o activa Modo IA; la respuesta llega en streaming con tarjetas de productos reales con stock.
 4. Manos sucias o lejos del teclado: mantiene **Espacio** o el micrófono, dice *“discos de corte 115”*; la transcripción aparece en el Omnibox, la edita si hace falta y ejecuta la búsqueda.
 
-*(Capturas de pantalla o un videotutorial del flujo Operador pueden añadirse aquí cuando la UI esté implementada.)*
+**Demos:** ver la carpeta [`demos/`](demos/).
+
+- [`Demo-http-127.0.0.1-8080-demo.html`](demos/Demo-http-127.0.0.1-8080-demo.html) — captura HTML del flujo en `http://127.0.0.1:8080` (abrir en el navegador).
+- `Grabación de pantalla 2026-11-26 a la(s) 1.30.36 p. m..mov` — videotutorial del flujo Operador.
 
 ### **1.4. Instrucciones de instalación:**
-> Documenta de manera precisa las instrucciones para instalar y poner en marcha el proyecto en local (librerías, backend, frontend, servidor, base de datos, migraciones y semillas de datos, etc.)
+
+No hay URL de deploy en la nube: Vectra corre **en tu Mac**. Clonás el repo, ejecutás un script y abrís el navegador. El script carga solo el catálogo de demo (~220 productos) y deja la búsqueda lista.
+
+Hace falta **macOS Apple Silicon**, **Rust** ([rustup](https://rustup.rs/)) e **internet la primera vez** (descarga Meilisearch). No hace falta Ollama, Whisper, Node ni HTTPS. La primera compilación puede tardar varios minutos.
+
+#### Cómo levantar la app
+
+```bash
+# 1) Rust (solo si `cargo --version` falla)
+#    https://rustup.rs/
+
+# 2) Clonar y arrancar (desde cualquier carpeta)
+git clone https://github.com/diegopablomansilla/AI4Devs-finalproject.git
+cd AI4Devs-finalproject
+./scripts/up.sh
+```
+
+Dejá esa terminal abierta. Cuando veas la URL, abrí **http://127.0.0.1:8080/**
+
+| Qué hace `./scripts/up.sh` | Detalle |
+|---|---|
+| Compila | Binario `vortex` (debug). |
+| Meilisearch | Lo descarga si falta y lo levanta en `127.0.0.1:7700`. |
+| Datos | Si no existe `data/db`, importa [`seed/`](seed/README.md) (~220 SKUs, ~130 relaciones). |
+| Búsqueda | Si el índice `productos` está vacío, corre `vortex reindex` y recién después `serve`. |
+| App | PWA + API en el puerto 8080. `Ctrl+C` para todo (Vortex y el Meilisearch que inició el script). |
+
+#### Qué probar (datos ya cargados)
+
+1. En el Omnibox escribí **`tornilo`** (typo de tornillo): tienen que aparecer tarjetas.
+2. Buscá **`PER-M8X40-ZN`**, Enter o clic → panel con similares, sustitutos y complementos.
+3. Buscá **`TOR-4-16-AC-001`** (stock 0) → **Sustitutos** destacados.
+4. Cambiá a **Administrador** y listá / editá un producto.
+
+| URL | Uso |
+|---|---|
+| http://127.0.0.1:8080/ | PWA (Operador / Administrador) |
+| http://127.0.0.1:8080/health | Salud |
+| http://127.0.0.1:8080/api/v1/search?q=tornilo | Búsqueda (debe traer hits) |
+
+#### Prompt para que un agente te la levante
+
+Si preferís que un agente (Cursor u otro) ejecute los pasos por vos, abrí el repo y pegale **todo** el bloque de [`docs/prompt-evaluador-levantar-app.md`](docs/prompt-evaluador-levantar-app.md). Copia de ese archivo:
+
+```
+Sos un asistente técnico. Tu único objetivo es que yo, evaluador de Vectra (AI4Devs), pueda usar la app local en este Mac con el dataset de demo ya cargado. No me expliques la arquitectura salvo que algo falle.
+
+## Qué es el proyecto
+- Repo: AI4Devs-finalproject (Vectra / Vortex Core).
+- MVP del curso (H1): buscador de mostrador Local-First. PWA en http://127.0.0.1:8080/
+- No hay deploy en la nube. No hace falta Ollama, Whisper, Node ni HTTPS.
+- El catálogo de demo (~220 productos y ~130 relaciones) vive en seed/ y lo importa scripts/up.sh.
+
+## Restricciones
+- Trabajá en la raíz del clone. No reescribas la app, no cambies el alcance, no hagas commit ni push.
+- Hace falta macOS Apple Silicon (Darwin arm64) y Rust (cargo / rustup). Si este equipo no es arm64, detenete y decime que no se puede correr el script oficial.
+- No leas ni cites prompts.md.
+- Preferí scripts/up.sh antes que arrancar procesos a mano.
+
+## Pasos (en este orden)
+1. Confirmá que estamos en la raíz del repo (existe scripts/up.sh y vectra-web/).
+2. Si no hay cargo en PATH, indicame instalar Rust con https://rustup.rs/ y esperá. No inventes un toolchain distinto: el repo trae rust-toolchain.toml.
+3. Liberá el puerto 8080 si ya hay otro vortex. Meilisearch en 127.0.0.1:7700 se puede reutilizar si /health dice available.
+4. Ejecutá: ./scripts/up.sh
+   - Primera vez: compila (puede tardar varios minutos), descarga Meilisearch, crea vortex.toml, importa seed/ si no existe data/db, reindexa Meilisearch si el índice productos está vacío, y deja vortex serve en primer plano.
+   - Dejá ese proceso corriendo. No lo mates al terminar.
+5. Cuando el script imprima la URL, verificá:
+   - curl -fsS http://127.0.0.1:8080/health
+   - curl -fsS 'http://127.0.0.1:8080/api/v1/search?q=tornilo&limit=2'
+   La búsqueda DEBE devolver hits. Si numberOfDocuments en http://127.0.0.1:7700/indexes/productos/stats es 0, el índice está vacío: con serve detenido y Meilisearch arriba, corré:
+     ./vortex-core/target/debug/vortex --config vortex.toml reindex
+   y volvé a ./scripts/up.sh. (En un clone fresco up.sh ya hace este reindex; solo repetilo si algo falló.)
+6. Decime que abra http://127.0.0.1:8080/ y qué probar:
+   - Omnibox: tornilo (typo de tornillo) → tarjetas.
+   - SKU PER-M8X40-ZN → abrir recomendaciones (similares / sustitutos / complementos).
+   - TOR-4-16-AC-001 (stock 0) → sustitutos destacados.
+   - Vista Administrador: listar / editar productos.
+
+## Si algo falla
+- “hace falta macOS Apple Silicon”: no intentes parches Linux/Intel.
+- cargo no está: rustup, nada más.
+- puerto 8080 ocupado: identificá y frená el proceso, no cambies el puerto en vortex.toml salvo que yo lo pida.
+- Meilisearch no descarga: hace falta red la primera vez (tag en scripts/meilisearch-version).
+- SurrealDB lock / “no se pudo abrir la base”: hay otro vortex usando data/db. Frenalo antes de seed/reindex.
+- Compilación lenta: esperá; no pases a --release.
+- Ctrl+C en la terminal de up.sh detiene vortex y el Meilisearch que haya iniciado el script.
+
+## Listo cuando
+- health responde, search?q=tornilo tiene resultados, y yo puedo usar Operador y Administrador en http://127.0.0.1:8080/ sin pasos extra.
+- Resumime en 5 líneas: qué corriste, URL, un query de prueba, cómo parar (Ctrl+C) y qué hice si algo falló.
+```
+
+#### Si algo no anda
+
+| Síntoma | Qué hacer |
+|---|---|
+| `cargo: command not found` | Instalá Rust con [rustup](https://rustup.rs/) y reabrí la terminal. |
+| `hace falta macOS Apple Silicon` | El script oficial no corre en Intel ni Linux. |
+| `el puerto 8080 ya está ocupado` | Cerrá el otro `vortex` / `up.sh` y reintentá. |
+| Admin ve productos, el Omnibox da 0 hits | Índice vacío. Con Meilisearch en `:7700` y **sin** `serve`: `./vortex-core/target/debug/vortex --config vortex.toml reindex` y después `./scripts/up.sh`. |
+| `no se pudo abrir la base` | Otro proceso tiene `data/db`. `Ctrl+C` en esa terminal y reintentá. |
+| Primera vez sin red | No puede bajar Meilisearch (versión en [`scripts/meilisearch-version`](scripts/meilisearch-version)). |
+
+`vortex.toml` se genera en la raíz y **no** se versiona. El frontend no se “buildea”: son estáticos en `vectra-web/`. Dataset: [`seed/README.md`](seed/README.md). Red local: [docs/2 § 2.7](docs/2-arquitectura.md#27-red-local-y-seguridad-mínima).
+
+#### Arranque manual (opcional)
+
+```bash
+cargo build --bin vortex --manifest-path vortex-core/Cargo.toml
+# Binario Apple Silicon del tag en scripts/meilisearch-version → ./meilisearch
+MEILI_NO_ANALYTICS=true ./meilisearch --http-addr 127.0.0.1:7700 --db-path data/meili
+# En otra terminal, con Meilisearch arriba y serve detenido:
+cp vortex-core/config.example.toml vortex.toml   # editar paths a rutas absolutas
+./vortex-core/target/debug/vortex --config vortex.toml seed seed
+./vortex-core/target/debug/vortex --config vortex.toml reindex
+./vortex-core/target/debug/vortex --config vortex.toml serve
+```
+
+#### Tests locales (opcional, no hacen falta para evaluar la GUI)
+
+```bash
+cd vortex-core && cargo fmt --all -- --check
+cargo clippy --workspace -- -D warnings
+cargo test --workspace
+cargo test --workspace -- --include-ignored meilisearch   # Meilisearch en :7700
+
+./scripts/check-vectra-web.sh
+./scripts/check-domain-deps.sh
+
+cd e2e && npm ci && npx playwright install chromium && npm test
+```
 
 ---
 
@@ -109,19 +242,99 @@ Responsabilidades a nivel **contenedor** (SPA, sidecars, SurrealDB): [`docs/2-ar
 
 ### **2.3. Descripción de alto nivel del proyecto y estructura de ficheros**
 
-> Representa la estructura del proyecto y explica brevemente el propósito de las carpetas principales, así como si obedece a algún patrón o arquitectura específica.
+El repositorio separa **documentación de producto**, **backend Rust (Vortex Core)**, **PWA (Vectra)** y **datos/operación**. Vortex Core sigue arquitectura **hexagonal**: `domain` define entidades y puertos (`traits`); el resto son adaptadores e infraestructura. Regla dura: `domain` no depende de SurrealDB, Meilisearch, HTTP ni otros crates del workspace ([§ 3.2](docs/3-componentes.md#32-mapa-de-crates-y-regla-de-dependencias)).
+
+Árbol principal (alineado con [docs/2 § 2.8](docs/2-arquitectura.md#28-estructura-de-repositorio)):
+
+```
+/
+├── docs/                 # Producto, arquitectura, modelo, OpenAPI, historias, tickets, Git/OpenSpec
+├── vortex-core/          # Workspace Cargo
+│   ├── crates/
+│   │   ├── api/          # Gateway Axum, problem+json, estáticos, /health, /metrics
+│   │   ├── domain/       # Entidades, errores, puertos (sin SDKs de motores)
+│   │   ├── catalog/      # Catálogo, stock, seed/validación
+│   │   ├── search/       # Adaptador Meilisearch / TextSearch
+│   │   ├── recommend/    # Grafo de relaciones y recomendaciones
+│   │   ├── sync/         # Outbox, worker, reindex
+│   │   ├── storage/      # SurrealDB embebido, migraciones, repos
+│   │   ├── ai/ speech/ vision/ supervisor/  # Crates reservados (v2)
+│   │   └── …
+│   ├── bin/vortex/       # CLI: serve, seed, reindex, …
+│   └── config.example.toml
+├── vectra-web/           # SPA vanilla (sin bundler): CSS, JS, SW, manifest
+├── seed/                 # Dataset JSONL (~220 SKUs + ~130 relaciones)
+├── e2e/                  # Playwright + harness (Meilisearch + vortex)
+├── scripts/              # up.sh, checks de CI/local, versión Meilisearch, fixtures
+├── openspec/             # Specs y changes (activos / archive)
+├── .github/workflows/    # CI (fmt, clippy, test, Meilisearch, e2e, OpenAPI)
+└── rust-toolchain.toml   # Canal Rust del monorepo
+```
+
+La PWA vive en `vectra-web/` (`js/components`, `js/admin`, Omnibox, Service Worker). OpenSpec (`openspec/`) y [AGENTS.md](AGENTS.md) gobiernan el flujo ticket → change → archive.
 
 ### **2.4. Infraestructura y despliegue**
 
-> Detalla la infraestructura del proyecto, incluyendo un diagrama en el formato que creas conveniente, y explica el proceso de despliegue que se sigue
+**Modelo del MVP del curso:** un solo **Nodo Maestro** en la máquina de desarrollo. No hay cloud ni contenedores obligatorios.
+
+```mermaid
+flowchart LR
+  browser["Navegador<br/>Vectra PWA"]
+  vortex["vortex serve<br/>Axum + SurrealDB"]
+  meili["Meilisearch<br/>127.0.0.1:7700"]
+  disk[("paths.datos<br/>RocksDB + logs")]
+
+  browser -->|HTTP localhost:8080| vortex
+  vortex -->|TextSearch / sync| meili
+  vortex --> disk
+```
+
+| Pieza | Cómo se despliega en el MVP |
+|---|---|
+| **Vortex Core** | Binario `vortex` (`cargo build` / `cargo run`). Migraciones SurrealDB al arrancar `serve`. |
+| **Vectra** | Estáticos servidos por el mismo proceso (`paths.web` → `vectra-web/`). |
+| **Meilisearch** | Sidecar externo en `:7700`. `./scripts/up.sh` lo descarga y arranca; también se puede levantar a mano. URL en `[meilisearch]`. Supervisor como hijo = **v2**. |
+| **Datos** | SurrealDB embebido bajo `paths.datos`; índice Meilisearch reconstruible con `vortex reindex` (`up.sh` lo corre si el índice está vacío). |
+| **CI** | GitHub Actions en `macos-14`: fmt, clippy, test, regla `domain`, lint OpenAPI (Redocly), tests ignored `meilisearch`, e2e Playwright. |
+
+**Proceso de “despliegue” local** (§ 1.4): `./scripts/up.sh` → abrir `http://127.0.0.1:8080/`. El script importa el seed si no hay `data/db` y reindexa Meilisearch si el índice está vacío.
+
+**Hacia producción en el local (v2):** HTTPS + CA propia, mDNS `vectra.local`, `launchd`, supervisor de sidecars (Meilisearch/Ollama), backups programados y descarga de modelos ([docs/2 § 2.7](docs/2-arquitectura.md#27-red-local-y-seguridad-mínima), tickets EP-00 / EP-09 fuera del MVP).
 
 ### **2.5. Seguridad**
 
-> Enumera y describe las prácticas de seguridad principales que se han implementado en el proyecto, añadiendo ejemplos si procede
+Prácticas **implementadas o asumidas** en el MVP, más lo diferido a v2:
+
+| Práctica | Estado | Ejemplo / detalle |
+|---|---|---|
+| **Local-First / sin cloud en operación** | MVP | Datos y búsqueda en el Nodo Maestro; internet solo para clonar/compilar/descargar Meilisearch. |
+| **Bind en loopback** | MVP | Default `server.bind = "127.0.0.1:8080"`; Meilisearch en `127.0.0.1:7700`. |
+| **Sin autenticación de usuarios** | MVP (consciente) | Solo separación Operador / Administrador en la UI; se recomienda red/VLAN dedicada en un despliegue real. |
+| **Errores tipados RFC 9457** | MVP | Respuestas `application/problem+json` con `code` de dominio (`version_conflict`, `duplicate_sku`, …). |
+| **Optimistic locking** | MVP | `PATCH` de producto con `version`; conflicto → `version_conflict`. |
+| **Resaltado XSS-safe** | MVP | `vectra-web/js/highlight.js` solo permite `<mark>` sanitizado desde Meilisearch. |
+| **`unsafe` prohibido en el workspace** | MVP | `[workspace.lints.rust] unsafe_code = "forbid"`. |
+| **Dominio sin SDKs de motores** | MVP | `scripts/check-domain-deps.sh` + job CI. |
+| **Contrato OpenAPI** | MVP | Fuente única `docs/openapi.yaml`; tests validan respuestas; lint Redocly en CI. |
+| **PWA / Service Worker** | MVP | App shell en caché; aviso offline; `localhost` como contexto seguro del navegador. |
+| **HTTPS + CA local + mDNS** | v2 | Necesario para cámara/micrófono fuera de `localhost`. |
+| **Audio/imagen solo en memoria** | Diseño v2 | Privacidad por diseño cuando entren voz/visión ([docs/2](docs/2-arquitectura.md)). |
 
 ### **2.6. Tests**
 
-> Describe brevemente algunos de los tests realizados
+Pirámide alineada con EP-09 del MVP:
+
+| Capa | Dónde | Qué cubre |
+|---|---|---|
+| **Unitarios / dominio** | `vortex-core/crates/*/src` y tests del crate | Errores, IDs, validación de atributos, ranking fake, etc. |
+| **Integración storage / API** | `crates/storage/tests`, `crates/api/tests` | Migraciones, ABM, stock, search, relations; conformidad OpenAPI; `problem+json`. |
+| **Meilisearch real** | `cargo test -- --include-ignored meilisearch` | Adaptador, worker, ranking/typos (T-03-14), reindex (T-03-11). |
+| **UI (Node scripts)** | `./scripts/check-vectra-web.sh` + tests `.mjs` de `vectra-web` | Omnibox, admin, highlight seguro, recomendaciones. |
+| **e2e** | `e2e/` (Playwright) | Smoke, búsqueda tolerante, panel de recomendaciones, alta de producto (happy + unhappy). |
+
+Ejemplos concretos: conflicto de versión en `products` (`version_conflict`); búsqueda con typo sobre el dataset semilla; e2e que abre sustitutos destacados con stock 0; suite axe en smoke de accesibilidad.
+
+Comandos: ver final de [§ 1.4](#14-instrucciones-de-instalación). Workflow: [`.github/workflows/ci.yml`](.github/workflows/ci.yml).
 
 ---
 
@@ -207,7 +420,7 @@ Desglose técnico de las historias en tickets `T-XX-YY` (~2 h, orden lineal, cri
 
 ## 7. Flujo de desarrollo (Git, OpenSpec, TDD)
 
-Integración en **`develop`**; ramas de trabajo **`T-XX-YY-ZZ`** (spec OpenSpec + ticket padre `T-XX-YY` en [docs/7-tickets.md](docs/7-tickets.md)). Metodología **SDD + TDD**; commits y títulos de PR según [Conventional Commits 1.0.0](https://www.conventionalcommits.org/en/v1.0.0/) (detalle en [docs/desarrollo-git-openspec.md § 7](docs/desarrollo-git-openspec.md#7-mensajes-de-commit-conventional-commits)); archivar el change en OpenSpec solo con tests en verde.
+Integración en **`develop`**; ramas de trabajo **`T-XX-YY`** (mismo ID que el ticket y el change OpenSpec en [docs/7-tickets.md](docs/7-tickets.md)). Metodología **SDD + TDD**; commits y títulos de PR según [Conventional Commits 1.0.0](https://www.conventionalcommits.org/en/v1.0.0/) (detalle en [docs/desarrollo-git-openspec.md § 7](docs/desarrollo-git-openspec.md#7-mensajes-de-commit-conventional-commits)); archivar el change en OpenSpec solo con tests en verde.
 
 Documentación completa: **[docs/desarrollo-git-openspec.md](docs/desarrollo-git-openspec.md)** · Instrucciones para agentes: **[AGENTS.md](AGENTS.md)**
 
@@ -215,13 +428,35 @@ Documentación completa: **[docs/desarrollo-git-openspec.md](docs/desarrollo-git
 
 ## 8. Pull Requests
 
-> Documenta 3 de las Pull Requests realizadas durante la ejecución del proyecto
+Tres PRs representativas del cierre de **H1** (API de búsqueda, UI de recomendaciones, e2e). Criterio: rama/ticket `T-XX-YY`, OpenSpec archivado y tests happy + unhappy. Plantilla: [docs/desarrollo-git-openspec.md § 9](docs/desarrollo-git-openspec.md#9-plantilla-mínima-de-pull-request).
 
-Al documentar cada PR, incluir: rama `T-XX-YY-ZZ`, ticket padre, change OpenSpec archivado y tests ejecutados (happy + unhappy path). Plantilla en [docs/desarrollo-git-openspec.md § 9](docs/desarrollo-git-openspec.md#9-plantilla-mínima-de-pull-request).
+### Pull Request 1 — API de búsqueda
 
-**Pull Request 1**
+| Campo | Valor |
+|---|---|
+| **PR** | [#165](https://github.com/diegopablomansilla/AI4Devs-finalproject/pull/165) — `feat(T-03-13): expose GET /api/v1/search over SearchGateway` |
+| **Rama / ticket** | `T-03-13` · HU-03-03, HU-03-04 |
+| **OpenSpec** | Archivado `2026-11-25-T-03-13` |
+| **Qué aporta** | Endpoint `GET /api/v1/search` (query OpenAPI, `attr[clave]`, timeout 2 s, cancelación, métrica `search_duration_seconds`); `vortex serve` inyecta `SearchService`. |
+| **Tests** | `cargo fmt` / `clippy -D warnings` / `cargo test --workspace`; `./scripts/check-domain-deps.sh`, `./scripts/check-workspace.sh`; validación OpenAPI; happy + unhappy del gateway de búsqueda. |
 
-**Pull Request 2**
+### Pull Request 2 — Panel de recomendaciones (UI)
 
-**Pull Request 3**
+| Campo | Valor |
+|---|---|
+| **PR** | [#179](https://github.com/diegopablomansilla/AI4Devs-finalproject/pull/179) — `feat(T-04-08): open recommendations side panel from search results` |
+| **Rama / ticket** | `T-04-08` · HU-04-05, HU-04-06 (issues #48, #49) |
+| **OpenSpec** | Archivado `2026-11-25-T-04-08` |
+| **Qué aporta** | En Operador, Enter/clic en un hit abre `vx-side-panel` con Similares / Sustitutos / Se usa junto con; destaca Sustitutos si `highlightSubstitutes`; foco vuelve al Omnibox. |
+| **Tests** | `./scripts/check-vectra-web.sh` (incl. `recommendations.test.mjs` happy + unhappy); suite Rust fmt/clippy/test; archive OK. |
+
+### Pull Request 3 — e2e H1 (recomendaciones + alta)
+
+| Campo | Valor |
+|---|---|
+| **PR** | [#184](https://github.com/diegopablomansilla/AI4Devs-finalproject/pull/184) — `test(T-09-11): add Playwright e2e for recs panel and product create` |
+| **Rama / ticket** | `T-09-11` · HU-09-03 (y cierre de flujos HU-04-05/06, HU-02-04) |
+| **OpenSpec** | Archivado `2026-11-26-T-09-11` |
+| **Qué aporta** | Specs Playwright: panel de recomendaciones (happy/unhappy), stock 0 → sustitutos destacados, alta admin (happy + SKU duplicado + ficha incompleta). |
+| **Tests** | `cd e2e && npx playwright test` (24 passed); `./scripts/check-ci.sh`, fixtures, `check-vectra-web`; Rust fmt/clippy/test; archive OK. |
 

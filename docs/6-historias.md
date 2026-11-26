@@ -195,6 +195,13 @@ Escenario: El dominio no depende de motores
 
 **Referencias:** [2.8](2-arquitectura.md#28-estructura-de-repositorio), [3.2](3-componentes.md#32-mapa-de-crates-y-regla-de-dependencias).
 
+**Orden de tickets** (ver [7-tickets.md](7-tickets.md) y [desarrollo-git-openspec.md](desarrollo-git-openspec.md)): un ticket = un change OpenSpec y una rama `T-XX-YY`.
+
+- [T-00-01](7-tickets.md) — workspace Cargo y crates vacíos (**cerrado** en `develop`; se integró antes del corte 1:1 usando changes históricos `T-00-01-01` … `T-00-01-03`).
+- **Siguientes:** T-09-01 (CI base), luego T-00-02 (script **y** job de CI que verifica dependencias de `domain`; depende de T-09-01), T-00-03, T-00-04, T-00-05.
+
+Nota: parte del script de T-00-02 ya está en `develop` (change archivado `T-00-02-01`); el ticket se cierra en la rama **`T-00-02`** con el job de CI y el **Listo cuando** completo del ticket.
+
 ### HU-00-02 — SurrealDB embebido con migraciones versionadas
 
 *Como* equipo de desarrollo, *quiero* que Vortex Core abra SurrealDB embebido y aplique las migraciones al arrancar, *para* tener un esquema consistente y reproducible en cada instalación.

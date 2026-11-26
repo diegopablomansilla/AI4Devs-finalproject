@@ -1,0 +1,1640 @@
+# vortex-storage Specification
+
+## Purpose
+
+Abre SurrealDB embebido con RocksDB en el crate `storage`, selecciona el namespace `vectra` y la base `comercio`, aplica migraciones `.surql` embebidas con registro y checksum SHA-256 (incl. `categoria`, `marca`, `atributo_def`, `producto`, `movimiento_stock`, `similar_a`, `sustituible_por`, `complementa`), expone un harness de tests (`storage::testing`) con motor en memoria o RocksDB temporal, ofrece transacciones atómicas dato + outbox con aviso post-commit, e implementa adaptadores de repositorio de catálogo (incl. `ProductRepo` con alta, stock inicial y baja lógica), el adaptador `StockLedger` (append transaccional) y `RelationRepo` completo (`create`, `update`, `delete`, `list_for_product` con grupo bidireccional y resumen del destino).
+
+Ticket padre: T-00-08, T-00-09, T-09-02, T-03-01, T-03-02, T-02-01, T-02-03, T-02-08, T-02-11, T-02-14, T-02-15, T-02-18, T-02-24, T-04-01, T-04-03, T-04-04. HU: HU-00-02, HU-09-01, HU-03-01, HU-02-01, HU-02-02, HU-02-03, HU-02-04, HU-02-07, HU-04-01, HU-04-02, HU-04-03.
+
+## Requirements
+
+### Requirement: Db::open abre RocksDB embebido y selecciona NS/DB
+
+El crate `storage` MUST exponer `storage::Db::open(path)` asíncrono. `path` MUST ser el directorio del motor (convención de instalación: `<paths.datos>/db`; este change MUST NOT leer `Config`). El motor MUST ser SurrealDB embebido con RocksDB (PM-03). MUST NOT usarse el motor en memoria en esta API. Tras una apertura exitosa, la sesión MUST usar el namespace `vectra` y la base `comercio` ([4.3](../../../docs/4-modelo.md#43-convenciones)). Si el directorio no existe o está vacío, la operación MUST crear lo necesario para esa sesión (directorio, namespace y base) y MUST NOT aplicar migraciones `.surql` ni crear la tabla `migracion` (T-00-09). La versión de `surrealdb` MUST ser la pinneada en `[workspace.dependencies]` (`=2.7.0`).
+
+#### Scenario: Primera apertura en directorio temporal (happy)
+
+- **WHEN** se llama a `Db::open` con un directorio temporal vacío o inexistente
+- **THEN** la operación termina sin error
+- **AND** la sesión usa namespace `vectra` y base `comercio`
+
+#### Scenario: Reapertura del mismo directorio (happy)
+
+- **WHEN** se abre un directorio con `Db::open`, se cierra esa instancia y se vuelve a llamar a `Db::open` con el mismo path
+- **THEN** la segunda apertura termina sin error
+- **AND** la sesión sigue usando namespace `vectra` y base `comercio`
+
+### Requirement: Errores de apertura tipados con motivo
+
+`Db::open` MUST devolver un error tipado (`OpenError`) que implementa `std::error::Error` cuando el motor no puede abrir el path. El mensaje MUST incluir un motivo legible (permiso denegado, contenido corrupto u otro fallo de IO/motor). Ese error MUST alinearse conceptualmente con `DomainError::Unavailable` y `code` `unavailable` (T-00-03) y MUST NOT mapearse a HTTP ni a `problem+json` (T-00-11). MUST NOT ampliar las variantes ni los `code` de `DomainError`.
+
+#### Scenario: Directorio corrupto (unhappy)
+
+- **WHEN** se llama a `Db::open` con un path que existe pero no es una base RocksDB válida (archivo en lugar de directorio, o directorio con contenido de motor ilegible)
+- **THEN** la operación falla
+- **AND** el error es el tipo de apertura tipado
+- **AND** el mensaje incluye un motivo (corrupción, formato inválido o equivalente del motor/IO)
+
+#### Scenario: Directorio sin permisos (unhappy)
+
+- **WHEN** se llama a `Db::open` con un directorio existente que el proceso no puede escribir (Unix: modo sin permisos)
+- **THEN** la operación falla
+- **AND** el error es el tipo de apertura tipado
+- **AND** el mensaje incluye un motivo (permiso denegado o equivalente)
+
+#### Scenario: OpenError es std::error::Error (happy)
+
+- **WHEN** se obtiene un `OpenError` de una apertura fallida
+- **THEN** el valor implementa `std::error::Error`
+- **AND** `Display` no está vacío
+
+### Requirement: Motor de migraciones embebidas con checksum
+
+El crate `storage` MUST incluir migraciones en `migrations/NNNN_nombre.surql` embebidas con `include_str!`. MUST existir `0000_migracion.surql` conforme a [4.10](../../../docs/4-modelo.md#410-operación-del-esquema). `Db::migrate()` MUST aplicar las migraciones embebidas en orden ascendente de `version`, registrar cada una en `migracion` con `checksum` SHA-256 hex del contenido del archivo, y ser idempotente cuando el contenido no cambió. Si una `version` ya registrada tiene un `checksum` distinto al del archivo embebido, la operación MUST fallar sin aplicar más SQL y el error MUST nombrar la versión en `Display`. `Db::open` MUST NOT aplicar migraciones (T-00-08).
+
+#### Scenario: Primera instalación (happy)
+
+- **WHEN** tras `Db::open` se llama `Db::migrate` en un directorio temporal vacío
+- **THEN** `migrate` termina sin error
+- **AND** existe un registro con `version` 0 y `checksum` igual al SHA-256 de `0000_migracion.surql`
+
+#### Scenario: Re-arranque sin cambios (happy)
+
+- **WHEN** `migrate` se ejecuta dos veces sobre la misma instancia con las mismas migraciones embebidas
+- **THEN** la segunda ejecución termina sin error
+- **AND** sigue habiendo un solo registro para la `version` 0
+
+#### Scenario: Migración alterada (unhappy)
+
+- **WHEN** la versión 0 ya está registrada y se intenta `apply_migrations` con SQL distinto en la misma versión
+- **THEN** la operación falla
+- **AND** el mensaje de error incluye la versión (`0` o `0000`)
+
+### Requirement: Harness de integración storage::testing
+
+El crate `storage` MUST exponer el módulo `storage::testing`. `test_db()` MUST abrir SurrealDB embebido con motor en memoria (`kv-mem`), MUST seleccionar namespace `vectra` y base `comercio`, y MUST aplicar todas las migraciones embebidas (`Db::migrate`) antes de devolver el `Db`. `test_db_rocks()` MUST abrir RocksDB en un directorio temporal único, MUST migrar, y MUST liberar el directorio al descartar el valor retornado. `Db::open(path)` MUST seguir usando únicamente RocksDB y MUST NOT aplicar migraciones. Los tests de integración del crate MUST vivir bajo `vortex-core/crates/storage/tests/`; MUST existir al menos un archivo que use `storage::testing` y verifique el harness en CI (`cargo test --workspace`).
+
+#### Scenario: test_db con esquema de migraciones (happy)
+
+- **WHEN** se llama `storage::testing::test_db().await`
+- **THEN** la operación termina sin error
+- **AND** `list_migrations()` incluye `version` 0 con el checksum de `0000_migracion.surql`
+- **AND** la sesión usa namespace `vectra` y base `comercio`
+
+#### Scenario: test_db_rocks en directorio temporal (happy)
+
+- **WHEN** se llama `storage::testing::test_db_rocks().await`
+- **THEN** la operación termina sin error
+- **AND** `list_migrations()` incluye `version` 0
+- **AND** el directorio del motor existe mientras el valor retornado está vivo
+
+#### Scenario: Instancias en memoria aisladas (happy)
+
+- **WHEN** en una instancia `test_db()` se define una tabla de prueba y se inserta un registro
+- **AND** se abre una segunda instancia `test_db()` independiente
+- **THEN** la primera instancia tiene un registro en esa tabla y la segunda tiene conteo 0
+
+#### Scenario: Harness sin tablas de negocio (unhappy)
+
+- **WHEN** tras `test_db()` se consulta el conteo de registros en una tabla de negocio no migrada (p. ej. `categoria`) con `Db::record_count`
+- **THEN** el conteo es 0
+
+#### Scenario: Db::open sigue rechazando archivo (unhappy)
+
+- **WHEN** se llama `Db::open` con una ruta que es un archivo regular
+- **THEN** la operación falla con `OpenError` tipado
+
+### Requirement: Migración outbox, sync_cursor y outbox_fallo
+
+El crate `storage` MUST incluir la migración embebida `0001_outbox.surql`, aplicada por `Db::migrate()` después de `0000_migracion.surql`. El SQL MUST definir las tablas `SCHEMAFULL` `outbox`, `sync_cursor` y `outbox_fallo` conforme a [4.8](../../../docs/4-modelo.md#48-sincronización-outbox-y-cursores), usando `DEFINE … IF NOT EXISTS` ([4.10](../../../docs/4-modelo.md#410-operación-del-esquema)).
+
+`outbox` MUST declarar: `entidad` (`string` con `ASSERT` en `producto`, `categoria`, `marca`, `atributo_def`, `sinonimo`, `nota_tecnica`, `imagen_producto`); `registro` (`record`); `operacion` (`string` con `ASSERT` en `upsert`, `delete`); `motivo` (`option<string>`); `creado_en` (`datetime` con `DEFAULT time::now()` y `READONLY`).
+
+`sync_cursor` MUST declarar: `ultimo_evento` (`option<record<outbox>>`); `actualizado_en` (`datetime` con `VALUE time::now()`). La migración MUST crear los registros `sync_cursor:meilisearch` y `sync_cursor:vectores` con `ultimo_evento` vacío si aún no existen.
+
+`outbox_fallo` MUST declarar: `evento` (`record<outbox>`); `consumidor` (`string` con `ASSERT` en `meilisearch`, `vectores`); `intentos` (`int` con `DEFAULT 1`); `ultimo_error` (`string`); `estado` (`string` con `ASSERT` en `reintentando`, `fallido`); `actualizado_en` (`datetime` con `VALUE time::now()`); índice único `uq_outbox_fallo` sobre `(evento, consumidor)`.
+
+MUST NOT habilitar *change feed* en estas tablas (tablas técnicas; el *change feed* aplica a maestras y ledger). MUST NOT implementar el worker Index Sync ni puertos de repositorio de catálogo (T-03-07 / T-02-03).
+
+#### Scenario: Migración aplica esquema y siembra cursores (happy)
+
+- **WHEN** se abre una base vacía y se llama `Db::migrate` (o `storage::testing::test_db`)
+- **THEN** `list_migrations()` incluye `version` 1 con checksum SHA-256 de `0001_outbox.surql`
+- **AND** existen los registros `sync_cursor:meilisearch` y `sync_cursor:vectores`
+- **AND** `outbox` y `outbox_fallo` están vacías
+
+#### Scenario: Re-arranque no duplica cursores (happy)
+
+- **WHEN** `migrate` se ejecuta dos veces sobre la misma instancia
+- **THEN** la segunda ejecución termina sin error
+- **AND** sigue habiendo un solo registro de `migracion` para `version` 1
+- **AND** sigue habiendo exactamente dos registros en `sync_cursor`
+
+#### Scenario: Evento válido se inserta (happy)
+
+- **WHEN** tras migrar se inserta un evento `outbox` con `entidad` `producto`, `operacion` `upsert` y un `registro` válido
+- **THEN** la inserción termina sin error
+- **AND** el conteo de `outbox` es 1
+
+#### Scenario: entidad inválida rechazada (unhappy)
+
+- **WHEN** tras migrar se intenta insertar un evento `outbox` con `entidad` fuera de la lista permitida (p. ej. `foo`)
+- **THEN** la operación falla
+- **AND** `outbox` permanece vacía
+
+#### Scenario: operacion inválida rechazada (unhappy)
+
+- **WHEN** tras migrar se intenta insertar un evento `outbox` con `operacion` distinta de `upsert` y `delete` (p. ej. `update`)
+- **THEN** la operación falla
+- **AND** `outbox` permanece vacía
+
+#### Scenario: consumidor inválido en outbox_fallo (unhappy)
+
+- **WHEN** tras migrar se intenta insertar `outbox_fallo` con `consumidor` fuera de `meilisearch` y `vectores`
+- **THEN** la operación falla
+- **AND** `outbox_fallo` permanece vacía
+
+### Requirement: Migración categoria
+
+El crate `storage` MUST incluir la migración embebida `0002_categoria.surql`, aplicada por `Db::migrate()` después de `0001_outbox.surql`. El SQL MUST definir la tabla `SCHEMAFULL` `categoria` conforme a [4.4.1](../../../docs/4-modelo.md#441-categoria--árbol), usando `DEFINE … IF NOT EXISTS` ([4.10](../../../docs/4-modelo.md#410-operación-del-esquema)).
+
+`categoria` MUST declarar: `nombre` (`string` con `ASSERT string::len($value) > 0`); `slug` (`string`); `padre` (`option<record<categoria>>`); `ancestros` (`array<record<categoria>>` con `DEFAULT []`); `ruta` (`array<string>`); `activo` (`bool` con `DEFAULT true`); `creado_en` (`datetime` con `DEFAULT time::now()` y `READONLY`); `actualizado_en` (`datetime` con `VALUE time::now()`). MUST habilitar `CHANGEFEED 3d` (tabla maestra). MUST definir el índice único `uq_categoria_slug` sobre `(padre, slug)` y el índice `idx_categoria_ancestros` sobre `ancestros`.
+
+MUST NOT sembrar filas de catálogo. MUST NOT implementar entidad de dominio, *slug*, profundidad, ciclos ni `CategoryRepo` (T-02-02 / T-02-03). Tras `storage::testing::test_db()`, `record_count("categoria")` MUST ser 0.
+
+#### Scenario: Migración aplica esquema categoria (happy)
+
+- **WHEN** se abre una base vacía y se llama `Db::migrate` (o `storage::testing::test_db`)
+- **THEN** `list_migrations()` incluye `version` 2 con checksum SHA-256 de `0002_categoria.surql`
+- **AND** `record_count("categoria")` es 0
+
+#### Scenario: Re-arranque no duplica el registro de migración (happy)
+
+- **WHEN** `migrate` se ejecuta dos veces sobre la misma instancia
+- **THEN** la segunda ejecución termina sin error
+- **AND** sigue habiendo un solo registro de `migracion` para `version` 2
+
+#### Scenario: Mismo slug bajo padres distintos (happy)
+
+- **WHEN** tras migrar existen dos categorías padre distintas y se insertan dos hijas con el mismo `slug` y `padre` distinto
+- **THEN** ambas inserciones terminan sin error
+- **AND** el conteo de `categoria` incluye esas dos hijas
+
+#### Scenario: Índice único (padre, slug) rechaza duplicado (unhappy)
+
+- **WHEN** tras migrar existe una categoría con un `padre` y un `slug` y se intenta insertar otra con el mismo par `(padre, slug)`
+- **THEN** la segunda inserción falla
+- **AND** no queda una segunda fila con ese par
+
+#### Scenario: nombre vacío rechazado (unhappy)
+
+- **WHEN** tras migrar se intenta insertar una `categoria` con `nombre` de longitud 0
+- **THEN** la operación falla
+- **AND** `categoria` permanece sin esa fila
+
+### Requirement: Transacción dato + outbox
+
+El crate `storage` MUST exponer `storage::Tx`, obtenida desde un `Db` ya abierto y migrado. `Tx` MUST acumular sentencias SurrealQL con parámetros y uno o más `OutboxEvent`. Al confirmar, MUST ejecutar todas las sentencias y un `CREATE` en `outbox` por cada evento **entre** `BEGIN` y `COMMIT` (una sola transacción). El `CREATE` de outbox MUST usar `entidad` y `operacion` del evento, `registro` como `record` `entidad:ulid` (el ULID de `OutboxEvent.registro`) y `motivo` si está presente. `Tx::commit` MUST devolver `Result<(), DomainError>`. MUST NOT persistir el dato si el `COMMIT` no ocurre. Los tests de `Tx` MUST usar una tabla auxiliar definida en el propio test, no tablas de negocio. El crate MAY implementar `CategoryRepo` (T-02-03).
+
+#### Scenario: Commit escribe dato y evento (happy)
+
+- **WHEN** una `Tx` inserta un registro en una tabla auxiliar y emite un `OutboxEvent` `producto`/`upsert`, y se confirma
+- **THEN** `commit` termina sin error
+- **AND** el conteo de la tabla auxiliar es 1
+- **AND** el conteo de `outbox` es 1
+- **AND** el evento tiene `entidad` `producto` y `operacion` `upsert`
+
+#### Scenario: Varios eventos en la misma transacción (happy)
+
+- **WHEN** una `Tx` emite dos `OutboxEvent` y se confirma
+- **THEN** `commit` termina sin error
+- **AND** el conteo de `outbox` es 2
+
+#### Scenario: THROW no deja dato ni evento (unhappy)
+
+- **WHEN** una `Tx` inserta un registro auxiliar, emite un `OutboxEvent` y ejecuta `THROW "stock_negativo"`, y se intenta confirmar
+- **THEN** `commit` falla
+- **AND** el conteo de la tabla auxiliar es 0
+- **AND** el conteo de `outbox` es 0
+
+### Requirement: Adaptador CategoryRepo
+
+El crate `storage` MUST implementar el puerto `CategoryRepo` (`create`, `get`, `list_all`) contra la tabla `categoria` ya migrada (T-02-01) usando `storage::Tx` (T-03-02). Los `id` MUST ser ULID de 26 caracteres **sin** prefijo de tabla. Los errores MUST ser `DomainError`. MUST NOT declarar ni implementar `update` (T-02-04). MUST NOT mapear a HTTP ni a `problem+json`. MUST NOT reindexar productos (T-03-08).
+
+`create` MUST: generar el *slug* desde `nombre` cuando el input no aporta uno; calcular `ancestros` y `ruta` desde el padre persistido (raíz: `padre` ausente, `ancestros` vacío, `ruta = [nombre]`; hija: `ancestros` = ancestros del padre + `id` del padre, `ruta` = ruta del padre + `nombre`); persistir `activo` verdadero; emitir en la **misma** transacción un `OutboxEvent` con `entidad` `categoria`, `operacion` `upsert` y `registro` igual al `id` de la categoría creada. Si el padre indicado no existe, MUST fallar con `DomainError::NotFound` y MUST NOT insertar fila ni evento. Si la profundidad resultante supera 4, MUST fallar con `DomainError` `code` `invalid_input` y MUST NOT insertar. Una violación del índice único `(padre, slug)` (incluidas dos raíces con el mismo *slug*) MUST fallar con `DomainError::Conflict` y `code` `duplicate_slug`, y MUST NOT dejar la segunda fila ni su evento de outbox.
+
+`get` MUST devolver la `Categoria` persistida o `DomainError::NotFound`. `list_all` MUST devolver todas las filas de `categoria` (incluidas inactivas).
+
+#### Scenario: Alta de raíz (happy)
+
+- **WHEN** se crea una categoría con `nombre` `"Fijaciones"` y sin padre
+- **THEN** la operación termina sin error
+- **AND** `ruta` es `["Fijaciones"]`
+- **AND** `ancestros` está vacío
+- **AND** `padre` está ausente
+- **AND** `slug` es `"fijaciones"`
+- **AND** el `id` no contiene `:`
+
+#### Scenario: Alta de hija Fijaciones > Pernos (happy)
+
+- **WHEN** existe la categoría `"Fijaciones"` y se crea `"Pernos"` con ese padre
+- **THEN** la operación termina sin error
+- **AND** `ruta` es `["Fijaciones", "Pernos"]`
+- **AND** `ancestros` contiene exactamente el `id` de `"Fijaciones"`
+- **AND** `slug` es `"pernos"`
+
+#### Scenario: get de categoría existente (happy)
+
+- **WHEN** se persiste una categoría y se llama `get` con su `id`
+- **THEN** la operación termina sin error
+- **AND** `nombre`, `ruta` y `id` coinciden con lo persistido
+
+#### Scenario: list_all incluye raíz e hija (happy)
+
+- **WHEN** existen `"Fijaciones"` y `"Pernos"` y se llama `list_all`
+- **THEN** la operación termina sin error
+- **AND** el resultado incluye ambas categorías
+
+#### Scenario: create emite evento de outbox (happy)
+
+- **WHEN** `create` persiste una categoría
+- **THEN** existe un evento en `outbox` con `entidad` `categoria` y `operacion` `upsert`
+- **AND** `registro` es el `id` de la categoría (sin prefijo de tabla)
+
+#### Scenario: mismo slug bajo padres distintos (happy)
+
+- **WHEN** existen dos padres distintos y se crean dos hijas con el mismo *slug* y padre distinto
+- **THEN** ambas altas terminan sin error
+
+#### Scenario: slug duplicado bajo el mismo padre (unhappy)
+
+- **WHEN** ya existe una hija con *slug* `"pernos"` bajo `"Fijaciones"` y se intenta crear otra con el mismo padre y el mismo *slug*
+- **THEN** la operación falla
+- **AND** el error es `DomainError::Conflict` con `code` `duplicate_slug`
+- **AND** no queda una segunda fila ni un segundo evento de outbox para esa alta
+
+#### Scenario: slug duplicado entre raíces (unhappy)
+
+- **WHEN** ya existe una raíz con *slug* `"fijaciones"` y se intenta crear otra raíz con el mismo *slug*
+- **THEN** la operación falla
+- **AND** el error es `DomainError::Conflict` con `code` `duplicate_slug`
+- **AND** no queda una segunda raíz ni su evento de outbox
+
+#### Scenario: get de id inexistente (unhappy)
+
+- **WHEN** se llama `get` con un `id` que no existe en `categoria`
+- **THEN** la operación falla
+- **AND** el error es `DomainError::NotFound`
+
+#### Scenario: padre inexistente (unhappy)
+
+- **WHEN** se llama `create` con un `padre` que no existe
+- **THEN** la operación falla
+- **AND** el error es `DomainError::NotFound`
+- **AND** no se inserta fila en `categoria` ni evento en `outbox`
+
+#### Scenario: quinto nivel rechazado (unhappy)
+
+- **WHEN** el padre persistido ya tiene profundidad 4 y se intenta crear una hija
+- **THEN** la operación falla
+- **AND** el error es `DomainError` con `code` `invalid_input`
+- **AND** no se inserta la hija ni su evento de outbox
+
+### Requirement: Tests de CategoryRepo
+
+Antes de archive, la suite MUST incluir estos tests (nombres estables). Happy y unhappy path son obligatorios. **Listo cuando** del ticket: Fijaciones > Pernos.
+
+| Test | Crate / archivo | Tipo |
+|---|---|---|
+| `category_repo_creates_root_fijaciones` | `storage` (`tests/categoria.rs`) | integración happy |
+| `category_repo_creates_child_pernos_with_ruta` | `storage` (`tests/categoria.rs`) | integración happy (Listo cuando) |
+| `category_repo_get_returns_persisted` | `storage` (`tests/categoria.rs`) | integración happy |
+| `category_repo_list_all_includes_root_and_child` | `storage` (`tests/categoria.rs`) | integración happy |
+| `category_repo_create_emits_outbox_upsert` | `storage` (`tests/categoria.rs`) | integración happy |
+| `category_repo_allows_same_slug_under_different_padres` | `storage` (`tests/categoria.rs`) | integración happy |
+| `category_repo_rejects_duplicate_slug_under_same_padre` | `storage` (`tests/categoria.rs`) | integración unhappy (HU-02-01) |
+| `category_repo_rejects_duplicate_root_slug` | `storage` (`tests/categoria.rs`) | integración unhappy |
+| `category_repo_get_unknown_id_is_not_found` | `storage` (`tests/categoria.rs`) | integración unhappy |
+| `category_repo_create_missing_padre_is_not_found` | `storage` (`tests/categoria.rs`) | integración unhappy |
+| `category_repo_rejects_depth_five` | `storage` (`tests/categoria.rs`) | integración unhappy |
+
+Los tests MUST usar `storage::testing::test_db()` y el puerto `CategoryRepo`. MUST NOT llamar HTTP ni el crate `api`. `cargo test --workspace` MUST ejecutarlos.
+
+#### Scenario: la suite de CategoryRepo cubre happy y unhappy (happy)
+
+- **WHEN** se ejecuta `cargo test -p storage --test categoria` en `vortex-core/`
+- **THEN** corren los tests de la tabla
+- **AND** el alta de hija produce `ruta = ["Fijaciones", "Pernos"]`
+- **AND** los unhappy de `duplicate_slug`, `not_found` y profundidad 5 pasan
+
+### Requirement: OutboxNotifier tras commit exitoso
+
+El crate `storage` MUST exponer `OutboxNotifier` basado en `tokio::sync::Notify`. Un `Db` MUST compartir un `OutboxNotifier`. Tras un `Tx::commit` **exitoso**, MUST disparar el notifier (al menos un waiter en espera MUST despertar). Si `commit` falla, MUST NOT disparar el notifier. MUST NOT arrancar el worker Index Sync (T-03-07).
+
+#### Scenario: Aviso solo tras commit (happy)
+
+- **WHEN** un waiter espera el `OutboxNotifier` y una `Tx` con dato + evento se confirma
+- **THEN** el waiter se despierta
+- **AND** el dato y el evento existen
+
+#### Scenario: Fallo no avisa (unhappy)
+
+- **WHEN** un waiter espera el `OutboxNotifier` y una `Tx` con dato + evento + `THROW` falla al confirmar
+- **THEN** el waiter no se despierta por ese `commit`
+- **AND** el dato y el evento no existen
+
+### Requirement: UNIQUE y THROW se traducen a DomainError
+
+`Tx::commit` MUST traducir errores del motor a `DomainError` existente (T-00-03) y MUST NOT mapear a HTTP ni `problem+json`. `THROW "stock_negativo"` MUST ser `InvalidInput` con `code` `negative_stock` ([4.5.2](../../../docs/4-modelo.md#452-registro-de-un-movimiento-transacción), [5.4](../../../docs/5-contract-api.md#54-errores)). Un `THROW` cuyo texto es un `code` de dominio conocido MUST usar esa variante/`code`. Una violación de índice `UNIQUE` MUST ser `Conflict`: `duplicate_sku` si el índice o el mensaje identifican `sku`; `duplicate_slug` si identifican `slug`; `duplicate_relation` si identifican `relation`, los índices `uq_similar_a` / `uq_sustituible_por` / `uq_complementa`, las tablas `similar_a` / `sustituible_por` / `complementa`, o si las sentencias de la `Tx` contienen `RELATE` hacia esas tablas; en cualquier otro UNIQUE, `conflict`. Un fallo de motor no clasificado MUST ser `Unavailable` con `code` `unavailable`. MUST NOT agregar variantes ni `code` nuevos a `DomainError`.
+
+#### Scenario: THROW stock_negativo (unhappy)
+
+- **WHEN** una `Tx` ejecuta `THROW "stock_negativo"` y se confirma
+- **THEN** `commit` falla con `DomainError::InvalidInput`
+- **AND** el `code` expuesto es `negative_stock`
+
+#### Scenario: UNIQUE sku (unhappy)
+
+- **WHEN** una `Tx` inserta dos filas que violan un índice `UNIQUE` cuyo nombre incluye `sku` y se confirma
+- **THEN** `commit` falla con `DomainError::Conflict`
+- **AND** el `code` expuesto es `duplicate_sku`
+- **AND** no queda la segunda fila ni su evento de outbox (si se había encolado en esa `Tx`)
+
+#### Scenario: UNIQUE de arista de relación (unhappy)
+
+- **WHEN** una `Tx` inserta un segundo `RELATE` que viola `uq_similar_a`, `uq_sustituible_por` o `uq_complementa` y se confirma
+- **THEN** `commit` falla con `DomainError::Conflict`
+- **AND** el `code` expuesto es `duplicate_relation`
+
+#### Scenario: Error de motor no clasificado (unhappy)
+
+- **WHEN** una `Tx` ejecuta una sentencia que el motor rechaza sin ser `THROW` de código conocido ni UNIQUE (p. ej. SQL inválido)
+- **THEN** `commit` falla con `DomainError::Unavailable`
+- **AND** el `code` expuesto es `unavailable`
+
+### Requirement: Tests de Tx y notifier
+
+Antes de archive, la suite MUST incluir estos tests (nombres estables). Happy y unhappy path son obligatorios. **Listo cuando** del ticket: rollback y notify.
+
+| Test | Ubicación | Tipo |
+|---|---|---|
+| `tx_commit_writes_data_and_outbox` | `vortex-core/crates/storage/tests/tx.rs` | integración / happy |
+| `tx_commit_writes_multiple_outbox_events` | `tests/tx.rs` | integración / happy |
+| `tx_commit_notifies_waiter` | `tests/tx.rs` | integración / happy |
+| `tx_throw_rolls_back_data_and_outbox` | `tests/tx.rs` | integración / unhappy (Listo cuando) |
+| `tx_failed_does_not_notify` | `tests/tx.rs` | integración / unhappy (Listo cuando) |
+| `tx_throw_stock_negativo_is_negative_stock` | `tests/tx.rs` | integración / unhappy |
+| `tx_unique_sku_is_duplicate_sku` | `tests/tx.rs` | integración / unhappy |
+| `tx_unique_relation_is_duplicate_relation` | `tests/tx.rs` | integración / unhappy |
+| `tx_unclassified_error_is_unavailable` | `tests/tx.rs` | integración / unhappy |
+
+Los tests MUST usar `storage::testing::test_db()`. MUST NOT crear repositorios de catálogo ni tablas `categoria`/`producto` de negocio. `cargo test --workspace` MUST ejecutarlos.
+
+#### Scenario: la suite de Tx cubre happy y unhappy (happy)
+
+- **WHEN** se ejecuta `cargo test -p storage --test tx` en `vortex-core/`
+- **THEN** corren los tests de la tabla
+- **AND** commit escribe dato + outbox y avisa
+- **AND** THROW deja conteos en 0 y no avisa
+
+### Requirement: CategoryRepo update con recálculo de rama
+
+El adaptador `CategoryRepo` en `storage` MUST implementar `update(UpdateCategoria)`. Al cambiar `nombre` y/o `padre`, MUST recalcular `slug`, `ancestros` y `ruta` del nodo y de todo su subárbol en una sola `Tx`. MUST emitir un `OutboxEvent` `categoria`/`upsert` por cada categoría actualizada. MUST usar `reject_cycle` del dominio antes de escribir. MUST NOT reindexar productos (T-03-08).
+
+#### Scenario: Renombrar rama de 3 niveles (happy)
+
+- **WHEN** existen Fijaciones > Pernos > Hex y `update` renombra la raíz a Tornillería sin cambiar `padre`
+- **THEN** las rutas persistidas son `["Tornillería"]`, `["Tornillería", "Pernos"]` y `["Tornillería", "Pernos", "Hex"]`
+- **AND** existen tres eventos outbox adicionales
+
+#### Scenario: Mover debajo de descendiente (unhappy)
+
+- **WHEN** Pernos es hija de Fijaciones y `update` asigna padre Pernos a Fijaciones
+- **THEN** la operación falla con `code` `category_cycle`
+- **AND** no se añaden filas ni eventos outbox
+
+#### Scenario: Suite de integración update (happy)
+
+- **WHEN** se ejecuta `cargo test -p storage --test categoria` filtrando tests `category_repo_renames_three_level_branch_ruta`, `category_repo_update_emits_outbox_per_affected` y unhappy `category_repo_move_under_descendant_is_category_cycle`
+- **THEN** todos pasan
+
+### Requirement: CategoryRepo set_activo
+
+El adaptador `CategoryRepo` en `storage` MUST implementar `set_activo(id, activo)`. MUST actualizar solo el campo `activo` (y `actualizado_en`) de esa fila en una `Tx` con un `OutboxEvent` `categoria`/`upsert`. MUST NOT recalcular `ancestros`/`ruta` ni tocar hijas. `id` desconocido MUST ser `not_found`. MUST NOT reindexar productos (T-03-08). MUST NOT consultar `producto`.
+
+#### Scenario: Baja lógica persistida (happy)
+
+- **WHEN** existe una categoría activa y `set_activo` se llama con `false`
+- **THEN** `get` devuelve `activo` falso
+- **AND** existe un evento outbox `categoria`/`upsert` adicional
+
+#### Scenario: set_activo de id desconocido (unhappy)
+
+- **WHEN** `set_activo` se llama con un `id` que no existe
+- **THEN** la operación falla con `code` `not_found`
+- **AND** no se añade evento outbox
+
+#### Scenario: Suite de integración set_activo (happy)
+
+- **WHEN** se ejecuta `cargo test -p storage --test categoria` filtrando `category_repo_set_activo_persists_inactive` y `category_repo_set_activo_unknown_id_is_not_found`
+- **THEN** ambos pasan
+
+### Requirement: CategoriaRepo inyectable en AppState
+
+El adaptador `CategoriaRepo` MUST poder vivir tanto como el proceso (`'static`) y MUST ser `Send + Sync` para inyectarse, vía `CategoryService`, en un `AppState` clonable. MUST poseer un handle clonable de `Db` (p. ej. `Arc<Db>`). MUST NOT exigir un préstamo de `Db` limitado al stack de `vortex serve`. El comportamiento de `create`/`get`/`list_all`/`update`/`set_activo` MUST NOT cambiar.
+
+#### Scenario: el adaptador sobrevive al stack de serve (happy)
+
+- **WHEN** `vortex serve` abre `Db`, construye `CategoriaRepo` y lo inyecta en `AppState`
+- **THEN** el router atiende `GET /api/v1/categories` sin que el `Db` quede solo en una variable local no compartida
+
+#### Scenario: préstamo corto no basta (unhappy)
+
+- **WHEN** el adaptador solo guardara `&Db` del stack de `serve_config`
+- **THEN** no se podría construir un `AppState` `'static` con el servicio de categorías
+
+### Requirement: Migración marca
+
+El crate `storage` MUST incluir la migración embebida `0003_marca.surql`, aplicada por `Db::migrate()` después de `0002_categoria.surql`. El SQL MUST definir la tabla `SCHEMAFULL` `marca` conforme a [4.4.2](../../../../../docs/4-modelo.md#442-marca), usando `DEFINE … IF NOT EXISTS` ([4.10](../../../../../docs/4-modelo.md#410-operación-del-esquema)).
+
+`marca` MUST declarar: `nombre` (`string` con `ASSERT string::len($value) > 0`); `slug` (`string`); `activo` (`bool` con `DEFAULT true`); `creado_en` (`datetime` con `DEFAULT time::now()` y `READONLY`); `actualizado_en` (`datetime` con `VALUE time::now()`). MUST habilitar `CHANGEFEED 3d` (tabla maestra). MUST definir el índice único `uq_marca_slug` sobre `slug`.
+
+MUST NOT sembrar filas de catálogo. MUST NOT implementar HTTP ni casos de uso en `catalog` (T-02-09). Tras `storage::testing::test_db()`, `record_count("marca")` MUST ser 0.
+
+#### Scenario: Migración aplica esquema marca (happy)
+
+- **WHEN** se abre una base vacía y se llama `Db::migrate` (o `storage::testing::test_db`)
+- **THEN** `list_migrations()` incluye `version` 3 con checksum SHA-256 de `0003_marca.surql`
+- **AND** `record_count("marca")` es 0
+
+#### Scenario: Re-arranque no duplica el registro de migración (happy)
+
+- **WHEN** `migrate` se ejecuta dos veces sobre la misma instancia
+- **THEN** la segunda ejecución termina sin error
+- **AND** sigue habiendo un solo registro de `migracion` para `version` 3
+
+#### Scenario: Índice único slug rechaza duplicado (unhappy)
+
+- **WHEN** tras migrar existe una marca con un `slug` y se intenta insertar otra con el mismo `slug`
+- **THEN** la segunda inserción falla
+- **AND** no queda una segunda fila con ese `slug`
+
+#### Scenario: nombre vacío rechazado (unhappy)
+
+- **WHEN** tras migrar se intenta insertar una `marca` con `nombre` de longitud 0
+- **THEN** la operación falla
+- **AND** `marca` permanece sin esa fila
+
+### Requirement: Adaptador BrandRepo
+
+El crate `storage` MUST implementar el puerto `BrandRepo` (`create`, `get`, `list_all`, `update`, `set_activo`) contra la tabla `marca` ya migrada usando `storage::Tx` (T-03-02). Los `id` MUST ser ULID de 26 caracteres **sin** prefijo de tabla. Los errores MUST ser `DomainError`. MUST NOT mapear a HTTP ni a `problem+json`. MUST NOT reindexar productos (T-03-08). MUST NOT consultar `producto` ni rechazar baja por ocupación.
+
+`create` MUST: generar el *slug* desde `nombre` cuando el input no aporta uno; persistir `activo` verdadero; emitir en la **misma** transacción un `OutboxEvent` con `entidad` `marca`, `operacion` `upsert` y `registro` igual al `id` de la marca creada. Una violación del índice único `slug` MUST fallar con `DomainError::Conflict` y `code` `duplicate_slug`, y MUST NOT dejar la segunda fila ni su evento de outbox. `nombre` vacío o inválido MUST ser `invalid_input` y MUST NOT insertar.
+
+`get` MUST devolver la `Marca` persistida o `DomainError::NotFound`. `list_all` MUST devolver todas las filas de `marca` (incluidas inactivas).
+
+`update` MUST cambiar `nombre` y el *slug* (explícito o regenerado desde `nombre`) de esa fila en una `Tx` con un `OutboxEvent` `marca`/`upsert`. Colisión de *slug* MUST ser `duplicate_slug`. `id` desconocido MUST ser `not_found`. MUST NOT tocar otras filas.
+
+`set_activo` MUST actualizar solo el campo `activo` (y `actualizado_en`) de esa fila en una `Tx` con un `OutboxEvent` `marca`/`upsert`. MUST NOT hacer `DELETE` físico. `id` desconocido MUST ser `not_found`. Baja lógica de una marca MUST estar permitida aunque más adelante existan productos que la referencien (HU-02-02; este ticket no consulta `producto`).
+
+#### Scenario: Alta de marca Fixser (happy, HU-02-02, Listo cuando)
+
+- **WHEN** se crea una marca con `nombre` `"Fixser"` y sin *slug* explícito
+- **THEN** la operación termina sin error
+- **AND** `nombre` es `"Fixser"`
+- **AND** `slug` es `"fixser"`
+- **AND** `activo` es verdadero
+- **AND** el `id` no contiene `:`
+
+#### Scenario: get de marca existente (happy)
+
+- **WHEN** se persiste una marca y se llama `get` con su `id`
+- **THEN** la operación termina sin error
+- **AND** `nombre`, `slug` e `id` coinciden con lo persistido
+
+#### Scenario: list_all incluye activas e inactivas (happy)
+
+- **WHEN** existen una marca activa y otra inactiva y se llama `list_all`
+- **THEN** la operación termina sin error
+- **AND** el resultado incluye ambas marcas
+
+#### Scenario: create emite evento de outbox (happy)
+
+- **WHEN** `create` persiste una marca
+- **THEN** existe un evento en `outbox` con `entidad` `marca` y `operacion` `upsert`
+- **AND** `registro` es el `id` de la marca (sin prefijo de tabla)
+
+#### Scenario: Edición regenera slug (happy, Listo cuando)
+
+- **WHEN** existe la marca `"Fixser"` y `update` cambia el `nombre` a `"Fischer"` sin *slug* explícito
+- **THEN** la operación termina sin error
+- **AND** `nombre` es `"Fischer"`
+- **AND** `slug` es `"fischer"`
+- **AND** existe un evento de outbox `marca`/`upsert` adicional para ese `id`
+
+#### Scenario: Baja lógica persiste inactiva (happy, HU-02-02, Listo cuando)
+
+- **WHEN** existe una marca activa y `set_activo` se llama con `false`
+- **THEN** la operación termina sin error
+- **AND** `activo` es falso
+- **AND** la fila sigue existiendo
+- **AND** existe un evento de outbox `marca`/`upsert` (no `delete`)
+
+#### Scenario: slug duplicado en alta (unhappy)
+
+- **WHEN** ya existe una marca con *slug* `"fixser"` y se intenta crear otra con el mismo *slug*
+- **THEN** la operación falla
+- **AND** el error es `DomainError::Conflict` con `code` `duplicate_slug`
+- **AND** no queda una segunda fila ni un segundo evento de outbox para esa alta
+
+#### Scenario: slug duplicado en edición (unhappy)
+
+- **WHEN** existen `"Fixser"` y `"Fischer"` y `update` intenta asignar a `"Fischer"` el *slug* de `"Fixser"`
+- **THEN** la operación falla
+- **AND** el error es `DomainError::Conflict` con `code` `duplicate_slug`
+- **AND** `"Fischer"` conserva su *slug* original
+
+#### Scenario: get de id inexistente (unhappy)
+
+- **WHEN** se llama `get` con un `id` que no existe en `marca`
+- **THEN** la operación falla
+- **AND** el error es `DomainError::NotFound`
+
+#### Scenario: update de id inexistente (unhappy)
+
+- **WHEN** se llama `update` con un `id` que no existe
+- **THEN** la operación falla
+- **AND** el error es `DomainError::NotFound`
+
+#### Scenario: set_activo de id desconocido (unhappy)
+
+- **WHEN** `set_activo` se llama con un `id` que no existe
+- **THEN** la operación falla
+- **AND** el error es `DomainError::NotFound`
+
+#### Scenario: create con nombre vacío (unhappy)
+
+- **WHEN** se llama `create` con `nombre` vacío o solo espacios
+- **THEN** la operación falla
+- **AND** el error es `DomainError` con `code` `invalid_input`
+- **AND** no se inserta fila ni evento de outbox
+
+### Requirement: Migración atributo_def
+
+El crate `storage` MUST incluir la migración embebida `0004_atributo_def.surql`, aplicada por `Db::migrate()` después de `0003_marca.surql`. El SQL MUST definir la tabla `SCHEMAFULL` `atributo_def` conforme a [4.4.3](../../../docs/4-modelo.md#443-atributo_def--definición-de-atributos-técnicos), usando `DEFINE … IF NOT EXISTS` ([4.10](../../../docs/4-modelo.md#410-operación-del-esquema)).
+
+`atributo_def` MUST declarar: `clave` (`string`); `etiqueta` (`string`); `tipo` (`string` con `ASSERT $value IN ['texto', 'numero', 'booleano', 'enum']`); `unidad` (`option<string>`); `opciones` (`option<array<string>>`); `facetable` (`bool` con `DEFAULT false`); `buscable` (`bool` con `DEFAULT true`); `orden` (`int` con `DEFAULT 0`); `activo` (`bool` con `DEFAULT true`); `creado_en` (`datetime` con `DEFAULT time::now()` y `READONLY`); `actualizado_en` (`datetime` con `VALUE time::now()`). MUST habilitar `CHANGEFEED 3d` (tabla maestra). MUST definir el índice único `uq_atributo_clave` sobre `clave`.
+
+MUST NOT sembrar filas de catálogo. MUST NOT implementar HTTP ni casos de uso en `catalog` (T-02-12). Tras `storage::testing::test_db()`, `record_count("atributo_def")` MUST ser 0.
+
+#### Scenario: Migración aplica esquema atributo_def (happy)
+
+- **WHEN** se abre una base vacía y se llama `Db::migrate` (o `storage::testing::test_db`)
+- **THEN** `list_migrations()` incluye `version` 4 con checksum SHA-256 de `0004_atributo_def.surql`
+- **AND** `record_count("atributo_def")` es 0
+
+#### Scenario: Re-arranque no duplica el registro de migración (happy)
+
+- **WHEN** `migrate` se ejecuta dos veces sobre la misma instancia
+- **THEN** la segunda ejecución termina sin error
+- **AND** sigue habiendo un solo registro de `migracion` para `version` 4
+
+#### Scenario: Índice único clave rechaza duplicado (unhappy)
+
+- **WHEN** tras migrar existe un `atributo_def` con una `clave` y se intenta insertar otro con la misma `clave`
+- **THEN** la segunda inserción falla
+- **AND** no queda una segunda fila con esa `clave`
+
+#### Scenario: tipo fuera del enum rechazado (unhappy)
+
+- **WHEN** tras migrar se intenta insertar un `atributo_def` con `tipo` `"text"` (u otro valor fuera de `texto`/`numero`/`booleano`/`enum`)
+- **THEN** la operación falla
+- **AND** `atributo_def` permanece sin esa fila
+
+### Requirement: Adaptador AttributeDefRepo
+
+El crate `storage` MUST implementar el puerto `AttributeDefRepo` (`create`, `get`, `list_all`, `update`, `set_activo`) contra la tabla `atributo_def` ya migrada usando `storage::Tx` (T-03-02). Los `id` MUST ser ULID de 26 caracteres **sin** prefijo de tabla. Los errores MUST ser `DomainError`. MUST NOT mapear a HTTP ni a `problem+json`. MUST NOT reindexar productos ni actualizar `filterableAttributes` (T-03-08). MUST NOT consultar `producto` ni rechazar cambios por `attribute_in_use` (T-02-23).
+
+`create` MUST: persistir los campos de `NewAtributoDef`; usar `activo` verdadero; emitir en la **misma** transacción un `OutboxEvent` con `entidad` `atributo_def`, `operacion` `upsert` y `registro` igual al `id` de la definición creada. Una violación del índice único `clave` MUST fallar con `DomainError::Conflict` y `code` `conflict` (equivalente HTTP `409` en T-02-12), y MUST NOT dejar la segunda fila ni su evento de outbox. `tipo` `enum` sin opciones MUST ser `invalid_input` y MUST NOT insertar. `clave` inválida o `etiqueta` vacía MUST ser `invalid_input`.
+
+`get` MUST devolver la `AtributoDef` persistida o `DomainError::NotFound`. `list_all` MUST devolver todas las filas de `atributo_def` (incluidas inactivas), ordenadas por `orden` ascendente y `clave` como desempate (OpenAPI: listado ordenado por `order`).
+
+`update` MUST cambiar los campos editables de esa fila en una `Tx` con un `OutboxEvent` `atributo_def`/`upsert`. Colisión de `clave` MUST ser `conflict`. `id` desconocido MUST ser `not_found`. MUST NOT aplicar `attribute_in_use`. MUST NOT tocar otras filas.
+
+`set_activo` MUST actualizar solo el campo `activo` (y `actualizado_en`) de esa fila en una `Tx` con un `OutboxEvent` `atributo_def`/`upsert`. MUST NOT hacer `DELETE` físico. `id` desconocido MUST ser `not_found`.
+
+#### Scenario: Alta de atributo grado (happy, HU-02-03)
+
+- **WHEN** se crea una definición con `clave` `"grado"`, `etiqueta` `"Grado"`, `tipo` `enum`, `opciones` `["2", "5", "8"]` y `facetable` verdadero
+- **THEN** la operación termina sin error
+- **AND** `clave` es `"grado"`
+- **AND** `tipo` es `enum`
+- **AND** `opciones` son `["2", "5", "8"]`
+- **AND** `facetable` es verdadero
+- **AND** `activo` es verdadero
+- **AND** el `id` no contiene `:`
+
+#### Scenario: get de definición existente (happy)
+
+- **WHEN** se persiste una definición y se llama `get` con su `id`
+- **THEN** la operación termina sin error
+- **AND** `clave`, `etiqueta`, `tipo` e `id` coinciden con lo persistido
+
+#### Scenario: list_all ordena por orden e incluye inactivas (happy)
+
+- **WHEN** existen definiciones con `orden` 10 y 0, una de ellas inactiva, y se llama `list_all`
+- **THEN** la operación termina sin error
+- **AND** el resultado incluye ambas
+- **AND** la de `orden` 0 aparece antes que la de `orden` 10
+
+#### Scenario: create emite evento de outbox (happy)
+
+- **WHEN** `create` persiste una definición
+- **THEN** existe un evento en `outbox` con `entidad` `atributo_def` y `operacion` `upsert`
+- **AND** `registro` es el `id` de la definición (sin prefijo de tabla)
+
+#### Scenario: Edición cambia etiqueta (happy)
+
+- **WHEN** existe la definición `"grado"` y `update` cambia `etiqueta` a `"Grado SAE"`
+- **THEN** la operación termina sin error
+- **AND** `etiqueta` es `"Grado SAE"`
+- **AND** `clave` sigue siendo `"grado"`
+- **AND** existe un evento de outbox `atributo_def`/`upsert` adicional para ese `id`
+
+#### Scenario: Baja lógica persiste inactiva (happy)
+
+- **WHEN** existe una definición activa y `set_activo` se llama con `false`
+- **THEN** la operación termina sin error
+- **AND** `activo` es falso
+- **AND** la fila sigue existiendo
+- **AND** existe un evento de outbox `atributo_def`/`upsert` (no `delete`)
+
+#### Scenario: clave duplicada en alta (unhappy, Listo cuando → 409)
+
+- **WHEN** ya existe una definición con `clave` `"grado"` y se intenta crear otra con la misma `clave`
+- **THEN** la operación falla
+- **AND** el error es `DomainError::Conflict` con `code` `conflict`
+- **AND** no queda una segunda fila ni un segundo evento de outbox para esa alta
+
+#### Scenario: clave duplicada en edición (unhappy)
+
+- **WHEN** existen `"grado"` y `"medida"` y `update` intenta asignar a `"medida"` la `clave` `"grado"`
+- **THEN** la operación falla
+- **AND** el error es `DomainError::Conflict` con `code` `conflict`
+- **AND** `"medida"` conserva su `clave` original
+
+#### Scenario: enum sin opciones en alta (unhappy, HU-02-03, Listo cuando)
+
+- **WHEN** se llama `create` con `tipo` `enum` y `opciones` ausentes o vacías
+- **THEN** la operación falla
+- **AND** el error es `DomainError` con `code` `invalid_input`
+- **AND** no se inserta fila ni evento de outbox
+
+#### Scenario: get de id inexistente (unhappy)
+
+- **WHEN** se llama `get` con un `id` que no existe en `atributo_def`
+- **THEN** la operación falla
+- **AND** el error es `DomainError::NotFound`
+
+#### Scenario: update de id inexistente (unhappy)
+
+- **WHEN** se llama `update` con un `id` que no existe
+- **THEN** la operación falla
+- **AND** el error es `DomainError::NotFound`
+
+#### Scenario: set_activo de id desconocido (unhappy)
+
+- **WHEN** `set_activo` se llama con un `id` que no existe
+- **THEN** la operación falla
+- **AND** el error es `DomainError::NotFound`
+
+#### Scenario: create con clave inválida (unhappy)
+
+- **WHEN** se llama `create` con `clave` `"Grado"`
+- **THEN** la operación falla
+- **AND** el error es `DomainError` con `code` `invalid_input`
+- **AND** no se inserta fila ni evento de outbox
+
+### Requirement: Migración producto
+
+El crate `storage` MUST incluir la migración embebida `0005_producto.surql`, aplicada por `Db::migrate()` después de `0004_atributo_def.surql`. El SQL MUST definir la tabla `SCHEMAFULL` `producto` conforme a [4.4.4](../../../docs/4-modelo.md#444-producto), usando `DEFINE … IF NOT EXISTS` ([4.10](../../../docs/4-modelo.md#410-operación-del-esquema)).
+
+`producto` MUST declarar: `sku` (`string` con `ASSERT string::len($value) > 0`); `nombre` (`string` con `ASSERT string::len($value) > 0`); `tipo` (`string`); `descripcion` (`option<string>`); `marca` (`option<record<marca>>`); `categoria` (`record<categoria>`); `atributos` (`array<object>` con `DEFAULT []`); `atributos[*].def` (`record<atributo_def>`); `atributos[*].valor` (`string | number | bool`); `codigos` (`array<object>` con `DEFAULT []`); `codigos[*].tipo` (`string` con `ASSERT $value IN ['fabricante', 'oem', 'barras']`); `codigos[*].valor` (`string`); `unidad_medida` (`string` con `DEFAULT 'unidad'` y `ASSERT $value IN ['unidad', 'par', 'caja', 'metro', 'kilogramo', 'litro']`); `precio` (`decimal` con `ASSERT $value >= 0`); `ubicacion` (`option<object>`); `ubicacion.pasillo` / `ubicacion.estante` / `ubicacion.posicion` (`option<string>`); `stock` (`decimal` con `DEFAULT 0` y `ASSERT $value >= 0`); `activo` (`bool` con `DEFAULT true`); `version` (`int` con `DEFAULT 1`); `creado_en` (`datetime` con `DEFAULT time::now()` y `READONLY`); `actualizado_en` (`datetime` con `VALUE time::now()`). MUST habilitar `CHANGEFEED 3d` (tabla maestra).
+
+MUST definir el índice único `uq_producto_sku` sobre `sku`, el índice `idx_producto_categoria` sobre `categoria`, el índice `idx_producto_marca` sobre `marca`, el analizador `an_respaldo` (`TOKENIZERS blank, class FILTERS lowercase, ascii, edgengram(2, 15)`), el índice de búsqueda `ft_producto_nombre` sobre `nombre` (`SEARCH ANALYZER an_respaldo BM25`) y el índice no único `idx_producto_codigos` sobre `codigos[*].valor` (hallazgo H-05; se documenta en 4.4.4). `idx_producto_codigos` MUST NOT ser `UNIQUE` (los códigos OEM se pueden compartir entre productos).
+
+MUST NOT sembrar filas de catálogo. MUST NOT implementar entidad de dominio, value objects, puerto `ProductRepo`, ledger, HTTP ni casos de uso (T-02-16 / T-02-18 / T-02-21). Tras `storage::testing::test_db()`, `record_count("producto")` MUST ser 0.
+
+#### Scenario: Migración aplica esquema producto (happy)
+
+- **WHEN** se abre una base vacía y se llama `Db::migrate` (o `storage::testing::test_db`)
+- **THEN** `list_migrations()` incluye `version` 5 con checksum SHA-256 de `0005_producto.surql`
+- **AND** `record_count("producto")` es 0
+
+#### Scenario: Re-arranque no duplica el registro de migración (happy)
+
+- **WHEN** `migrate` se ejecuta dos veces sobre la misma instancia
+- **THEN** la segunda ejecución termina sin error
+- **AND** sigue habiendo un solo registro de `migracion` para `version` 5
+
+#### Scenario: Alta mínima de producto (happy)
+
+- **WHEN** tras migrar existe una `categoria` y se inserta un `producto` con `sku` `"PER-M8X40-ZN"`, `nombre` no vacío, `tipo` `"Perno"`, esa `categoria` y `precio` `120.50`
+- **THEN** la inserción termina sin error
+- **AND** `record_count("producto")` es 1
+- **AND** `stock` queda en `0`, `activo` en verdadero y `version` en `1`
+
+#### Scenario: precio cero aceptado (happy)
+
+- **WHEN** tras migrar existe una `categoria` y se inserta un `producto` con `precio` `0`
+- **THEN** la inserción termina sin error
+- **AND** queda una fila con ese `precio`
+
+#### Scenario: mismo código OEM en dos productos (happy, H-05)
+
+- **WHEN** tras migrar existen dos productos con `sku` distintos y ambos tienen `codigos` con `{ tipo: "oem", valor: "HX-0840Z" }`
+- **THEN** ambas inserciones terminan sin error
+- **AND** `record_count("producto")` es 2
+
+#### Scenario: Índice único sku rechaza duplicado (unhappy, Listo cuando)
+
+- **WHEN** tras migrar existe un `producto` con `sku` `"PER-M8X40-ZN"` y se intenta insertar otro con el mismo `sku`
+- **THEN** la segunda inserción falla
+- **AND** no queda una segunda fila con ese `sku`
+
+#### Scenario: precio negativo rechazado (unhappy, Listo cuando)
+
+- **WHEN** tras migrar se intenta insertar un `producto` con `precio` menor que `0`
+- **THEN** la operación falla
+- **AND** `producto` permanece sin esa fila
+
+#### Scenario: tipo de código fuera del enum rechazado (unhappy, Listo cuando)
+
+- **WHEN** tras migrar se intenta insertar un `producto` con `codigos` que incluye `{ tipo: "ean", valor: "123" }`
+- **THEN** la operación falla
+- **AND** `producto` permanece sin esa fila
+
+#### Scenario: sku vacío rechazado (unhappy)
+
+- **WHEN** tras migrar se intenta insertar un `producto` con `sku` de longitud 0
+- **THEN** la operación falla
+- **AND** `producto` permanece sin esa fila
+
+### Requirement: Migración movimiento_stock
+
+El crate `storage` MUST incluir la migración embebida `0006_movimiento_stock.surql`, aplicada por `Db::migrate()` después de `0005_producto.surql`. El SQL MUST definir la tabla `SCHEMAFULL` `movimiento_stock` conforme a [4.5.1](../../../docs/4-modelo.md#451-movimiento_stock), usando `DEFINE … IF NOT EXISTS` ([4.10](../../../docs/4-modelo.md#410-operación-del-esquema)).
+
+`movimiento_stock` MUST declarar, todos `READONLY`: `producto` (`record<producto>`); `tipo` (`string` con `ASSERT $value IN ['inicial', 'ingreso', 'ajuste', 'venta']`); `cantidad` (`decimal` con `ASSERT $value != 0`); `stock_resultante` (`decimal` con `ASSERT $value >= 0`); `motivo` (`option<string>`); `venta` (`option<record>` genérico, **sin** `record<venta>` hasta T-08-01); `terminal` (`option<string>`); `creado_en` (`datetime` con `DEFAULT time::now()`). MUST habilitar `CHANGEFEED 3d` (ledger). MUST definir el índice `idx_mov_producto` sobre `(producto, creado_en)`. `idx_mov_producto` MUST NOT ser `UNIQUE`.
+
+MUST NOT sembrar filas de ledger. MUST NOT implementar entidad de dominio, reglas de signo por `tipo`, `motivo` obligatorio en `ajuste`, puerto `StockLedger`, HTTP ni casos de uso (T-02-17 / T-02-24 / T-02-25). Tras `storage::testing::test_db()`, `record_count("movimiento_stock")` MUST ser 0.
+
+#### Scenario: Migración aplica esquema movimiento_stock (happy)
+
+- **WHEN** se abre una base vacía y se llama `Db::migrate` (o `storage::testing::test_db`)
+- **THEN** `list_migrations()` incluye `version` 6 con checksum SHA-256 de `0006_movimiento_stock.surql`
+- **AND** `record_count("movimiento_stock")` es 0
+
+#### Scenario: Re-arranque no duplica el registro de migración (happy)
+
+- **WHEN** `migrate` se ejecuta dos veces sobre la misma instancia
+- **THEN** la segunda ejecución termina sin error
+- **AND** sigue habiendo un solo registro de `migracion` para `version` 6
+
+#### Scenario: Alta mínima de movimiento ingreso (happy)
+
+- **WHEN** tras migrar existe un `producto` y se inserta un `movimiento_stock` con `tipo` `"ingreso"`, `cantidad` `20`, `stock_resultante` `20` y ese `producto`
+- **THEN** la inserción termina sin error
+- **AND** `record_count("movimiento_stock")` es 1
+- **AND** `motivo`, `venta` y `terminal` quedan ausentes
+
+#### Scenario: UPDATE sobre un movimiento falla (unhappy, Listo cuando)
+
+- **WHEN** tras migrar existe un `movimiento_stock` y se intenta `UPDATE` de un campo (p. ej. `motivo`)
+- **THEN** la operación falla
+- **AND** el movimiento conserva los valores originales
+
+#### Scenario: tipo fuera del enum rechazado (unhappy)
+
+- **WHEN** tras migrar se intenta insertar un `movimiento_stock` con `tipo` `"transferencia"`
+- **THEN** la operación falla
+- **AND** `movimiento_stock` permanece sin esa fila
+
+#### Scenario: cantidad cero rechazada (unhappy)
+
+- **WHEN** tras migrar se intenta insertar un `movimiento_stock` con `cantidad` `0`
+- **THEN** la operación falla
+- **AND** `movimiento_stock` permanece sin esa fila
+
+#### Scenario: stock_resultante negativo rechazado (unhappy)
+
+- **WHEN** tras migrar se intenta insertar un `movimiento_stock` con `stock_resultante` menor que `0`
+- **THEN** la operación falla
+- **AND** `movimiento_stock` permanece sin esa fila
+
+### Requirement: Migración relaciones
+
+El crate `storage` MUST incluir la migración embebida `0007_relaciones.surql`, aplicada por `Db::migrate()` después de `0006_movimiento_stock.surql`. El SQL MUST definir las tablas `SCHEMAFULL` `similar_a`, `sustituible_por` y `complementa` conforme a [4.6.1](../../../docs/4-modelo.md#461-tablas-de-relación) (PM-05), usando `DEFINE … IF NOT EXISTS` ([4.10](../../../docs/4-modelo.md#410-operación-del-esquema)).
+
+Cada tabla MUST ser `TYPE RELATION IN producto OUT producto ENFORCED` y MUST declarar: `prioridad` (`int` con `DEFAULT 1` y `ASSERT $value >= 1`); `nota` (`option<string>`); `grupo_bidireccional` (`option<string>`); `creado_en` (`datetime` con `DEFAULT time::now()` y `READONLY`); `actualizado_en` (`datetime` con `VALUE time::now()`). MUST habilitar `CHANGEFEED 3d`. MUST definir un índice único sobre `(in, out)`: `uq_similar_a`, `uq_sustituible_por` y `uq_complementa`. El contrato HTTP sigue usando `substitute`; el nombre de tabla MUST ser `sustituible_por`.
+
+MUST NOT sembrar aristas. MUST NOT implementar entidad de dominio, `self_relation`, bidireccionalidad, puerto `RelationRepo`, consulta de recomendaciones, HTTP ni casos de uso (T-04-02 / T-04-03 / T-04-05 / T-04-06). MUST NOT rechazar `in = out` en el esquema. Tras `storage::testing::test_db()`, `record_count` de `similar_a`, `sustituible_por` y `complementa` MUST ser 0.
+
+#### Scenario: Migración aplica esquema de relaciones (happy)
+
+- **WHEN** se abre una base vacía y se llama `Db::migrate` (o `storage::testing::test_db`)
+- **THEN** `list_migrations()` incluye `version` 7 con checksum SHA-256 de `0007_relaciones.surql`
+- **AND** `record_count("similar_a")`, `record_count("sustituible_por")` y `record_count("complementa")` son 0
+
+#### Scenario: Re-arranque no duplica el registro de migración (happy)
+
+- **WHEN** `migrate` se ejecuta dos veces sobre la misma instancia
+- **THEN** la segunda ejecución termina sin error
+- **AND** sigue habiendo un solo registro de `migracion` para `version` 7
+
+#### Scenario: RELATE entre dos productos existentes (happy)
+
+- **WHEN** tras migrar existen productos `A` y `B` y se ejecuta `RELATE` de `A` hacia `B` en `similar_a`, `sustituible_por` y `complementa`
+- **THEN** las tres operaciones terminan sin error
+- **AND** cada tabla queda con `record_count` 1
+- **AND** `prioridad` queda en `1` cuando no se envía
+
+#### Scenario: mismo par en tablas distintas (happy)
+
+- **WHEN** tras migrar existe `RELATE A -> similar_a -> B` y se ejecuta `RELATE A -> sustituible_por -> B`
+- **THEN** ambas aristas existen
+- **AND** el índice único de cada tabla no las trata como duplicado
+
+#### Scenario: ENFORCED rechaza destino inexistente (unhappy, Listo cuando)
+
+- **WHEN** tras migrar existe un producto `A` y se ejecuta `RELATE` de `A` hacia un `producto` que no existe en `sustituible_por`
+- **THEN** la operación falla
+- **AND** `sustituible_por` permanece sin esa arista
+
+#### Scenario: índice único (in, out) rechaza duplicado (unhappy, Listo cuando)
+
+- **WHEN** tras migrar existe `RELATE A -> sustituible_por -> B` y se intenta el mismo `RELATE` otra vez
+- **THEN** la segunda operación falla
+- **AND** `record_count("sustituible_por")` sigue siendo 1
+
+#### Scenario: prioridad menor que 1 rechazada (unhappy)
+
+- **WHEN** tras migrar existen productos `A` y `B` y se ejecuta `RELATE A -> similar_a -> B` con `prioridad` `0`
+- **THEN** la operación falla
+- **AND** `similar_a` permanece sin esa arista
+
+### Requirement: Adaptador RelationRepo create
+
+El crate `storage` MUST implementar el puerto `RelationRepo` contra las tablas `similar_a`, `sustituible_por` y `complementa` ya migradas (T-04-01) usando `storage::Tx` (T-03-02). Los `id` MUST ser ULID de 26 caracteres **sin** prefijo de tabla (`similar_a:`, `sustituible_por:` o `complementa:`). Los errores MUST ser `DomainError`. MUST NOT mapear a HTTP ni a `problem+json`. MUST NOT emitir evento de outbox (el grafo no está en `OutboxEntity` ni en [4.8.1](../../../docs/4-modelo.md#481-outbox); T-04-06 lee SurrealDB). `update`, `delete` y `list_for_product` MUST comportarse según el requirement «Adaptador RelationRepo update, delete y list_for_product» (T-04-04); MUST NOT devolver `unavailable` para esas operaciones. MUST NOT declarar el adaptador en `catalog` ni en `recommend` (DC-05 se cablea en T-04-05). MUST NOT ampliar `DomainError`, `Relacion` ni `NewRelacion`.
+
+`create` MUST persistir `NewRelacion` en una sola transacción:
+
+1. Validar el input con las reglas de dominio (`self_relation`, `prioridad` ≥ 1, `nota` ≤ 500) **antes** de abrir la `Tx`. Si fallan, MUST NOT ejecutar `RELATE`.
+2. Resolver bidireccionalidad con `resolve_bidireccional(tipo, bidireccional)` (T-04-02): ausente = default del tipo (`similar_a` verdadero; `sustituible_por` y `complementa` falso). Un flag explícito MUST prevalecer.
+3. Si no es bidireccional: un `RELATE` origen→destino en la tabla de `tipo`, **sin** `grupo_bidireccional`.
+4. Si es bidireccional: dos `RELATE` (origen→destino y destino→origen) en la **misma** transacción, mismo `grupo_bidireccional` (ULID de 26 caracteres sin prefijo), misma `prioridad` y `nota` ([4.6.1](../../../docs/4-modelo.md#461-tablas-de-relación)). Si el segundo `RELATE` falla, MUST NOT quedar la primera arista.
+5. El resultado de éxito MUST ser el `Relacion` de la arista saliente origen→destino. Si el par es bidireccional, `grupo_bidireccional` MUST estar presente en esa arista.
+
+Una violación del índice único `(in, out)` (`uq_similar_a`, `uq_sustituible_por` o `uq_complementa`) MUST fallar con `DomainError::Conflict` y `code` `duplicate_relation`, y MUST NOT dejar una segunda arista del mismo par y tipo. Un destino u origen inexistente (`ENFORCED`) MUST fallar con `DomainError` `code` `not_found` y MUST NOT insertar aristas. `origen == destino` MUST ser `self_relation` (dominio) y MUST NOT llegar al motor.
+
+MUST NOT reindexar Meilisearch. MUST NOT cambiar el esquema `0007`.
+
+#### Scenario: A similar B crea A→B y B→A (happy, HU-04-02, Listo cuando)
+
+- **WHEN** existen productos `A` y `B` distintos y se llama `create` con `tipo` `similar_a`, `origen` `A`, `destino` `B`, `prioridad` 1 y `bidireccional` ausente
+- **THEN** la operación termina sin error
+- **AND** existe la arista `A -> similar_a -> B`
+- **AND** existe la arista `B -> similar_a -> A`
+- **AND** ambas aristas comparten el mismo `grupo_bidireccional`
+- **AND** el `id` devuelto no contiene `:`
+- **AND** el `Relacion` devuelto tiene `origen` `A` y `destino` `B`
+- **AND** no existe fila nueva en `outbox`
+
+#### Scenario: Complement Perno M8 a Arandela M8 es unidireccional (happy, HU-04-01)
+
+- **WHEN** existen "Perno M8" y "Arandela M8" y se llama `create` con `tipo` `complementa`, origen el perno, destino la arandela, `prioridad` 1 y `bidireccional` ausente
+- **THEN** la operación termina sin error
+- **AND** existe solo la arista perno→arandela en `complementa`
+- **AND** `grupo_bidireccional` está ausente
+- **AND** no existe la arista inversa arandela→perno
+
+#### Scenario: Flag explícito false en similar crea una sola arista (happy)
+
+- **WHEN** se llama `create` con `tipo` `similar_a` y `bidireccional` `false` entre dos productos existentes
+- **THEN** la operación termina sin error
+- **AND** existe solo la arista origen→destino
+- **AND** `grupo_bidireccional` está ausente
+
+#### Scenario: Flag explícito true en complementa crea el par (happy)
+
+- **WHEN** se llama `create` con `tipo` `complementa` y `bidireccional` `true` entre dos productos existentes
+- **THEN** la operación termina sin error
+- **AND** existen ambas aristas
+- **AND** ambas comparten el mismo `grupo_bidireccional`
+
+#### Scenario: Repetir A similar B da duplicate_relation (unhappy, HU-04-01, Listo cuando)
+
+- **WHEN** ya existe el par bidireccional `A similar B` y se llama `create` otra vez con `tipo` `similar_a`, origen `A`, destino `B` y `bidireccional` ausente
+- **THEN** la operación falla
+- **AND** el error es `DomainError::Conflict` con `code` `duplicate_relation`
+- **AND** `record_count("similar_a")` sigue siendo 2
+- **AND** no queda una tercera ni cuarta arista
+
+#### Scenario: Complement duplicado da duplicate_relation (unhappy, HU-04-01)
+
+- **WHEN** ya existe `A -> complementa -> B` y se llama `create` otra vez con el mismo par y tipo
+- **THEN** la operación falla
+- **AND** el error es `DomainError::Conflict` con `code` `duplicate_relation`
+- **AND** `record_count("complementa")` sigue siendo 1
+
+#### Scenario: Relación consigo mismo (unhappy, HU-04-01)
+
+- **WHEN** se llama `create` con el mismo `Id<Producto>` en `origen` y `destino`
+- **THEN** la operación falla
+- **AND** el error es `DomainError` con `code` `self_relation`
+- **AND** no se inserta ninguna arista
+
+#### Scenario: Destino inexistente (unhappy)
+
+- **WHEN** se llama `create` con un `destino` que no existe en `producto`
+- **THEN** la operación falla
+- **AND** el error es `DomainError` con `code` `not_found`
+- **AND** no se inserta ninguna arista
+
+#### Scenario: update, delete y list_for_product no persisten (unhappy)
+
+- **WHEN** se llama `update`, `delete` o `list_for_product` en el adaptador
+- **THEN** esas operaciones MUST NOT devolver `DomainError` `code` `unavailable` por falta de implementación
+- **AND** el comportamiento MUST ser el del requirement «Adaptador RelationRepo update, delete y list_for_product» (T-04-04)
+
+### Requirement: Adaptador RelationRepo update, delete y list_for_product
+
+El crate `storage` MUST implementar `RelationRepo::update`, `delete` y `list_for_product` contra las tablas `similar_a`, `sustituible_por` y `complementa` usando `storage::Tx` (T-03-02). Los `id` MUST ser ULID de 26 caracteres **sin** prefijo de tabla. Los errores MUST ser `DomainError`. MUST NOT mapear a HTTP ni a `problem+json`. MUST NOT emitir evento de outbox. MUST NOT reindexar Meilisearch. MUST NOT cambiar el esquema `0007`. MUST NOT declarar el adaptador en `catalog` ni en `recommend` (DC-05 se cablea en T-04-05). MUST NOT filtrar destinos inactivos ni por `stock` (eso es T-04-06). El listado **entrante** MUST vivir en `list_incoming_for_product` (requirement «Adaptador RelationRepo list_incoming_for_product»); `list_for_product` MUST seguir devolviendo solo salientes.
+
+`update` MUST aplicar `UpdateRelacion` (`id`, `tipo`, `prioridad` opcional, `nota` opcional) en una sola transacción:
+
+1. Resolver la arista `tipo`+`id`. Si no existe, MUST fallar con `DomainError` `code` `not_found` y MUST NOT modificar tablas.
+2. Validar el parche con las reglas de dominio **antes** de abrir la `Tx`: `prioridad` presente MUST ser ≥ 1; `nota` presente MUST cumplir 1..=500 tras recortar (o ausente si solo espacios). Si fallan, MUST NOT persistir.
+3. Campos omitidos (`None`) MUST conservar el valor actual de la arista.
+4. Si la arista tiene `grupo_bidireccional`, el mismo parche MUST aplicarse a **ambas** aristas del grupo en esa `Tx` ([4.6.1](../../../docs/4-modelo.md#461-tablas-de-relación); HU-04-02). Si no tiene grupo, MUST actualizar solo esa arista.
+5. El resultado de éxito MUST ser el `Relacion` de la arista identificada por `id` (no el par). `actualizado_en` MUST refrescarse. MUST NOT cambiar `origen`, `destino`, `tipo` ni `grupo_bidireccional`.
+
+`delete` MUST borrar **físicamente** (no baja lógica) la arista `tipo`+`id`. Si no existe, MUST fallar con `code` `not_found`. Si tiene `grupo_bidireccional`, MUST borrar ambas aristas del grupo en la misma `Tx`. Si no tiene grupo, MUST borrar solo esa arista. MUST NOT dejar aristas huérfanas del grupo. MUST NOT tocar `producto`.
+
+`list_for_product` MUST devolver `RelacionesDeProducto` con las aristas **salientes** (`in` = el producto) de las tres tablas, agrupadas en `similar_a`, `sustituible_por` y `complementa`. Cada grupo MUST ordenarse por `prioridad` ascendente (1 = más alta) y, a igualdad, por `id`. Cada ítem MUST ser `RelacionConDestino` con el `Relacion` de la arista y `DestinoResumen` del `out` (`id`, `sku`, `nombre`, `activo`). MUST incluir destinos inactivos y con `stock` 0. Un producto sin aristas salientes, o un `Id<Producto>` que no existe, MUST devolver los tres grupos vacíos (el 404 de producto es T-04-05). MUST NOT hidratar `ProductSummary` completo.
+
+#### Scenario: Cambiar prioridad desde B modifica ambas aristas (happy, HU-04-02, Listo cuando)
+
+- **WHEN** existe el par bidireccional `A similar B` y se llama `update` con el `id` de la arista `B → A`, `tipo` `similar_a` y `prioridad` 3
+- **THEN** la operación termina sin error
+- **AND** la arista `B → A` tiene `prioridad` 3
+- **AND** la arista `A → B` tiene `prioridad` 3
+- **AND** ambas conservan el mismo `grupo_bidireccional`
+- **AND** el `Relacion` devuelto es la arista `B → A`
+- **AND** no existe fila nueva en `outbox`
+
+#### Scenario: Editar nota de un complement unidireccional no toca inversa (happy)
+
+- **WHEN** existe solo `Perno → Arandela` en `complementa` y se llama `update` con esa arista, `nota` `"Arandela plana M8"` y `prioridad` ausente
+- **THEN** la operación termina sin error
+- **AND** esa arista tiene la nota nueva y la misma `prioridad`
+- **AND** no existe arista inversa
+- **AND** `record_count("complementa")` sigue siendo 1
+
+#### Scenario: Eliminar el grupo bidireccional desde B borra ambas (happy, HU-04-02)
+
+- **WHEN** existe el par bidireccional `A similar B` y se llama `delete` con el `id` de la arista `B → A` y `tipo` `similar_a`
+- **THEN** la operación termina sin error
+- **AND** no existe la arista `A → B`
+- **AND** no existe la arista `B → A`
+- **AND** `record_count("similar_a")` es 0
+
+#### Scenario: Eliminar complement unidireccional no borra otras aristas (happy)
+
+- **WHEN** existe `Perno → Arandela` en `complementa` y un par `similar_a` entre los mismos productos
+- **AND** se llama `delete` sobre la arista `complementa`
+- **THEN** la operación termina sin error
+- **AND** `record_count("complementa")` es 0
+- **AND** el par `similar_a` permanece
+
+#### Scenario: Listado agrupado con resumen del destino (happy, HU-04-03)
+
+- **WHEN** un producto tiene al menos una arista saliente de cada tipo (incl. un destino inactivo)
+- **AND** se llama `list_for_product` con ese producto
+- **THEN** la operación termina sin error
+- **AND** `similar_a`, `sustituible_por` y `complementa` contienen esas aristas salientes
+- **AND** cada ítem expone `prioridad`, `nota`, `grupo_bidireccional` y `DestinoResumen` con `id`, `sku`, `nombre` y `activo`
+- **AND** el destino inactivo aparece con `activo` falso
+- **AND** no aparecen aristas entrantes
+- **AND** cada grupo está ordenado por `prioridad` ascendente
+
+#### Scenario: Producto sin relaciones lista grupos vacíos (happy)
+
+- **WHEN** existe un producto sin aristas y se llama `list_for_product`
+- **THEN** la operación termina sin error
+- **AND** los tres grupos están vacíos
+
+#### Scenario: update id desconocido (unhappy)
+
+- **WHEN** se llama `update` con un `id` que no existe en la tabla de `tipo`
+- **THEN** la operación falla
+- **AND** el error es `DomainError` con `code` `not_found`
+- **AND** no se modifican las tablas de relación
+
+#### Scenario: delete id desconocido (unhappy)
+
+- **WHEN** se llama `delete` con un `id` que no existe en la tabla de `tipo`
+- **THEN** la operación falla
+- **AND** el error es `DomainError` con `code` `not_found`
+- **AND** no se modifican las tablas de relación
+
+#### Scenario: update con prioridad menor que 1 (unhappy)
+
+- **WHEN** existe una arista y se llama `update` con `prioridad` 0
+- **THEN** la operación falla
+- **AND** el error es `DomainError` con `code` `invalid_input`
+- **AND** el `FieldError.field` es `prioridad`
+- **AND** la arista conserva su `prioridad` anterior
+
+#### Scenario: update con nota de más de 500 caracteres (unhappy)
+
+- **WHEN** existe una arista y se llama `update` con `nota` de 501 caracteres
+- **THEN** la operación falla
+- **AND** el error es `DomainError` con `code` `invalid_input`
+- **AND** el `FieldError.field` es `nota`
+- **AND** la arista conserva su `nota` anterior
+
+### Requirement: ProductRepo set_activo conserva historial
+
+El adaptador `ProductRepo` en `storage` MUST implementar `set_activo(id, activo)`. MUST actualizar solo el campo `activo` (y `actualizado_en`) de esa fila `producto` en una `Tx` con un `OutboxEvent` `producto`/`upsert` (`registro` = `id` sin prefijo, `motivo` ausente). MUST NOT hacer `DELETE` físico de la fila `producto`. MUST NOT borrar, alterar ni insertar filas en `movimiento_stock`. MUST NOT borrar aristas de relación ni filas `imagen_producto`. MUST NOT escribir `stock`. MUST NOT incrementar `version`. MUST NOT reindexar Meilisearch (T-03-07).
+
+El resultado de éxito MUST ser la `FichaProducto` rehidratada con el `activo` pedido. `id` desconocido MUST ser `not_found` y MUST NOT emitir outbox. Si el producto ya tiene ese `activo`, `set_activo` MUST ser éxito idempotente (sigue emitiendo el evento de outbox).
+
+#### Scenario: Baja lógica deja el ledger intacto (happy, HU-02-06, Listo cuando)
+
+- **WHEN** existe un producto activo con stock `"50"` y un movimiento `inicial`
+- **AND** se llama `set_activo(id, false)`
+- **THEN** la operación termina sin error
+- **AND** `activo` es falso
+- **AND** `stock` sigue siendo `"50"`
+- **AND** `version` no cambia
+- **AND** el recuento de `movimiento_stock` de ese producto no cambia
+- **AND** el movimiento `inicial` conserva `tipo`, `cantidad` y `stock_resultante`
+- **AND** existe un evento en `outbox` con `entidad` `producto`, `operacion` `upsert` y `motivo` ausente
+
+#### Scenario: Reactivación restaura activo (happy, HU-02-06, Listo cuando)
+
+- **WHEN** un producto está inactivo
+- **AND** se llama `set_activo(id, true)`
+- **THEN** la operación termina sin error
+- **AND** `activo` es verdadero
+- **AND** `stock` y el ledger no cambian
+- **AND** existe un evento en `outbox` con `entidad` `producto` y `operacion` `upsert`
+
+#### Scenario: Baja idempotente (happy)
+
+- **WHEN** un producto ya está inactivo
+- **AND** se llama `set_activo(id, false)`
+- **THEN** la operación termina sin error
+- **AND** `activo` sigue falso
+- **AND** el ledger no cambia
+
+#### Scenario: set_activo id desconocido (unhappy)
+
+- **WHEN** se llama `set_activo` con un `id` que no existe en `producto`
+- **THEN** la operación falla
+- **AND** el error es `DomainError` con `code` `not_found`
+- **AND** no se inserta un evento en `outbox`
+
+### Requirement: Adaptador ProductRepo
+
+El crate `storage` MUST implementar el puerto `ProductRepo` (`create`, `get`, `update`, `set_activo`, `list`) contra las tablas `producto` y `movimiento_stock` ya migradas (T-02-14, T-02-15) usando `storage::Tx` (T-03-02). Los `id` MUST ser ULID de 26 caracteres **sin** prefijo de tabla (`producto:`). Los errores MUST ser `DomainError`. MUST NOT mapear a HTTP ni a `problem+json`. MUST NOT reindexar Meilisearch (T-03-07). MUST NOT reemplazar el movimiento `inicial` de `create` por `StockLedger::append` (el alta sigue inline; el adaptador `StockLedger` es un tipo aparte). MUST NOT comprobar que categoría o marca existan y estén activas más allá de lo que el esquema `record<…>` ya exige (T-02-20). MUST NOT validar valores de atributo contra definiciones cargadas por el caso de uso (T-02-16 / T-02-20). MUST NOT hidratar ni persistir imágenes (T-02-30).
+
+`create` MUST persistir los campos de `NewProducto` en una sola transacción:
+
+1. `CREATE producto` con `activo` verdadero, `version` 1 y `stock` 0 (el DEFAULT del esquema); MUST NOT escribir `stock` distinto de 0 en el `CONTENT` del alta.
+2. Si `stock_inicial > 0`: `CREATE movimiento_stock` con `tipo` `inicial`, `cantidad` = `stock_inicial`, `stock_resultante` = `stock_inicial`, `motivo` y `venta` ausentes, y `terminal` igual a `NewProducto.terminal` (ausente si `None`); y `UPDATE` del producto con `stock` = `stock_inicial`. MUST NOT incrementar `version`.
+3. Si `stock_inicial` es 0: MUST NOT insertar fila en `movimiento_stock`.
+4. MUST emitir en la **misma** transacción un `OutboxEvent` con `entidad` `producto`, `operacion` `upsert` y `registro` igual al `id` del producto creado. Si hubo movimiento `inicial`, `motivo` del evento MUST ser `"stock"`; si `stock_inicial` es 0, `motivo` MUST ser ausente.
+
+Si `stock_inicial < 0`, `create` MUST fallar con `DomainError` `code` `invalid_input` y MUST NOT insertar producto, movimiento ni evento. Una violación del índice único `sku` MUST fallar con `DomainError::Conflict` y `code` `duplicate_sku`, y MUST NOT dejar la segunda fila, su movimiento ni su evento de outbox. `sku` o `nombre` vacíos MUST ser `invalid_input` y MUST NOT insertar.
+
+`get` MUST devolver `FichaProducto` o `DomainError::NotFound`:
+
+- `producto` con los campos persistidos de [4.4.4](../../../../../docs/4-modelo.md#444-producto)
+- `marca` hidratada (`Marca` con `nombre`) cuando el producto tiene `marca`; ausente si no hay marca
+- `categoria` hidratada con `ruta` (nombres desde la raíz hasta la categoría del producto)
+- `atributos` resueltos: cada par `def`/`valor` MUST incluir `clave`, `etiqueta` y `unidad` de su `AtributoDef`
+- MUST NOT incluir imágenes
+- MUST NOT filtrar por `activo` (GET de ficha admin incluye inactivos)
+
+`update` MUST persistir la ficha de `UpdateProducto` en una sola transacción:
+
+1. `UPDATE` del producto con los campos de ficha (`sku`, `nombre`, `tipo`, `descripcion`, `marca`, `categoria`, `unidad_medida`, `precio`, `ubicacion`) y `version += 1` **WHERE** `version` es la `version` del input ([4.3](../../../../../docs/4-modelo.md#43-convenciones), [5.5](../../../../../docs/5-contract-api.md#55-concurrencia-bloqueo-optimista))
+2. `atributos` y `codigos` MUST reemplazarse por los arrays completos del input (no se fusionan elemento a elemento)
+3. MUST NOT escribir `stock` ni `activo`
+4. MUST emitir en la **misma** transacción un `OutboxEvent` con `entidad` `producto`, `operacion` `upsert`, `registro` igual al `id` y `motivo` ausente
+5. El resultado de éxito MUST ser la `FichaProducto` rehidratada (marca, ruta, atributos resueltos) con `version` incrementada en 1
+
+Si el `id` no existe, `update` MUST fallar con `DomainError` `code` `not_found` y MUST NOT emitir outbox. Si el `UPDATE` no afecta filas (versión desactualizada), MUST fallar con `DomainError::Conflict` y `code` `version_conflict`, MUST NOT cambiar la fila ni emitir outbox. Una violación del índice único `sku` MUST fallar con `DomainError::Conflict` y `code` `duplicate_sku`. `sku` o `nombre` vacíos MUST ser `invalid_input`.
+
+`set_activo` MUST seguir el requirement «ProductRepo set_activo conserva historial».
+
+`list` MUST seguir el requirement «ProductRepo list admin con filtros».
+
+#### Scenario: Alta con stock inicial 50 (happy, HU-02-04, Listo cuando)
+
+- **WHEN** existe una categoría (y opcionalmente marca y definiciones de atributo) y se llama `create` con SKU `"PER-M8X40-ZN"`, nombre `"Perno hexagonal M8 x 40 zincado"`, precio `"120.50"` y `stock_inicial` `"50"`
+- **THEN** la operación termina sin error
+- **AND** `version` es 1
+- **AND** `activo` es verdadero
+- **AND** `stock` es `"50"`
+- **AND** el `id` no contiene `:`
+- **AND** existe un movimiento `movimiento_stock` con `tipo` `inicial`, `cantidad` `"50"` y `stock_resultante` `"50"`
+- **AND** el movimiento tiene `terminal` ausente
+- **AND** existe un evento en `outbox` con `entidad` `producto`, `operacion` `upsert` y `motivo` `"stock"`
+- **AND** `registro` del evento es el `id` del producto (sin prefijo de tabla)
+
+#### Scenario: Alta con terminal en el movimiento inicial (happy, T-02-21)
+
+- **WHEN** se llama `create` con `stock_inicial` `"50"` y `terminal` `"caja-1"`
+- **THEN** la operación termina sin error
+- **AND** el movimiento `inicial` tiene `terminal` `"caja-1"`
+
+#### Scenario: Alta con stock inicial 0 no crea movimiento (happy)
+
+- **WHEN** se llama `create` con `stock_inicial` `"0"` y un SKU único
+- **THEN** la operación termina sin error
+- **AND** `stock` es `"0"`
+- **AND** `version` es 1
+- **AND** no existe fila en `movimiento_stock` para ese producto
+- **AND** existe un evento en `outbox` con `entidad` `producto`, `operacion` `upsert` y `motivo` ausente
+
+#### Scenario: get de producto existente (happy)
+
+- **WHEN** se persiste un producto y se llama `get` con su `id`
+- **THEN** la operación termina sin error
+- **AND** `sku`, `nombre`, `stock`, `version` e `id` coinciden con lo persistido
+
+#### Scenario: get hidrata marca, ruta de categoría y atributos (happy, HU-02-05)
+
+- **WHEN** existe una categoría hija con `ruta` `["Fijaciones", "Pernos"]`, una marca `"Fixser"`, un `AtributoDef` `medida` (`etiqueta` `"Medida"`, `unidad` `"mm"`) y un producto asociado a esos maestros con atributo valor `"M8"`
+- **AND** se llama `get` con el `id` del producto
+- **THEN** la operación termina sin error
+- **AND** `marca.nombre` es `"Fixser"`
+- **AND** `categoria.ruta` es `["Fijaciones", "Pernos"]`
+- **AND** el atributo resuelto tiene `clave` `"medida"`, `etiqueta` `"Medida"`, `unidad` `"mm"` y valor `"M8"`
+- **AND** no se hidratan imágenes
+
+#### Scenario: Edición incrementa version (happy, HU-02-05)
+
+- **WHEN** un producto tiene `version` 1 y se llama `update` con esa `version` y un precio `"130.00"`
+- **THEN** la operación termina sin error
+- **AND** el precio persistido es `"130.00"`
+- **AND** `version` es 2
+- **AND** existe un evento en `outbox` con `entidad` `producto`, `operacion` `upsert` y `motivo` ausente
+
+#### Scenario: Edición no escribe stock (happy, HU-02-05)
+
+- **WHEN** un producto tiene `stock` `"50"` y `version` 1
+- **AND** se llama `update` con esa `version` cambiando el precio
+- **THEN** la operación termina sin error
+- **AND** `stock` sigue siendo `"50"`
+- **AND** no se inserta un movimiento en `movimiento_stock` por esa edición
+
+#### Scenario: Edición reemplaza atributos y códigos completos (happy)
+
+- **WHEN** un producto tiene un código `fabricante` `"HX-0840Z"` y un atributo
+- **AND** se llama `update` con `codigos` `[{ tipo: oem, valor: "OEM-1" }]` y `atributos` vacío
+- **THEN** la operación termina sin error
+- **AND** `codigos` es solo el OEM
+- **AND** `atributos` es vacío
+
+#### Scenario: Dos ediciones con la misma version (unhappy, HU-02-05, Listo cuando)
+
+- **WHEN** un producto tiene `version` 1
+- **AND** dos `update` se presentan con `version` 1 (ediciones concurrentes o la segunda tras el commit de la primera)
+- **THEN** exactamente una operación termina sin error y deja `version` 2
+- **AND** la otra falla
+- **AND** el error de la que falla es `DomainError::Conflict` con `code` `version_conflict`
+- **AND** el precio (u otro campo de ficha) persistido es el de la edición que pasó
+- **AND** no hay un segundo evento de outbox de la edición que falló
+
+#### Scenario: SKU duplicado (unhappy, HU-02-04)
+
+- **WHEN** ya existe un producto con SKU `"PER-M8X40-ZN"` y se intenta crear otro con el mismo SKU
+- **THEN** la operación falla
+- **AND** el error es `DomainError::Conflict` con `code` `duplicate_sku`
+- **AND** no queda una segunda fila en `producto`
+- **AND** no queda un segundo movimiento ni un segundo evento de outbox para esa alta
+
+#### Scenario: stock_inicial negativo (unhappy)
+
+- **WHEN** se llama `create` con `stock_inicial` menor que 0
+- **THEN** la operación falla
+- **AND** el error es `DomainError` con `code` `invalid_input`
+- **AND** no se inserta fila en `producto`, `movimiento_stock` ni `outbox`
+
+#### Scenario: get de id inexistente (unhappy)
+
+- **WHEN** se llama `get` con un `id` que no existe en `producto`
+- **THEN** la operación falla
+- **AND** el error es `DomainError` con `code` `not_found`
+
+#### Scenario: update de id inexistente (unhappy)
+
+- **WHEN** se llama `update` con un `id` que no existe en `producto`
+- **THEN** la operación falla
+- **AND** el error es `DomainError` con `code` `not_found`
+- **AND** no se inserta un evento en `outbox`
+
+#### Scenario: update con SKU duplicado (unhappy)
+
+- **WHEN** existen dos productos con SKU distintos y `update` cambia el SKU del segundo al del primero
+- **THEN** la operación falla
+- **AND** el error es `DomainError::Conflict` con `code` `duplicate_sku`
+- **AND** el SKU del segundo producto no cambia
+- **AND** no se inserta un evento de outbox para esa edición
+
+### Requirement: Adaptador StockLedger.append transaccional
+
+El crate `storage` MUST implementar el puerto `StockLedger` (`append`, `list_by_producto`) contra las tablas `movimiento_stock` y `producto` ya migradas (T-02-15, T-02-14) usando `storage::Tx` (T-03-02). Los `id` MUST ser ULID de 26 caracteres **sin** prefijo de tabla (`movimiento_stock:`, `producto:`). Los errores MUST ser `DomainError`. MUST NOT mapear a HTTP ni a `problem+json`. MUST NOT reindexar Meilisearch (T-03-07). MUST NOT declarar `update` ni `delete` de un movimiento (HU-02-07 inmutabilidad). MUST NOT confirmar una venta (`CREATE venta`, `contador:venta`, varias líneas) — T-08-03. MUST NOT paginar `list_by_producto` con cursor (T-00-21 / T-02-26). MUST NOT reemplazar el movimiento `inicial` de `ProductRepo::create` (sigue inline).
+
+`append` MUST persistir un `NewMovimientoStock` en **una** transacción conforme a [4.5.2](../../../docs/4-modelo.md#452-registro-de-un-movimiento-transacción):
+
+1. Validar signo de `cantidad`, `motivo` obligatorio en `ajuste` y regla de `venta` **antes** de abrir `Tx` (mismas reglas que `MovimientoStock::try_new`). Una violación MUST ser `invalid_input` y MUST NOT insertar movimiento, MUST NOT cambiar `producto.stock` ni emitir outbox.
+2. Si el `producto` no existe, MUST fallar con `not_found` y MUST NOT escribir.
+3. Dentro de la `Tx`, el motor MUST calcular `$nuevo = producto.stock + cantidad`. MUST NOT calcular el stock resultante en un read-modify-write fuera de la transacción.
+4. Si `$nuevo < 0`, MUST ejecutar `THROW "stock_negativo"`. El mapper de `Tx` MUST exponer `DomainError` con `code` `negative_stock`. Tras el fallo, `producto.stock` MUST quedar igual que antes, MUST NOT existir el movimiento nuevo y MUST NOT existir el evento de outbox de ese `append`.
+5. Si `$nuevo >= 0`: `CREATE movimiento_stock` con `tipo`, `cantidad`, `stock_resultante` = `$nuevo`, `motivo`, `venta` y `terminal` del input; `UPDATE` del producto con `stock` = `$nuevo`. MUST NOT incrementar `producto.version`. MUST NOT escribir otros campos de ficha.
+6. MUST emitir en la **misma** transacción un `OutboxEvent` con `entidad` `producto`, `operacion` `upsert`, `registro` igual al `id` del producto y `motivo` `"stock"`.
+7. El resultado de éxito MUST ser el `MovimientoStock` persistido (`id` sin prefijo, `stock_resultante` = `$nuevo`, `terminal` igual al input).
+
+`append` MUST aceptar `tipo` `ingreso` y `ajuste` (HU-02-07). MAY persistir `inicial` o `venta` si pasan las reglas de dominio; MUST NOT crear la tabla ni la fila `venta`. Un producto inactivo MUST poder recibir movimientos (el ledger es independiente de `activo`).
+
+`list_by_producto` MUST devolver los movimientos de ese producto ordenados de más reciente a más antiguo (`creado_en` descendente), o una lista vacía si no hay filas. MUST NOT fallar solo porque el producto no tenga movimientos.
+
+#### Scenario: Ingreso incrementa stock y guarda terminal (happy, HU-02-07)
+
+- **WHEN** un producto tiene `stock` `"10"` y `version` 1
+- **AND** se llama `append` con `tipo` `ingreso`, `cantidad` `"20"` y `terminal` `"caja-1"`
+- **THEN** la operación termina sin error
+- **AND** `producto.stock` es `"30"`
+- **AND** `producto.version` sigue siendo 1
+- **AND** el movimiento tiene `tipo` `ingreso`, `cantidad` `"20"`, `stock_resultante` `"30"` y `terminal` `"caja-1"`
+- **AND** el `id` del movimiento no contiene `:`
+- **AND** existe un evento en `outbox` con `entidad` `producto`, `operacion` `upsert` y `motivo` `"stock"`
+
+#### Scenario: Ajuste negativo con motivo deja stock en cero (happy, HU-02-07)
+
+- **WHEN** un producto tiene `stock` `"5"`
+- **AND** se llama `append` con `tipo` `ajuste`, `cantidad` `"-5"` y `motivo` `"Conteo físico"`
+- **THEN** la operación termina sin error
+- **AND** `producto.stock` es `"0"`
+- **AND** el movimiento tiene `stock_resultante` `"0"` y el `motivo` indicado
+- **AND** `producto.version` no cambia
+
+#### Scenario: Dos ingresos concurrentes ambos aplicados (happy, Listo cuando)
+
+- **WHEN** un producto tiene `stock` `"5"`
+- **AND** dos `append` de `tipo` `ingreso` y `cantidad` `"10"` se ejecutan de forma concurrente
+- **THEN** ambas operaciones terminan sin error
+- **AND** `producto.stock` es `"25"`
+- **AND** existen dos movimientos `ingreso` de cantidad `"10"` para ese producto
+- **AND** hay dos eventos de outbox con `motivo` `"stock"` correspondientes a esos append
+- **AND** `producto.version` no cambia
+
+#### Scenario: Ajuste −8 sobre stock 5 es negative_stock (unhappy, HU-02-07, Listo cuando)
+
+- **WHEN** un producto tiene `stock` `"5"` y un movimiento `inicial` previo
+- **AND** se llama `append` con `tipo` `ajuste`, `cantidad` `"-8"` y `motivo` `"Conteo físico"`
+- **THEN** la operación falla
+- **AND** el error es `DomainError` con `code` `negative_stock`
+- **AND** `producto.stock` sigue siendo `"5"`
+- **AND** no se inserta un movimiento nuevo
+- **AND** no se inserta un evento de outbox para ese `append`
+- **AND** `producto.version` no cambia
+
+#### Scenario: Ajuste sin motivo es invalid_input (unhappy, HU-02-07)
+
+- **WHEN** un producto tiene `stock` `"5"`
+- **AND** se llama `append` con `tipo` `ajuste`, `cantidad` `"-1"` y `motivo` ausente
+- **THEN** la operación falla
+- **AND** el error es `DomainError` con `code` `invalid_input`
+- **AND** el `FieldError.field` es `motivo`
+- **AND** `producto.stock` sigue siendo `"5"`
+- **AND** no se inserta un movimiento nuevo ni un evento de outbox
+
+#### Scenario: append de producto inexistente (unhappy)
+
+- **WHEN** se llama `append` con un `producto` que no existe
+- **THEN** la operación falla
+- **AND** el error es `DomainError` con `code` `not_found`
+- **AND** no se inserta fila en `movimiento_stock` ni en `outbox`
+
+#### Scenario: ingreso con cantidad negativa (unhappy)
+
+- **WHEN** un producto existe
+- **AND** se llama `append` con `tipo` `ingreso` y `cantidad` `"-1"`
+- **THEN** la operación falla
+- **AND** el error es `DomainError` con `code` `invalid_input`
+- **AND** el `FieldError.field` es `cantidad`
+- **AND** el stock y el ledger no cambian
+
+#### Scenario: list_by_producto ordena del más reciente al más antiguo (happy)
+
+- **WHEN** un producto tiene un movimiento `inicial` y después un `ingreso`
+- **AND** se llama `list_by_producto` con su `id`
+- **THEN** la operación termina sin error
+- **AND** el primer elemento es el `ingreso`
+- **AND** el segundo es el `inicial`
+
+#### Scenario: El adaptador no expone update ni delete (unhappy, HU-02-07 inmutabilidad)
+
+- **WHEN** se inspecciona el adaptador de `StockLedger` en `storage`
+- **THEN** no expone `update` ni `delete` de un movimiento
+- **AND** un error se corrige con un nuevo `append` de tipo `ajuste`
+
+### Requirement: Adaptador AttributeUsage
+
+El crate `storage` MUST implementar el puerto `AttributeUsage` (`valores`) contra la tabla `producto` ya migrada. MUST devolver cada `atributos[*].valor` cuyo `def` coincida con el `id` pedido, en productos **activos e inactivos**. MUST NOT filtrar por `producto.activo`. MUST NOT escribir filas, MUST NOT emitir outbox y MUST NOT aplicar `attribute_in_use`. MUST NOT mapear a HTTP. `id` sin coincidencias MUST devolver lista vacía.
+
+`AtributoDefRepo::update` MUST seguir persistiendo el cambio de `clave`/`tipo` que reciba: la regla de occupancy MUST vivir en `catalog`, no en este adaptador.
+
+#### Scenario: valores de medida en un producto (happy, Listo cuando)
+
+- **WHEN** existe la definición `"medida"` y un producto con `atributos` `{ def: medida, valor: "M8" }`
+- **AND** se llama `valores` con el `id` de `"medida"`
+- **THEN** la operación termina sin error
+- **AND** el resultado contiene un `ValorAtributo::Texto` `"M8"`
+
+#### Scenario: definición sin productos (happy)
+
+- **WHEN** existe `"medida"` y ningún producto la referencia
+- **AND** se llama `valores` con su `id`
+- **THEN** la operación termina sin error
+- **AND** el resultado es una lista vacía
+
+#### Scenario: producto inactivo sigue contando (happy)
+
+- **WHEN** un producto inactivo tiene el atributo `"medida"` con valor `"M8"`
+- **AND** se llama `valores` con el `id` de `"medida"`
+- **THEN** el resultado contiene `"M8"`
+
+#### Scenario: AttributeDefRepo update no aplica occupancy (happy)
+
+- **WHEN** un producto usa `"medida"` y se llama `AtributoDefRepo::update` cambiando `clave` a `"medida_mm"`
+- **THEN** la operación termina sin error
+- **AND** la fila persistida tiene `clave` `"medida_mm"`
+- **AND** el error no es `attribute_in_use`
+
+### Requirement: ProductRepo list admin con filtros
+
+El adaptador `ProductRepo` en `storage` MUST implementar `list(filtro, after, take)` contra la tabla `producto` ya migrada. MUST NOT mapear a HTTP. MUST NOT reindexar Meilisearch (T-03-07). MUST NOT escribir ni emitir outbox. MUST NOT hidratar imágenes.
+
+La consulta MUST ordenar por `id` ascendente y MUST devolver a lo sumo `take` filas. Si `after` está presente, MUST aplicar `id` estrictamente mayor que ese ULID. El filtro de rama MUST ser el de [4.4.1](../../../../../docs/4-modelo.md#441-categoria--árbol): `categoria = $c OR categoria.ancestros CONTAINS $c`. `activo` MUST filtrar `producto.activo`. `marca` presente MUST filtrar `producto.marca`. Cada ítem MUST ser un `ResumenProducto` con `marca_nombre` (nombre de la marca hidratada, o ausente) y `categoria_ruta` (`ruta` de la categoría). MUST NOT devolver `FichaProducto` completa (sin atributos ni códigos). Una categoría o marca que no matchea MUST ser lista vacía, no `not_found`.
+
+#### Scenario: Filtro por rama incluye descendientes (happy, HU-02-10, Listo cuando)
+
+- **WHEN** existe `"Fijaciones"` con hija `"Pernos"` persistidas
+- **AND** hay un producto en cada una y un tercero fuera de la rama
+- **AND** se llama `list` con `categoria` = id de `"Fijaciones"`, `activo` verdadero, `after` ausente y `take` suficiente
+- **THEN** el resultado incluye los dos de la rama
+- **AND** no incluye el de fuera
+- **AND** cada ítem de la rama tiene `categoria_ruta` que empieza por `"Fijaciones"`
+
+#### Scenario: Filtro por inactivos (happy, HU-02-10, Listo cuando)
+
+- **WHEN** existe un producto activo y otro con `activo` falso
+- **AND** se llama `list` con `activo` falso
+- **THEN** el resultado incluye solo el inactivo
+
+#### Scenario: Filtro por marca (happy)
+
+- **WHEN** existen productos de dos marcas
+- **AND** se llama `list` con `marca` de la primera y `activo` verdadero
+- **THEN** el resultado incluye solo los de esa marca
+- **AND** `marca_nombre` es el nombre persistido de esa marca
+
+#### Scenario: after excluye ids previos (happy)
+
+- **WHEN** existen tres productos activos A, B, C ordenados por `id`
+- **AND** se llama `list` con `take` 2 y `after` = id de B
+- **THEN** el resultado es C
+- **AND** no incluye A ni B
+
+#### Scenario: categoría inexistente es lista vacía (happy)
+
+- **WHEN** se llama `list` con `categoria` igual a un ULID que no existe en `categoria`
+- **THEN** el resultado es una lista vacía
+- **AND** no es `not_found`
+
+#### Scenario: list no escribe (unhappy)
+
+- **WHEN** se llama `list` sobre un catálogo con productos
+- **THEN** no se inserta evento en `outbox`
+- **AND** no cambia `producto.stock` ni `activo`
+
+### Requirement: Adaptador OutboxRepo
+
+El crate `storage` MUST implementar el puerto `OutboxRepo` contra las tablas `outbox`, `sync_cursor` y `outbox_fallo` ya migradas (T-03-01). Los ids de fila MUST ser ULID de 26 caracteres **sin** prefijo de tabla. `registro` del evento MUST exponerse como ULID sin `tabla:`. Los errores MUST ser `DomainError`. MUST NOT mapear a HTTP. MUST NOT implementar el worker (vive en `sync`). MUST escribir `outbox_fallo` solo vía las operaciones del puerto (requirement «Adaptador OutboxRepo escribe outbox_fallo y mide lag»).
+
+La lectura MUST ejecutar el equivalente de `SELECT * FROM outbox WHERE id > $cursor ORDER BY id LIMIT 200` (cursor vacío = todos desde el origen) e incluir `creado_en`. El avance MUST actualizar `sync_cursor:meilisearch` (`ultimo_evento` = `outbox:<ulid>`). Un id de evento que no existe MUST ser `not_found` y MUST NOT cambiar el cursor.
+
+#### Scenario: Lee eventos posteriores al cursor (happy)
+
+- **WHEN** hay al menos dos filas en `outbox` y el cursor `meilisearch` apunta a la primera
+- **THEN** la lectura termina sin error
+- **AND** no incluye la primera
+- **AND** incluye la segunda (y posteriores) en orden de id
+- **AND** `registro` no lleva prefijo de tabla
+
+#### Scenario: Avanza el cursor meilisearch (happy)
+
+- **WHEN** se avanza el cursor al id de un evento persistido
+- **THEN** la operación termina sin error
+- **AND** `sync_cursor:meilisearch.ultimo_evento` apunta a ese evento
+- **AND** una lectura posterior omite ese evento
+
+#### Scenario: Avance a evento inexistente (unhappy)
+
+- **WHEN** se intenta avanzar el cursor a un ULID que no existe en `outbox`
+- **THEN** la operación falla
+- **AND** el error es `DomainError` con `code` `not_found`
+- **AND** `ultimo_evento` queda como antes
+
+#### Scenario: Lote acotado a 200 (happy)
+
+- **WHEN** existen más de 200 eventos posteriores al cursor
+- **THEN** la lectura devuelve exactamente 200 filas
+- **AND** son las 200 de id menor entre las posteriores
+
+### Requirement: Tests de OutboxRepo en storage
+
+Antes de archive, la suite MUST incluir:
+
+| Test | Ubicación | Tipo |
+|---|---|---|
+| `storage_outbox_repo_lists_after_cursor` | `vortex-core/crates/storage/tests/` | happy |
+| `storage_outbox_repo_advances_meilisearch_cursor` | `vortex-core/crates/storage/tests/` | happy |
+| `storage_outbox_repo_limits_batch_to_200` | `vortex-core/crates/storage/tests/` | happy |
+| `storage_outbox_repo_advance_unknown_event_is_not_found` | `vortex-core/crates/storage/tests/` | unhappy |
+
+MUST usar `storage::testing::test_db()`. MUST NOT exigir Meilisearch.
+
+#### Scenario: Suite OutboxRepo storage (happy + unhappy)
+
+- **WHEN** se ejecuta `cargo test -p storage storage_outbox_repo`
+- **THEN** los cuatro tests de la tabla corren y terminan con código 0
+
+### Requirement: Adaptador OutboxRepo escribe outbox_fallo y mide lag
+
+El adaptador `OutboxStore` MUST implementar las operaciones nuevas de `OutboxRepo` contra las tablas ya migradas en T-03-01 (`outbox_fallo`, `outbox`, `sync_cursor`). MUST NOT crear una migración nueva. `creado_en` MUST leerse de `outbox`. El upsert de `outbox_fallo` MUST respetar `uq_outbox_fallo` (`evento`, `consumidor`). Lag MUST ser `SELECT count` (o equivalente) de `outbox` con `id > sync_cursor:meilisearch.ultimo_evento`. MUST NOT actualizar `sync_cursor:vectores`.
+
+#### Scenario: Persiste fallido (happy)
+
+- **WHEN** existe una fila `outbox` y se registra un fallo `meilisearch`
+- **THEN** hay una fila `outbox_fallo` con `estado` `fallido` y `consumidor` `meilisearch` para ese evento
+- **AND** un segundo registro del mismo par no duplica la fila
+
+#### Scenario: Lag en Surreal (happy)
+
+- **WHEN** el cursor `meilisearch` está detrás de N eventos
+- **THEN** el lag devuelto es N
+
+#### Scenario: Fallo de evento inexistente (unhappy)
+
+- **WHEN** se registra un fallo para un ULID ausente en `outbox`
+- **THEN** el error es `DomainError` `code` `not_found`
+- **AND** no queda fila nueva en `outbox_fallo`
+
+### Requirement: Tests de OutboxRepo fallos en storage
+
+| Test | Ubicación | Tipo |
+|---|---|---|
+| `storage_outbox_repo_records_fallido` | `vortex-core/crates/storage/tests/` | happy |
+| `storage_outbox_repo_lag_counts_pending` | `vortex-core/crates/storage/tests/` | happy |
+| `storage_outbox_repo_failed_count` | `vortex-core/crates/storage/tests/` | happy |
+| `storage_outbox_repo_record_unknown_event_is_not_found` | `vortex-core/crates/storage/tests/` | unhappy |
+
+MUST usar `storage::testing::test_db()`. MUST NOT exigir Meilisearch.
+
+#### Scenario: Suite storage fallos y lag (happy + unhappy)
+
+- **WHEN** se ejecuta `cargo test -p storage storage_outbox_repo`
+- **THEN** los tests de la tabla de este requirement y los ya existentes de T-03-07 corren y terminan con código 0
+
+### Requirement: ProductRepo find_by_code en SurrealDB
+
+`ProductoRepo` MUST implementar `find_by_code` consultando la tabla `producto` con `activo = true` y (`sku = $code` OR `$code IN codigos.valor`). MUST hidratar `ResumenProducto` con marca y `categoria_ruta` igual que `list`. MUST ordenar por `sku` ascendente. MUST NOT consultar Meilisearch. MUST NOT devolver inactivos.
+
+#### Scenario: product_repo_find_by_code_shared_oem_returns_both (happy, Listo cuando)
+
+- **WHEN** en la base hay dos productos activos con el mismo `codigos[].valor` OEM
+- **AND** se llama `find_by_code` con ese valor
+- **THEN** se devuelven dos `ResumenProducto`
+
+#### Scenario: product_repo_find_by_code_does_not_prefix_match (unhappy, Listo cuando)
+
+- **WHEN** hay un producto con fabricante `"HX-0840Z"`
+- **AND** se llama `find_by_code` con `"HX-0841Z"`
+- **THEN** la lista está vacía
+
+#### Scenario: product_repo_find_by_code_excludes_inactive (unhappy)
+
+- **WHEN** un producto inactivo comparte el OEM buscado
+- **THEN** no aparece en el resultado
+
+#### Scenario: product_repo_find_by_code_unknown_returns_empty (happy)
+
+- **WHEN** no hay coincidencias exactas
+- **THEN** la lista está vacía sin error
+
+#### Scenario: suite find_by_code en storage (happy)
+
+- **WHEN** se ejecuta `cargo test -p storage --test producto product_repo_find_by_code`
+- **THEN** todos los tests terminan con código 0
+
+### Requirement: Adaptador RelationRepo list_incoming_for_product
+
+El crate `storage` MUST implementar `RelationRepo::list_incoming_for_product` contra las tablas `similar_a`, `sustituible_por` y `complementa`. MUST devolver `RelacionesDeProducto` con las aristas **entrantes** (`out` = el producto pedido) de las tres tablas, agrupadas por tipo, ordenadas por `prioridad` ascendente (1 = más alta) y, a igualdad, por `id`. Cada ítem MUST ser `RelacionConDestino` cuyo `DestinoResumen` es el producto **origen** (`in`: `id`, `sku`, `nombre`, `activo`). MUST incluir orígenes inactivos y con `stock` 0. Un producto sin aristas entrantes, o un `Id<Producto>` que no existe, MUST devolver los tres grupos vacíos (el 404 de producto lo aplica `recommend` en T-04-05). MUST NOT hidratar `ProductSummary` completo. MUST NOT filtrar por `activo` ni `stock` (T-04-06). MUST NOT mapear a HTTP. MUST NOT cambiar el esquema `0007`.
+
+#### Scenario: Listado incoming con resumen del origen (happy)
+
+- **WHEN** existe una arista `A complement B` y se llama `list_incoming_for_product` con B
+- **THEN** la operación termina sin error
+- **AND** `complementa` contiene esa arista
+- **AND** el `DestinoResumen` es A (`sku` y `nombre` de A)
+- **AND** `list_for_product(B)` no incluye esa arista (sigue siendo solo salientes)
+
+#### Scenario: Incoming vacío (happy)
+
+- **WHEN** un producto no tiene aristas entrantes y se llama `list_incoming_for_product`
+- **THEN** la operación termina sin error
+- **AND** los tres grupos están vacíos
+
+### Requirement: Adaptador RelationRepo recommendations_for_product
+
+El crate `storage` MUST implementar `RelationRepo::recommendations_for_product` contra las tablas `similar_a`, `sustituible_por` y `complementa` con **una** consulta al grafo ([4.6.2](../../../docs/4-modelo.md#462-consulta-de-recomendaciones)). Los `id` MUST ser ULID de 26 caracteres **sin** prefijo de tabla. Los errores MUST ser `DomainError`. MUST NOT mapear a HTTP ni a `problem+json`. MUST NOT emitir evento de outbox. MUST NOT reindexar Meilisearch. MUST NOT cambiar el esquema `0007`. MUST NOT declarar el adaptador en `catalog` ni en `recommend`. MUST NOT usar `list_for_product` ni N+1 `ProductRepo::get` para armar los bloques.
+
+Si el `Id<Producto>` no existe, MUST fallar con `DomainError` `code` `not_found`. Un producto existente sin aristas MUST devolver los tres vectores vacíos (no `not_found`); `destacar_sustitutos` MUST ser verdadero si y solo si `stock` del producto consultado es 0.
+
+El resultado de éxito MUST ser `Recomendaciones` con `producto_id` igual al pedido y tres bloques ordenados por `prioridad` ascendente (1 = más alta) y, a igualdad, por `relacion_id`:
+
+- `similares`: aristas salientes `similar_a` con destino `activo = true`
+- `sustitutos`: aristas salientes `sustituible_por` con destino `activo = true` **y** `stock > 0`
+- `complementarios`: aristas salientes `complementa` con destino `activo = true`
+
+Cada `ProductoRecomendado` MUST hidratar `relacion_id`, `id`, `sku`, `nombre`, `stock`, `precio`, `prioridad` y `nota` del destino/arista, y `ubicacion` como string formateado (`P{pasillo} · E-{estante} · {posicion}`, omitiendo partes vacías; `None` si no hay ubicación). MUST NOT hidratar imagen. Destinos inactivos MUST NOT aparecer en ningún bloque. Un sustituto con `stock` 0 MUST NOT aparecer en `sustitutos`. Un similar o complementario activo con `stock` 0 MUST seguir apareciendo. `list_for_product` MUST seguir incluyendo destinos inactivos y sin stock (el listado admin no cambia).
+
+#### Scenario: Tres bloques ordenados por prioridad (happy, HU-04-05)
+
+- **WHEN** "Perno M8" existe con al menos una arista saliente activa de cada tipo (`similar_a`, `sustituible_por`, `complementa`) y dos similares con `prioridad` 2 y 1
+- **AND** se llama `recommendations_for_product` con ese producto
+- **THEN** la operación termina sin error
+- **AND** `similares`, `sustitutos` y `complementarios` contienen esas aristas
+- **AND** cada bloque está ordenado por `prioridad` ascendente
+- **AND** cada ítem expone `sku`, `nombre`, `stock`, `precio` y `relacion_id` sin prefijo de tabla
+
+#### Scenario: Productos inactivos no aparecen (happy, HU-04-05, Listo cuando)
+
+- **WHEN** existe una arista hacia un producto dado de baja y otra hacia un destino activo del mismo tipo
+- **AND** se llama `recommendations_for_product`
+- **THEN** la operación termina sin error
+- **AND** el destino inactivo no aparece en ningún bloque
+- **AND** el destino activo sí aparece
+
+#### Scenario: Producto sin stock destaca sustitutos con stock (happy, HU-04-06)
+
+- **WHEN** "Perno M8 Fixser" tiene `stock` 0 y dos destinos `sustituible_por` activos con stock 12 y 0
+- **AND** se llama `recommendations_for_product`
+- **THEN** la operación termina sin error
+- **AND** `destacar_sustitutos` es verdadero
+- **AND** `sustitutos` contiene solo el destino con stock 12
+
+#### Scenario: Producto con stock no destaca sustitutos (happy, HU-04-06)
+
+- **WHEN** el producto consultado tiene `stock` mayor a 0 y un sustituto activo con stock > 0
+- **AND** se llama `recommendations_for_product`
+- **THEN** la operación termina sin error
+- **AND** `destacar_sustitutos` es falso
+- **AND** el sustituto con stock aparece en `sustitutos`
+
+#### Scenario: Ubicación formateada y sin imagen (happy)
+
+- **WHEN** un destino activo tiene `ubicacion` pasillo `"3"`, estante `"B"`, posicion `"12"`
+- **AND** se llama `recommendations_for_product`
+- **THEN** ese ítem tiene `ubicacion` `"P3 · E-B · 12"`
+- **AND** el ítem no expone imagen ni `imageUrl`
+
+#### Scenario: Producto existente sin aristas (happy)
+
+- **WHEN** existe un producto sin aristas salientes y se llama `recommendations_for_product`
+- **THEN** la operación termina sin error
+- **AND** `similares`, `sustitutos` y `complementarios` están vacíos
+- **AND** `destacar_sustitutos` refleja el `stock` del producto (verdadero si es 0)
+
+#### Scenario: Producto inexistente (unhappy)
+
+- **WHEN** se llama `recommendations_for_product` con un `Id<Producto>` que no existe
+- **THEN** la operación falla
+- **AND** el error es `DomainError` con `code` `not_found`

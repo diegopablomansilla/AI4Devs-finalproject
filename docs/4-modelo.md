@@ -336,6 +336,9 @@ DEFINE INDEX idx_producto_marca     ON producto FIELDS marca;
 -- Búsqueda de respaldo cuando Meilisearch no está disponible (prefijo, sin tolerancia a errores)
 DEFINE ANALYZER an_respaldo TOKENIZERS blank, class FILTERS lowercase, ascii, edgengram(2, 15);
 DEFINE INDEX ft_producto_nombre ON producto FIELDS nombre SEARCH ANALYZER an_respaldo BM25;
+
+-- Búsqueda por código exacta en SurrealDB (H-05); no UNIQUE: varios productos pueden compartir OEM
+DEFINE INDEX idx_producto_codigos ON producto FIELDS codigos[*].valor;
 ```
 
 Ejemplo de alta:
@@ -443,6 +446,8 @@ DEFINE FIELD creado_en        ON movimiento_stock TYPE datetime DEFAULT time::no
 
 DEFINE INDEX idx_mov_producto ON movimiento_stock FIELDS producto, creado_en;
 ```
+
+> **MVP (T-02-15):** hasta existir la tabla `venta` (T-08-01), la migración define `venta` como `option<record>` genérico en lugar de `option<record<venta>>`. T-08-01 ajusta el tipo cuando incorpora ventas.
 
 | Tipo | Signo de `cantidad` | Origen |
 |---|---|---|
@@ -719,7 +724,9 @@ DEFINE INDEX uq_migracion_version ON migracion FIELDS version UNIQUE;
   "nombre": "Perno hexagonal M8 x 40 zincado",
   "tipo": "Perno",
   "marca": "Fixser",
+  "marca_id": "01J9ZKA7M3Q8R2T5V9X1Z4B6D7",
   "categoria": { "lvl0": "Fijaciones", "lvl1": "Fijaciones > Pernos" },
+  "categoria_ids": ["01J9ZKA7M3Q8R2T5V9X1Z4B6C9", "01J9ZKA7M3Q8R2T5V9X1Z4B6D8"],
   "codigos": ["HX-0840Z"],
   "atributos_texto": ["Medida: M8", "Largo: 40 mm", "Grado: 5"],
   "attr_medida": "M8",
@@ -738,6 +745,8 @@ DEFINE INDEX uq_migracion_version ON migracion FIELDS version UNIQUE;
 |---|---|
 | `id` | Parte ULID de `producto.id` |
 | `marca`, `categoria.lvlN` | `marca.nombre`, `categoria.ruta` |
+| `marca_id` | Parte ULID de `marca.id` (filtro API `brandId`; H-03) |
+| `categoria_ids` | ULIDs de la categoría y sus ancestros (filtro API `categoryId`; H-03) |
 | `atributos_texto` | `atributos` con `atributo_def.buscable = true` |
 | `attr_<clave>` | `atributos` con `atributo_def.facetable = true` |
 | `stock_disponible`, `con_stock` | `producto.stock`, `producto.stock > 0` |
@@ -749,11 +758,11 @@ DEFINE INDEX uq_migracion_version ON migracion FIELDS version UNIQUE;
 |---|---|
 | `searchableAttributes` (en orden de peso) | `nombre`, `tipo`, `sku`, `codigos`, `marca`, `atributos_texto`, `descripcion` |
 | `rankingRules` | `words`, `typo`, `proximity`, `attribute`, `sort`, `exactness`, `stock_disponible:desc` |
-| `filterableAttributes` | `categoria.lvl0`, `categoria.lvl1`, `categoria.lvl2`, `categoria.lvl3`, `marca`, `con_stock`, `attr_*` facetables |
+| `filterableAttributes` | `categoria.lvl0`…`categoria.lvl3`, `marca`, `con_stock`, `marca_id`, `categoria_ids`, `tipo` (H-04: sugerencias por faceta), `attr_*` de `AtributoDef` con `facetable = true` |
 | `sortableAttributes` | `precio`, `stock_disponible` |
-| `synonyms` | Generado desde `sinonimo` activos |
+| `synonyms` | Generado desde `sinonimo` activos (**T-03-27**; no se aplica en T-03-05) |
 | `typoTolerance.disableOnAttributes` | `sku`, `codigos` (un código con un carácter distinto es otra pieza) |
-| Resaltado | `attributesToHighlight`: `nombre`, `descripcion` (se devuelve en `_formatted`) |
+| Resaltado | Parámetro de consulta `_formatted`: `attributesToHighlight` = `nombre`, `descripcion` (**T-03-12**; no es setting de índice) |
 
 ---
 

@@ -1,0 +1,94 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - develop
+      - main
+
+jobs:
+  fmt:
+    runs-on: macos-14
+    defaults:
+      run:
+        working-directory: vortex-core
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust
+        run: rustup show
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            vortex-core/target
+          key: macos-14-fmt-${{ hashFiles('vortex-core/Cargo.lock') }}
+          restore-keys: |
+            macos-14-fmt-
+      - name: rustfmt
+        run: cargo fmt --all -- --check
+
+  clippy:
+    runs-on: macos-14
+    defaults:
+      run:
+        working-directory: vortex-core
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust
+        run: rustup show
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            vortex-core/target
+          key: macos-14-clippy-${{ hashFiles('vortex-core/Cargo.lock') }}
+          restore-keys: |
+            macos-14-clippy-
+      - name: clippy
+        run: cargo clippy --workspace -- -D warnings
+
+  test:
+    runs-on: macos-14
+    defaults:
+      run:
+        working-directory: vortex-core
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust
+        run: rustup show
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            vortex-core/target
+          key: macos-14-test-${{ hashFiles('vortex-core/Cargo.lock') }}
+          restore-keys: |
+            macos-14-test-
+      - name: test
+        run: cargo test --workspace
+
+  domain-deps:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust
+        run: rustup show
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            vortex-core/target
+          key: macos-14-domain-deps-${{ hashFiles('vortex-core/Cargo.lock') }}
+          restore-keys: |
+            macos-14-domain-deps-
+      - name: domain dependency tree
+        run: ./scripts/check-domain-deps.sh

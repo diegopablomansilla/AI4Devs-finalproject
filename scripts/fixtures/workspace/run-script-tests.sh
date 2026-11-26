@@ -1,0 +1,544 @@
+#!/usr/bin/env sh
+# T-00-04 / T-00-05 / T-00-08: check-workspace allowlist for domain, storage and vortex.
+set -eu
+
+REPO_ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
+SCRIPT="${REPO_ROOT}/scripts/check-workspace.sh"
+
+assert_ok() {
+  label=$1
+  root=$2
+  if ! CHECK_ROOT="${root}" "${SCRIPT}"; then
+    printf 'workspace fixture: expected success for %s\n' "${label}" >&2
+    exit 1
+  fi
+}
+
+assert_fails_with() {
+  label=$1
+  root=$2
+  needle=$3
+  set +e
+  out=$(CHECK_ROOT="${root}" "${SCRIPT}" 2>&1)
+  status=$?
+  set -e
+  if [ "${status}" -eq 0 ]; then
+    printf 'workspace fixture: expected failure for %s\n' "${label}" >&2
+    exit 1
+  fi
+  if ! printf '%s' "${out}" | grep -F "${needle}" >/dev/null; then
+    printf 'workspace fixture: %s missing needle %s in:\n%s\n' "${label}" "${needle}" "${out}" >&2
+    exit 1
+  fi
+}
+
+copy_workspace() {
+  tmp="${REPO_ROOT}/.fixture-tmp/workspace-$$"
+  rm -rf "${tmp}"
+  mkdir -p "${tmp}/vortex-core"
+  cp "${REPO_ROOT}/vortex-core/Cargo.toml" "${tmp}/vortex-core/"
+  for member in api domain catalog search recommend ai speech vision sync storage supervisor; do
+    mkdir -p "${tmp}/vortex-core/crates/${member}/src"
+    cp "${REPO_ROOT}/vortex-core/crates/${member}/Cargo.toml" "${tmp}/vortex-core/crates/${member}/" 2>/dev/null || true
+    cp "${REPO_ROOT}/vortex-core/crates/${member}/src/lib.rs" "${tmp}/vortex-core/crates/${member}/src/" 2>/dev/null || true
+  done
+  mkdir -p "${tmp}/vortex-core/bin/vortex/src"
+  cp "${REPO_ROOT}/vortex-core/bin/vortex/Cargo.toml" "${tmp}/vortex-core/bin/vortex/"
+  cp "${REPO_ROOT}/vortex-core/bin/vortex/src/main.rs" "${tmp}/vortex-core/bin/vortex/src/"
+  printf '%s' "${tmp}"
+}
+
+# happy: repo with domain allowlist
+assert_ok 'repo con domain allowlist' "${REPO_ROOT}"
+
+tmp=$(copy_workspace)
+cleanup() {
+  rm -rf "${tmp}"
+}
+trap cleanup EXIT HUP INT TERM
+
+# happy: domain declares full allowlist
+cat >"${tmp}/vortex-core/crates/domain/Cargo.toml" <<'EOF'
+[package]
+name = "domain"
+version = "0.1.0"
+edition.workspace = true
+publish = false
+
+[dependencies]
+thiserror = { workspace = true }
+ulid = { workspace = true }
+rust_decimal = { workspace = true }
+serde = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }
+
+[lints]
+workspace = true
+EOF
+assert_ok 'domain con allowlist completa' "${tmp}"
+
+# unhappy: domain declares clap
+cat >"${tmp}/vortex-core/crates/domain/Cargo.toml" <<'EOF'
+[package]
+name = "domain"
+version = "0.1.0"
+edition.workspace = true
+publish = false
+
+[dependencies]
+thiserror = { workspace = true }
+clap = { workspace = true }
+
+[lints]
+workspace = true
+EOF
+assert_fails_with 'domain con clap' "${tmp}" 'domain'
+
+# happy: api declares axum allowlist
+cp "${REPO_ROOT}/vortex-core/crates/domain/Cargo.toml" "${tmp}/vortex-core/crates/domain/Cargo.toml"
+cat >"${tmp}/vortex-core/crates/api/Cargo.toml" <<'EOF'
+[package]
+name = "api"
+version = "0.1.0"
+edition.workspace = true
+publish = false
+
+[dependencies]
+axum = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "net"] }
+
+[lints]
+workspace = true
+EOF
+assert_ok 'api con allowlist axum' "${tmp}"
+
+# happy: api declares full T-00-11 allowlist
+cat >"${tmp}/vortex-core/crates/api/Cargo.toml" <<'EOF'
+[package]
+name = "api"
+version = "0.1.0"
+edition.workspace = true
+publish = false
+
+[dependencies]
+axum = { workspace = true }
+domain = { path = "../domain" }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "net"] }
+
+[lints]
+workspace = true
+EOF
+assert_ok 'api con allowlist problem+json' "${tmp}"
+
+# happy: api declares T-00-12 middleware allowlist
+cat >"${tmp}/vortex-core/crates/api/Cargo.toml" <<'EOF'
+[package]
+name = "api"
+version = "0.1.0"
+edition.workspace = true
+publish = false
+
+[dependencies]
+axum = { workspace = true }
+domain = { path = "../domain" }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tower-http = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "net"] }
+tracing-subscriber = { workspace = true }
+
+[lints]
+workspace = true
+EOF
+assert_ok 'api con allowlist middlewares' "${tmp}"
+
+# happy: api declares T-00-14 prometheus allowlist
+cat >"${tmp}/vortex-core/crates/api/Cargo.toml" <<'EOF'
+[package]
+name = "api"
+version = "0.1.0"
+edition.workspace = true
+publish = false
+
+[dependencies]
+axum = { workspace = true }
+domain = { path = "../domain" }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tower-http = { workspace = true }
+tracing = { workspace = true }
+metrics = { workspace = true }
+metrics-exporter-prometheus = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "net"] }
+tracing-subscriber = { workspace = true }
+
+[lints]
+workspace = true
+EOF
+assert_ok 'api con allowlist prometheus' "${tmp}"
+
+# happy: api declares T-09-04 openapi dev-deps allowlist
+cat >"${tmp}/vortex-core/crates/api/Cargo.toml" <<'EOF'
+[package]
+name = "api"
+version = "0.1.0"
+edition.workspace = true
+publish = false
+
+[dependencies]
+axum = { workspace = true }
+domain = { path = "../domain" }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tower-http = { workspace = true }
+tracing = { workspace = true }
+metrics = { workspace = true }
+metrics-exporter-prometheus = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "net"] }
+tracing-subscriber = { workspace = true }
+jsonschema = { workspace = true, default-features = false }
+serde_yaml = { workspace = true }
+
+[lints]
+workspace = true
+EOF
+assert_ok 'api con allowlist openapi' "${tmp}"
+
+# happy: api declares path catalog (T-02-06)
+cp "${REPO_ROOT}/vortex-core/crates/api/Cargo.toml" "${tmp}/vortex-core/crates/api/Cargo.toml"
+assert_ok 'api declara path catalog' "${tmp}"
+
+# happy: api declares path search (T-03-13)
+cp "${REPO_ROOT}/vortex-core/crates/api/Cargo.toml" "${tmp}/vortex-core/crates/api/Cargo.toml"
+assert_ok 'api declara path search' "${tmp}"
+
+# happy: api declares path recommend (T-04-05)
+cp "${REPO_ROOT}/vortex-core/crates/api/Cargo.toml" "${tmp}/vortex-core/crates/api/Cargo.toml"
+assert_ok 'api declara path recommend' "${tmp}"
+
+# unhappy: api declares jsonschema in runtime dependencies
+cp "${REPO_ROOT}/vortex-core/crates/api/Cargo.toml" "${tmp}/vortex-core/crates/api/Cargo.toml"
+cat >"${tmp}/vortex-core/crates/api/Cargo.toml" <<'EOF'
+[package]
+name = "api"
+version = "0.1.0"
+edition.workspace = true
+publish = false
+
+[dependencies]
+axum = { workspace = true }
+domain = { path = "../domain" }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tower-http = { workspace = true }
+tracing = { workspace = true }
+metrics = { workspace = true }
+metrics-exporter-prometheus = { workspace = true }
+jsonschema = { workspace = true, default-features = false }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "net"] }
+tracing-subscriber = { workspace = true }
+
+[lints]
+workspace = true
+EOF
+assert_fails_with 'api con jsonschema en dependencies' "${tmp}" 'api'
+
+# unhappy: api declares clap outside allowlist
+cat >"${tmp}/vortex-core/crates/api/Cargo.toml" <<'EOF'
+[package]
+name = "api"
+version = "0.1.0"
+edition.workspace = true
+publish = false
+
+[dependencies]
+clap = { workspace = true }
+
+[lints]
+workspace = true
+EOF
+assert_fails_with 'api con clap' "${tmp}" 'api'
+
+# happy: catalog declares path domain (T-02-05)
+cp "${REPO_ROOT}/vortex-core/crates/api/Cargo.toml" "${tmp}/vortex-core/crates/api/Cargo.toml"
+cp "${REPO_ROOT}/vortex-core/crates/catalog/Cargo.toml" "${tmp}/vortex-core/crates/catalog/Cargo.toml"
+cp "${REPO_ROOT}/vortex-core/crates/domain/Cargo.toml" "${tmp}/vortex-core/crates/domain/Cargo.toml"
+assert_ok 'catalog con path domain' "${tmp}"
+
+# unhappy: catalog declares surrealdb outside allowlist
+cat >"${tmp}/vortex-core/crates/catalog/Cargo.toml" <<'EOF'
+[package]
+name = "catalog"
+version = "0.1.0"
+edition.workspace = true
+publish = false
+
+[dependencies]
+domain = { path = "../domain" }
+surrealdb = { workspace = true }
+
+[lints]
+workspace = true
+EOF
+assert_fails_with 'catalog con surrealdb' "${tmp}" 'catalog'
+
+# happy: catalog declares serde and serde_json (T-02-40)
+cp "${REPO_ROOT}/vortex-core/crates/catalog/Cargo.toml" "${tmp}/vortex-core/crates/catalog/Cargo.toml"
+assert_ok 'catalog con serde y serde_json' "${tmp}"
+
+# unhappy: catalog declares clap outside allowlist (T-02-40)
+cat >"${tmp}/vortex-core/crates/catalog/Cargo.toml" <<'EOF'
+[package]
+name = "catalog"
+version = "0.1.0"
+edition.workspace = true
+publish = false
+
+[dependencies]
+domain = { path = "../domain" }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+clap = { workspace = true }
+
+[lints]
+workspace = true
+EOF
+assert_fails_with 'catalog con clap' "${tmp}" 'catalog'
+
+cp "${REPO_ROOT}/vortex-core/crates/catalog/Cargo.toml" "${tmp}/vortex-core/crates/catalog/Cargo.toml"
+
+# unhappy: recommend declares dependencies (empty-lib rule)
+cat >"${tmp}/vortex-core/crates/recommend/Cargo.toml" <<'EOF'
+[package]
+name = "recommend"
+version = "0.1.0"
+edition.workspace = true
+publish = false
+
+[dependencies]
+serde = { workspace = true }
+
+[lints]
+workspace = true
+EOF
+assert_fails_with 'recommend con dependencies' "${tmp}" 'recommend'
+
+cp "${REPO_ROOT}/vortex-core/crates/recommend/Cargo.toml" "${tmp}/vortex-core/crates/recommend/Cargo.toml"
+
+# happy: search declares Meilisearch allowlist (T-03-04)
+cp "${REPO_ROOT}/vortex-core/crates/domain/Cargo.toml" "${tmp}/vortex-core/crates/domain/Cargo.toml"
+cp "${REPO_ROOT}/vortex-core/crates/search/Cargo.toml" "${tmp}/vortex-core/crates/search/Cargo.toml"
+assert_ok 'search con allowlist Meilisearch' "${tmp}"
+
+# unhappy: search declares surrealdb outside allowlist
+cat >"${tmp}/vortex-core/crates/search/Cargo.toml" <<'EOF'
+[package]
+name = "search"
+version = "0.1.0"
+edition.workspace = true
+publish = false
+
+[dependencies]
+domain = { path = "../domain" }
+meilisearch-sdk = { workspace = true }
+surrealdb = { workspace = true }
+
+[lints]
+workspace = true
+EOF
+assert_fails_with 'search con surrealdb' "${tmp}" 'search'
+
+# unhappy: search declares reqwest outside allowlist
+cat >"${tmp}/vortex-core/crates/search/Cargo.toml" <<'EOF'
+[package]
+name = "search"
+version = "0.1.0"
+edition.workspace = true
+publish = false
+
+[dependencies]
+domain = { path = "../domain" }
+meilisearch-sdk = { workspace = true }
+reqwest = { workspace = true }
+
+[lints]
+workspace = true
+EOF
+assert_fails_with 'search con reqwest' "${tmp}" 'search'
+
+cp "${REPO_ROOT}/vortex-core/crates/search/Cargo.toml" "${tmp}/vortex-core/crates/search/Cargo.toml"
+
+# happy: storage declares surrealdb allowlist
+cp "${REPO_ROOT}/vortex-core/crates/api/Cargo.toml" "${tmp}/vortex-core/crates/api/Cargo.toml"
+cp "${REPO_ROOT}/vortex-core/crates/catalog/Cargo.toml" "${tmp}/vortex-core/crates/catalog/Cargo.toml"
+cp "${REPO_ROOT}/vortex-core/crates/domain/Cargo.toml" "${tmp}/vortex-core/crates/domain/Cargo.toml"
+cp "${REPO_ROOT}/vortex-core/crates/storage/Cargo.toml" "${tmp}/vortex-core/crates/storage/Cargo.toml"
+assert_ok 'storage con allowlist surrealdb' "${tmp}"
+
+# unhappy: storage declares axum
+cat >"${tmp}/vortex-core/crates/storage/Cargo.toml" <<'EOF'
+[package]
+name = "storage"
+version = "0.1.0"
+edition.workspace = true
+publish = false
+
+[dependencies]
+surrealdb = { workspace = true, features = ["kv-rocksdb"] }
+axum = { workspace = true }
+
+[lints]
+workspace = true
+EOF
+assert_fails_with 'storage con axum' "${tmp}" 'storage'
+
+# happy: supervisor declares path domain
+cp "${REPO_ROOT}/vortex-core/crates/domain/Cargo.toml" "${tmp}/vortex-core/crates/domain/Cargo.toml"
+cp "${REPO_ROOT}/vortex-core/crates/storage/Cargo.toml" "${tmp}/vortex-core/crates/storage/Cargo.toml"
+cp "${REPO_ROOT}/vortex-core/crates/api/Cargo.toml" "${tmp}/vortex-core/crates/api/Cargo.toml"
+cp "${REPO_ROOT}/vortex-core/crates/supervisor/Cargo.toml" "${tmp}/vortex-core/crates/supervisor/Cargo.toml"
+assert_ok 'supervisor con path domain' "${tmp}"
+
+# unhappy: supervisor declares clap
+cat >"${tmp}/vortex-core/crates/supervisor/Cargo.toml" <<'EOF'
+[package]
+name = "supervisor"
+version = "0.1.0"
+edition.workspace = true
+publish = false
+
+[dependencies]
+domain = { path = "../domain" }
+clap = { workspace = true }
+
+[lints]
+workspace = true
+EOF
+assert_fails_with 'supervisor con clap' "${tmp}" 'supervisor'
+
+# happy: sync declares worker allowlist (T-03-07)
+cp "${REPO_ROOT}/vortex-core/crates/domain/Cargo.toml" "${tmp}/vortex-core/crates/domain/Cargo.toml"
+cp "${REPO_ROOT}/vortex-core/crates/storage/Cargo.toml" "${tmp}/vortex-core/crates/storage/Cargo.toml"
+cp "${REPO_ROOT}/vortex-core/crates/api/Cargo.toml" "${tmp}/vortex-core/crates/api/Cargo.toml"
+cp "${REPO_ROOT}/vortex-core/crates/catalog/Cargo.toml" "${tmp}/vortex-core/crates/catalog/Cargo.toml"
+cp "${REPO_ROOT}/vortex-core/crates/search/Cargo.toml" "${tmp}/vortex-core/crates/search/Cargo.toml"
+cp "${REPO_ROOT}/vortex-core/crates/supervisor/Cargo.toml" "${tmp}/vortex-core/crates/supervisor/Cargo.toml"
+cp "${REPO_ROOT}/vortex-core/crates/sync/Cargo.toml" "${tmp}/vortex-core/crates/sync/Cargo.toml"
+assert_ok 'sync con allowlist del worker' "${tmp}"
+
+# unhappy: sync declares meilisearch-sdk outside allowlist
+cat >"${tmp}/vortex-core/crates/sync/Cargo.toml" <<'EOF'
+[package]
+name = "sync"
+version = "0.1.0"
+edition.workspace = true
+publish = false
+
+[dependencies]
+domain = { path = "../domain" }
+storage = { path = "../storage" }
+tokio = { workspace = true }
+meilisearch-sdk = { workspace = true }
+
+[lints]
+workspace = true
+EOF
+assert_fails_with 'sync con meilisearch-sdk' "${tmp}" 'sync'
+
+cp "${REPO_ROOT}/vortex-core/crates/sync/Cargo.toml" "${tmp}/vortex-core/crates/sync/Cargo.toml"
+
+# happy: vortex declares config allowlist
+cp "${REPO_ROOT}/vortex-core/crates/api/Cargo.toml" "${tmp}/vortex-core/crates/api/Cargo.toml"
+cp "${REPO_ROOT}/vortex-core/crates/domain/Cargo.toml" "${tmp}/vortex-core/crates/domain/Cargo.toml"
+cp "${REPO_ROOT}/vortex-core/crates/storage/Cargo.toml" "${tmp}/vortex-core/crates/storage/Cargo.toml"
+cp "${REPO_ROOT}/vortex-core/crates/supervisor/Cargo.toml" "${tmp}/vortex-core/crates/supervisor/Cargo.toml"
+cp "${REPO_ROOT}/vortex-core/bin/vortex/Cargo.toml" "${tmp}/vortex-core/bin/vortex/Cargo.toml"
+assert_ok 'vortex con allowlist de configuración' "${tmp}"
+
+# happy: vortex declares path storage (T-00-20)
+cat >"${tmp}/vortex-core/bin/vortex/Cargo.toml" <<'EOF'
+[package]
+name = "vortex"
+version = "0.1.0"
+edition.workspace = true
+publish = false
+
+[dependencies]
+api = { path = "../../crates/api" }
+supervisor = { path = "../../crates/supervisor" }
+storage = { path = "../../crates/storage" }
+toml = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true, features = ["json", "env-filter"] }
+tracing-appender = { workspace = true }
+clap = { workspace = true, features = ["derive"] }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "net", "signal"] }
+axum = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }
+
+[lints]
+workspace = true
+EOF
+assert_ok 'vortex con path storage' "${tmp}"
+
+# happy: vortex declares path catalog (T-02-06)
+cp "${REPO_ROOT}/vortex-core/bin/vortex/Cargo.toml" "${tmp}/vortex-core/bin/vortex/Cargo.toml"
+assert_ok 'vortex declara path catalog' "${tmp}"
+
+# happy: vortex declares path search, sync, domain (T-00-27)
+assert_ok 'vortex declara path search sync domain' "${tmp}"
+
+cp "${REPO_ROOT}/vortex-core/crates/recommend/Cargo.toml" "${tmp}/vortex-core/crates/recommend/Cargo.toml"
+assert_ok 'recommend declara path domain' "${tmp}"
+
+# happy: vortex declares path recommend (T-04-05)
+cp "${REPO_ROOT}/vortex-core/bin/vortex/Cargo.toml" "${tmp}/vortex-core/bin/vortex/Cargo.toml"
+assert_ok 'vortex declara path recommend' "${tmp}"
+
+# happy: vortex dev-dependencies tokio for seed integration tests (T-02-42)
+assert_ok 'vortex dev-dependencies tokio' "${tmp}"
+
+# unhappy: vortex declares metrics
+cat >"${tmp}/vortex-core/bin/vortex/Cargo.toml" <<'EOF'
+[package]
+name = "vortex"
+version = "0.1.0"
+edition.workspace = true
+publish = false
+
+[dependencies]
+toml = { workspace = true }
+metrics = { workspace = true }
+
+[lints]
+workspace = true
+EOF
+assert_fails_with 'vortex con metrics' "${tmp}" 'vortex'
+
+printf 'workspace fixture: all scenarios passed\n'

@@ -1,0 +1,145 @@
+#!/usr/bin/env sh
+# Verifica el contrato de GitHub Actions CI (T-09-01, domain-deps T-00-02, openapi-lint T-09-03, meilisearch T-09-05).
+set -eu
+
+if [ -n "${CHECK_ROOT:-}" ]; then
+  ROOT="${CHECK_ROOT}"
+else
+  ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+fi
+
+fail() {
+  printf 'check-ci: %s\n' "$1" >&2
+  exit 1
+}
+
+WORKFLOW="${ROOT}/.github/workflows/ci.yml"
+
+[ -f "${WORKFLOW}" ] || fail 'falta .github/workflows/ci.yml'
+
+# --- triggers ---
+if ! grep -q 'pull_request' "${WORKFLOW}"; then
+  fail 'falta el trigger pull_request en el workflow'
+fi
+
+# --- jobs obligatorios ---
+for job in fmt clippy test; do
+  if ! grep -Eq "^[[:space:]]{2}${job}:" "${WORKFLOW}"; then
+    fail "falta el job: ${job}"
+  fi
+done
+
+# --- runner macos-14 (sin ubuntu en este workflow) ---
+if grep -Eq 'runs-on:[[:space:]]*ubuntu' "${WORKFLOW}"; then
+  fail 'el workflow no debe usar runner ubuntu (se requiere macos-14)'
+fi
+
+runs_on_count=$(grep -c 'runs-on: macos-14' "${WORKFLOW}" 2>/dev/null || true)
+if [ "${runs_on_count}" -lt 3 ]; then
+  fail 'cada job fmt, clippy y test debe declarar runs-on: macos-14'
+fi
+
+# --- caché de Cargo (al menos una por job) ---
+cache_count=$(grep -c 'actions/cache@v4' "${WORKFLOW}" 2>/dev/null || true)
+if [ "${cache_count}" -lt 3 ]; then
+  fail 'cada job fmt, clippy y test debe restaurar caché con actions/cache@v4'
+fi
+
+if ! grep -q '.cargo/registry' "${WORKFLOW}"; then
+  fail 'falta la caché de ~/.cargo/registry'
+fi
+
+if ! grep -q 'vortex-core/target' "${WORKFLOW}"; then
+  fail 'falta la caché de vortex-core/target'
+fi
+
+# --- workspace vortex-core ---
+if ! grep -q 'vortex-core' "${WORKFLOW}"; then
+  fail 'el workflow debe apuntar al workspace vortex-core'
+fi
+
+# --- comandos § 5 ---
+if ! grep -q 'cargo fmt --all -- --check' "${WORKFLOW}"; then
+  fail 'el job fmt debe ejecutar cargo fmt --all -- --check'
+fi
+
+if ! grep -q 'cargo clippy --workspace -- -D warnings' "${WORKFLOW}"; then
+  fail 'el job clippy debe ejecutar cargo clippy --workspace -- -D warnings'
+fi
+
+if ! grep -q 'cargo test --workspace' "${WORKFLOW}"; then
+  fail 'el job test debe ejecutar cargo test --workspace'
+fi
+
+# --- non-goals (motores v2, harness local en GitHub) ---
+for forbidden in Ollama Whisper check-ci.sh; do
+  if grep -qF "${forbidden}" "${WORKFLOW}"; then
+    fail "el workflow no debe mencionar ${forbidden} (fuera de alcance T-09-13/T-09-18)"
+  fi
+done
+
+# --- job domain-deps (T-00-02) ---
+if ! grep -Eq '^[[:space:]]{2}domain-deps:' "${WORKFLOW}"; then
+  fail 'falta el job: domain-deps'
+fi
+
+if ! grep -q 'scripts/check-domain-deps.sh' "${WORKFLOW}"; then
+  fail 'el job domain-deps debe ejecutar scripts/check-domain-deps.sh'
+fi
+
+# --- job openapi-lint (T-09-03) ---
+if ! grep -Eq '^[[:space:]]{2}openapi-lint:' "${WORKFLOW}"; then
+  fail 'falta el job: openapi-lint'
+fi
+
+if ! grep -q '@redocly/cli' "${WORKFLOW}"; then
+  fail 'el job openapi-lint debe invocar @redocly/cli'
+fi
+
+if ! grep -q 'lint docs/openapi.yaml' "${WORKFLOW}"; then
+  fail 'el job openapi-lint debe ejecutar lint docs/openapi.yaml'
+fi
+
+REDOCLY_CFG="${ROOT}/redocly.yaml"
+[ -f "${REDOCLY_CFG}" ] || fail 'falta redocly.yaml'
+
+# --- job meilisearch (T-09-05) ---
+if ! grep -Eq '^[[:space:]]{2}meilisearch:' "${WORKFLOW}"; then
+  fail 'falta el job: meilisearch'
+fi
+
+if ! grep -q 'include-ignored' "${WORKFLOW}"; then
+  fail 'el job meilisearch debe usar --include-ignored'
+fi
+
+if ! grep -q 'meilisearch-macos-apple-silicon' "${WORKFLOW}"; then
+  fail 'el job meilisearch debe descargar meilisearch-macos-apple-silicon'
+fi
+
+MEILI_PIN="${ROOT}/scripts/meilisearch-version"
+[ -f "${MEILI_PIN}" ] || fail 'falta scripts/meilisearch-version'
+
+MEILI_TAG="$(tr -d '[:space:]' < "${MEILI_PIN}")"
+case "${MEILI_TAG}" in
+  v*.*.*) ;;
+  *) fail 'scripts/meilisearch-version debe ser un tag vX.Y.Z' ;;
+esac
+
+if grep -q 'scripts/meilisearch-version' "${WORKFLOW}"; then
+  : # el tag se lee del pin en runtime (repo canónico)
+else
+  if ! grep -qF "${MEILI_TAG}" "${WORKFLOW}"; then
+    fail 'el workflow debe usar el tag de scripts/meilisearch-version'
+  fi
+fi
+
+# --- job e2e (T-09-09) ---
+if ! grep -Eq '^[[:space:]]{2}e2e:' "${WORKFLOW}"; then
+  fail 'falta el job: e2e'
+fi
+
+if ! grep -qi 'playwright' "${WORKFLOW}"; then
+  fail 'el job e2e debe invocar Playwright'
+fi
+
+exit 0
