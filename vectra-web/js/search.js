@@ -297,7 +297,7 @@ export function mountSearch(root, { request, showError }) {
     const controller = new AbortController();
     inflight = controller;
     const gen = ++generation;
-    const searchPath = `/api/v1/search?q=${encodeURIComponent(q.slice(0, 200))}`;
+    const searchPath = `/api/v1/search?q=${encodeURIComponent(q.slice(0, 200))}&limit=50`;
     const codeLike = looksLikeCode(q);
     const byCodePath = codeLike
       ? `/api/v1/search/by-code/${encodeURIComponent(q)}`
