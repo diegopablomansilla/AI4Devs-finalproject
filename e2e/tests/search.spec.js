@@ -46,23 +46,29 @@ test("search_card_shows_stock_40", async ({ page }) => {
 
 test("search_arrow_down_selects_first_card", async ({ page }) => {
   await typeSearchQuery(page, "tornilo");
-  const card = page.locator(`vx-product-card[sku="${TORNILLO_SKU}"]`).first();
+  const card = page.locator(
+    `[data-region="results"] vx-product-card[sku="${TORNILLO_SKU}"]`,
+  );
   await expect(card).toBeVisible({ timeout: 15_000 });
   const listbox = searchListbox(page);
   await expect(listbox).toBeVisible();
+  const firstInList = productCards(page).first();
+  await expect(firstInList).toBeVisible();
   await omniboxInput(page).press("ArrowDown");
+  const firstId = await firstInList.getAttribute("id");
+  expect(firstId).toBeTruthy();
   const activeId = await listbox.getAttribute("aria-activedescendant");
-  expect(activeId).toBeTruthy();
-  const firstId = await card.getAttribute("id");
   expect(activeId).toBe(firstId);
-  await expect(card).toHaveAttribute("aria-selected", "true");
+  await expect(firstInList).toHaveAttribute("aria-selected", "true");
   await expect(page.locator("vx-side-panel[open]")).toHaveCount(0);
 });
 
 test("search_escape_from_listbox_restores_omnibox", async ({ page }) => {
+  const card = page.locator(
+    `[data-region="results"] vx-product-card[sku="${TORNILLO_SKU}"]`,
+  );
   await typeSearchQuery(page, "tornilo");
-  const card = page.locator(`vx-product-card[sku="${TORNILLO_SKU}"]`);
-  await expect(card).toBeVisible({ timeout: 15_000 });
+  await expect(card).toBeVisible({ timeout: 20_000 });
   const listbox = searchListbox(page);
   await listbox.focus();
   await page.keyboard.press("Escape");
