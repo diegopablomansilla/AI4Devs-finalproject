@@ -1,5 +1,6 @@
 import { bindKeyboardList } from "./keyboard-list.js";
 import { appendSanitizedHtml } from "./highlight.js";
+import { mountRecommendations } from "./recommendations.js";
 
 /**
  * @param {string} q
@@ -22,11 +23,25 @@ function clearElement(el) {
  * @param {{ request: (method: string, path: string, options?: { signal?: AbortSignal }) => Promise<unknown>, showError: (err: unknown) => void }} deps
  */
 export function mountSearch(root, { request, showError }) {
+  const { openRecommendations, unmount: unmountRecommendations } =
+    mountRecommendations(root, { request, showError });
+
   /** @type {AbortController | null} */
   let inflight = null;
   /** @type {(() => void) | null} */
   let unbindList = null;
   let generation = 0;
+
+  /**
+   * @param {HTMLElement} card
+   */
+  function openResult(card) {
+    const productId = card.getAttribute?.("data-product-id");
+    if (!productId) {
+      return;
+    }
+    void openRecommendations(productId, card);
+  }
 
   function resultsRegion() {
     return typeof root.querySelector === "function"
@@ -99,6 +114,11 @@ export function mountSearch(root, { request, showError }) {
     const imageUrl = hit.imageUrl;
     if (imageUrl != null && asAttrString(imageUrl).trim() !== "") {
       card.setAttribute("image-url", asAttrString(imageUrl).trim());
+    }
+
+    const productId = asAttrString(hit.id);
+    if (productId) {
+      card.setAttribute("data-product-id", productId);
     }
 
     const highlightName = useHighlight ? hit?.highlight?.name : null;
@@ -194,7 +214,23 @@ export function mountSearch(root, { request, showError }) {
       getItems: () => cards,
       controllers,
       restoreFocus: omnibox ?? null,
-      onOpen: () => {},
+      onOpen: (card) => {
+        openResult(card);
+      },
+    });
+
+    list.addEventListener("click", (event) => {
+      /** @type {EventTarget | null} */
+      let target = event.target ?? null;
+      for (let i = 0; i < 8 && target; i += 1) {
+        if (
+          /** @type {HTMLElement} */ (target).localName === "vx-product-card"
+        ) {
+          openResult(/** @type {HTMLElement} */ (target));
+          break;
+        }
+        target = /** @type {HTMLElement} */ (target).parentNode ?? null;
+      }
     });
   }
 
@@ -310,5 +346,6 @@ export function mountSearch(root, { request, showError }) {
     }
     unbindKeyboard();
     generation += 1;
+    unmountRecommendations();
   };
 }

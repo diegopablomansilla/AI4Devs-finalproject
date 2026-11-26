@@ -71,6 +71,7 @@ async function ensureWebComponents() {
 
 function fullHit(overrides = {}) {
   return {
+    id: "01J9ZKAAAAAAAAAAAAAAAAAA",
     name: "Perno de Acero",
     sku: "PER-STEEL",
     brand: "Fixser",
@@ -109,15 +110,37 @@ function isTextSearchPath(path) {
   return /^\/api\/v1\/search\?/.test(path);
 }
 
+/** @param {string} path */
+function isRecommendationsPath(path) {
+  return /\/api\/v1\/products\/[^/]+\/recommendations$/.test(path);
+}
+
+function defaultRecommendationsResponse() {
+  return {
+    productId: "01J9ZKAAAAAAAAAAAAAAAAAA",
+    highlightSubstitutes: false,
+    similar: [{ id: "01J9ZKSIM111111111111111", sku: "SIM-1", name: "Similar", stock: "5", price: "10", priority: 1 }],
+    substitutes: [],
+    complements: [],
+  };
+}
+
 /**
  * @param {{
  *   search?: (path: string, opts?: { signal?: AbortSignal }) => unknown | Promise<unknown>,
  *   byCode?: (path: string, opts?: { signal?: AbortSignal }) => unknown | Promise<unknown>,
+ *   recommendations?: (path: string, opts?: { signal?: AbortSignal }) => unknown | Promise<unknown>,
  * }} handlers
  */
 function createRoutingRequest(handlers = {}) {
   return async (method, path, opts) => {
     assert.equal(method, "GET");
+    if (isRecommendationsPath(path)) {
+      if (handlers.recommendations) {
+        return handlers.recommendations(path, opts);
+      }
+      return defaultRecommendationsResponse();
+    }
     if (isByCodePath(path)) {
       if (handlers.byCode) {
         return handlers.byCode(path, opts);
@@ -157,11 +180,21 @@ async function buildOperator({ withOmnibox = true } = {}) {
   omniboxWrap.setAttribute("data-region", "omnibox");
   const results = document.createElement("div");
   results.setAttribute("data-region", "results");
+  const panelWrap = document.createElement("div");
+  panelWrap.setAttribute("data-region", "side-panel");
   root.appendChild(omniboxWrap);
   root.appendChild(results);
+  root.appendChild(panelWrap);
   document.body.appendChild(root);
 
   await ensureWebComponents();
+  await import(
+    new URL("../../../vectra-web/js/components/vx-side-panel.js", import.meta.url)
+      .href
+  );
+  const panel = customElements._create("vx-side-panel");
+  panelWrap.appendChild(panel);
+  await panel.connectedCallback();
 
   let omnibox = null;
   if (withOmnibox) {
@@ -170,7 +203,7 @@ async function buildOperator({ withOmnibox = true } = {}) {
     await omnibox.connectedCallback();
   }
 
-  return { root, results, omnibox };
+  return { root, results, omnibox, panel };
 }
 
 function dispatchTextQuery(root, text) {
