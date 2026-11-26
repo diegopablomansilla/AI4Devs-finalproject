@@ -73,7 +73,10 @@ Dar al mostrador de ferreterías y repuestos una forma rápida y fiable de encon
 3. Pregunta técnica en el mostrador: escribe *¿qué broca para taco de 8 en hormigón?* o activa Modo IA; la respuesta llega en streaming con tarjetas de productos reales con stock.
 4. Manos sucias o lejos del teclado: mantiene **Espacio** o el micrófono, dice *“discos de corte 115”*; la transcripción aparece en el Omnibox, la edita si hace falta y ejecuta la búsqueda.
 
-*(Capturas de pantalla o un videotutorial del flujo Operador pueden añadirse aquí cuando la UI esté implementada.)*
+**Demos:** ver la carpeta [`demos/`](demos/).
+
+- [`Demo-http-127.0.0.1-8080-demo.html`](demos/Demo-http-127.0.0.1-8080-demo.html) — captura HTML del flujo en `http://127.0.0.1:8080` (abrir en el navegador).
+- `Grabación de pantalla 2026-11-26 a la(s) 1.30.36 p. m..mov` — videotutorial del flujo Operador.
 
 ### **1.4. Instrucciones de instalación:**
 
