@@ -11,7 +11,7 @@ use crate::decimal::Decimal;
 use crate::error::{DomainError, FieldError, InvalidInputCode};
 use crate::id::{Id, InvalidId};
 use crate::marca::Marca;
-use crate::producto::{Producto, Ubicacion, UnidadMedida, ValorAtributo};
+use crate::producto::{Producto, UnidadMedida, ValorAtributo};
 
 /// Category levels for Meilisearch (`categoria.lvl0`…`lvl3`).
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
@@ -152,7 +152,10 @@ pub fn build_search_document(
         unidad_medida: producto.unidad_medida.as_str().to_string(),
         stock_disponible: stock_wire,
         con_stock,
-        ubicacion: producto.ubicacion.as_ref().and_then(format_ubicacion),
+        ubicacion: producto
+            .ubicacion
+            .as_ref()
+            .and_then(crate::producto::format_ubicacion_linea),
         imagen: None,
     })
 }
@@ -180,33 +183,6 @@ fn categoria_ids_wire(categoria: &Categoria) -> Vec<String> {
         .collect();
     ids.push(categoria.id.to_string());
     ids
-}
-
-fn format_ubicacion(u: &Ubicacion) -> Option<String> {
-    let mut parts = Vec::new();
-    if let Some(p) = &u.pasillo {
-        let trimmed = p.trim();
-        if !trimmed.is_empty() {
-            parts.push(format!("P{trimmed}"));
-        }
-    }
-    if let Some(e) = &u.estante {
-        let trimmed = e.trim();
-        if !trimmed.is_empty() {
-            parts.push(format!("E-{trimmed}"));
-        }
-    }
-    if let Some(pos) = &u.posicion {
-        let trimmed = pos.trim();
-        if !trimmed.is_empty() {
-            parts.push(trimmed.to_string());
-        }
-    }
-    if parts.is_empty() {
-        None
-    } else {
-        Some(parts.join(" · "))
-    }
 }
 
 fn format_atributo_line(def: &AtributoDef, valor: &ValorAtributo) -> String {

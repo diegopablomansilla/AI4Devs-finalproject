@@ -388,6 +388,13 @@ impl RelationRepo for InMemoryRelationRepo {
             Ok(grouped)
         }
     }
+
+    fn recommendations_for_product(
+        &self,
+        _producto: Id<Producto>,
+    ) -> impl Future<Output = Result<domain::Recomendaciones, DomainError>> + Send {
+        async { Err(DomainError::not_found()) }
+    }
 }
 
 struct StubProductRepo {

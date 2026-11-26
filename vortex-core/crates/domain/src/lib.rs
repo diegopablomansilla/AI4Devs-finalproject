@@ -47,13 +47,13 @@ pub use outbox_repo::{OUTBOX_BATCH_LIMIT, OutboxRecord, OutboxRepo, OutboxRow};
 pub use producto::{
     AtributoFicha, AtributoValor, Codigo, FichaProducto, FiltroProducto, NewProducto, ProductRepo,
     Producto, ProductoDraft, ResumenProducto, Sku, TipoCodigo, Ubicacion, UnidadMedida,
-    UpdateProducto, ValorAtributo, valor_compatible_con,
+    UpdateProducto, ValorAtributo, format_ubicacion_linea, valor_compatible_con,
 };
 pub use productos_index_settings::productos_index_settings;
 pub use relacion::{
-    DestinoResumen, GrupoBidireccional, NewRelacion, Relacion, RelacionConDestino, RelacionDraft,
-    RelacionesDeProducto, RelationRepo, TipoRelacion, UpdateRelacion, default_bidireccional,
-    resolve_bidireccional,
+    DestinoResumen, GrupoBidireccional, NewRelacion, ProductoRecomendado, Recomendaciones,
+    Relacion, RelacionConDestino, RelacionDraft, RelacionesDeProducto, RelationRepo, TipoRelacion,
+    UpdateRelacion, default_bidireccional, resolve_bidireccional,
 };
 pub use search_document::{CategoriaMeiliLevels, SearchDocument, build_search_document};
 pub use sync_telemetry::{NoopSyncTelemetry, SyncTelemetry};

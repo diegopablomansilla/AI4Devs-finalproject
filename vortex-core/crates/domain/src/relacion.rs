@@ -2,6 +2,7 @@
 
 use std::future::Future;
 
+use crate::decimal::Decimal;
 use crate::error::{DomainError, FieldError, InvalidInputCode};
 use crate::id::Id;
 use crate::producto::Producto;
@@ -170,6 +171,30 @@ impl RelacionesDeProducto {
     }
 }
 
+/// One recommended product in the post-search panel (4.6.2 / T-04-06).
+#[derive(Debug, Clone, PartialEq)]
+pub struct ProductoRecomendado {
+    pub relacion_id: Id<Relacion>,
+    pub id: Id<Producto>,
+    pub sku: String,
+    pub nombre: String,
+    pub stock: Decimal,
+    pub precio: Decimal,
+    pub ubicacion: Option<String>,
+    pub prioridad: i32,
+    pub nota: Option<String>,
+}
+
+/// Recommendation query result grouped by relation type (4.6.2).
+#[derive(Debug, Clone, PartialEq)]
+pub struct Recomendaciones {
+    pub producto_id: Id<Producto>,
+    pub destacar_sustitutos: bool,
+    pub similares: Vec<ProductoRecomendado>,
+    pub sustitutos: Vec<ProductoRecomendado>,
+    pub complementarios: Vec<ProductoRecomendado>,
+}
+
 pub trait RelationRepo {
     fn create(
         &self,
@@ -196,6 +221,11 @@ pub trait RelationRepo {
         &self,
         producto: Id<Producto>,
     ) -> impl Future<Output = Result<RelacionesDeProducto, DomainError>> + Send;
+
+    fn recommendations_for_product(
+        &self,
+        producto: Id<Producto>,
+    ) -> impl Future<Output = Result<Recomendaciones, DomainError>> + Send;
 }
 
 fn validate_prioridad(prioridad: i32) -> Result<(), DomainError> {
@@ -456,6 +486,13 @@ mod tests {
         ) -> impl Future<Output = Result<RelacionesDeProducto, DomainError>> + Send {
             async { Ok(RelacionesDeProducto::empty()) }
         }
+
+        fn recommendations_for_product(
+            &self,
+            _producto: Id<Producto>,
+        ) -> impl Future<Output = Result<Recomendaciones, DomainError>> + Send {
+            async { Err(DomainError::not_found()) }
+        }
     }
 
     #[test]
@@ -478,6 +515,7 @@ mod tests {
             let _f3 = r.delete(TipoRelacion::SimilarA, Id::generate());
             let _f4 = r.list_for_product(Id::generate());
             let _f5 = r.list_incoming_for_product(Id::generate());
+            let _f6 = r.recommendations_for_product(Id::generate());
         }
         assert_repo(&DummyRelationRepo);
     }
@@ -488,6 +526,63 @@ mod tests {
             let _ = r.list_incoming_for_product(Id::generate());
         }
         assert_incoming(&DummyRelationRepo);
+    }
+
+    #[test]
+    fn relation_repo_trait_exposes_recommendations_for_product() {
+        fn assert_recommendations<R: RelationRepo>(r: &R) {
+            let _ = r.recommendations_for_product(Id::generate());
+        }
+        assert_recommendations(&DummyRelationRepo);
+    }
+
+    #[test]
+    fn producto_recomendado_covers_panel_item() {
+        let rel_id = Id::<Relacion>::generate();
+        let prod_id = Id::<Producto>::generate();
+        let item = ProductoRecomendado {
+            relacion_id: rel_id.clone(),
+            id: prod_id.clone(),
+            sku: "PER-M8".into(),
+            nombre: "Perno M8".into(),
+            stock: "12".parse().expect("stock"),
+            precio: "5.00".parse().expect("precio"),
+            ubicacion: Some("P3 · E-B · 12".into()),
+            prioridad: 1,
+            nota: None,
+        };
+        assert!(!rel_id.to_string().contains(':'));
+        assert!(!prod_id.to_string().contains(':'));
+        assert_eq!(item.ubicacion.as_deref(), Some("P3 · E-B · 12"));
+        assert_eq!(item.sku, "PER-M8");
+    }
+
+    #[test]
+    fn recomendaciones_groups_three_blocks() {
+        let producto_id = Id::<Producto>::generate();
+        let item = ProductoRecomendado {
+            relacion_id: Id::generate(),
+            id: Id::generate(),
+            sku: "SKU".into(),
+            nombre: "N".into(),
+            stock: "1".parse().expect("stock"),
+            precio: "1".parse().expect("precio"),
+            ubicacion: None,
+            prioridad: 1,
+            nota: None,
+        };
+        let rec = Recomendaciones {
+            producto_id: producto_id.clone(),
+            destacar_sustitutos: true,
+            similares: vec![item.clone()],
+            sustitutos: vec![item.clone()],
+            complementarios: vec![item],
+        };
+        assert_eq!(rec.producto_id, producto_id);
+        assert!(rec.destacar_sustitutos);
+        assert_eq!(rec.similares.len(), 1);
+        assert_eq!(rec.sustitutos.len(), 1);
+        assert_eq!(rec.complementarios.len(), 1);
     }
 
     #[test]
