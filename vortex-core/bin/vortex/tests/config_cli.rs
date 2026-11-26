@@ -21,21 +21,9 @@ fn vortex_without_subcommand_does_not_load_config() {
 }
 
 #[test]
-fn vortex_reindex_with_valid_config_still_stub() {
-    let path = example_config();
+fn vortex_backup_with_missing_config_still_stub() {
     let output = Command::new(vortex_bin())
-        .args(["--config", path.to_str().unwrap(), "reindex"])
-        .output()
-        .expect("spawn vortex");
-    assert_eq!(output.status.code(), Some(1));
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("no implementado"), "stderr: {stderr}");
-}
-
-#[test]
-fn vortex_reindex_with_missing_config_still_stub() {
-    let output = Command::new(vortex_bin())
-        .args(["--config", "/nonexistent/vortex-config.toml", "reindex"])
+        .args(["--config", "/nonexistent/vortex-config.toml", "backup"])
         .output()
         .expect("spawn vortex");
     assert_eq!(output.status.code(), Some(1));

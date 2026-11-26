@@ -4,6 +4,7 @@ mod boot;
 mod cli;
 mod config;
 mod logging;
+mod reindex;
 mod seed;
 mod serve;
 
@@ -14,6 +15,7 @@ fn main() {
     match cli.command {
         Commands::Serve => serve::run(cli.config.as_ref()),
         Commands::Seed { dir } => seed::run(cli.config.as_ref(), dir),
+        Commands::Reindex => reindex::run(cli.config.as_ref()),
         _ => cli.run_stub(),
     }
 }

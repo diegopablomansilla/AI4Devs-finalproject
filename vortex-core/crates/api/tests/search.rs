@@ -75,13 +75,6 @@ async fn http_send(
     (status, ctype, body)
 }
 
-async fn http_get_abort(addr: std::net::SocketAddr, path: &str) {
-    let mut stream = tokio::net::TcpStream::connect(addr).await.expect("connect");
-    let host = format!("{}:{}", addr.ip(), addr.port());
-    let request = format!("GET {path} HTTP/1.1\r\nHost: {host}\r\n\r\n");
-    stream.write_all(request.as_bytes()).await.expect("write");
-}
-
 fn json_body(body: &str) -> serde_json::Value {
     serde_json::from_str(body).unwrap_or(serde_json::Value::Null)
 }
@@ -476,9 +469,31 @@ async fn get_search_client_abort_drops_work() {
     let probe = gw.clone();
     let gateway: Arc<dyn SearchGateway> = Arc::new(gw);
     let (addr, handle) = serve_search(gateway).await;
-    http_get_abort(addr, &format!("{SEARCH_PATH}?q=perno")).await;
-    let deadline = Instant::now() + Duration::from_secs(3);
-    while Instant::now() < deadline {
+    let path = format!("{SEARCH_PATH}?q=perno");
+    let client = tokio::spawn(async move {
+        let mut stream = tokio::net::TcpStream::connect(addr).await.expect("connect");
+        let host = format!("{}:{}", addr.ip(), addr.port());
+        let request = format!("GET {path} HTTP/1.1\r\nHost: {host}\r\n\r\n");
+        stream.write_all(request.as_bytes()).await.expect("write");
+        let _ = stream;
+        std::future::pending::<()>().await;
+    });
+
+    let start_deadline = Instant::now() + Duration::from_secs(5);
+    while Instant::now() < start_deadline {
+        if probe.search_started() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    assert!(
+        probe.search_started(),
+        "search gateway was never invoked"
+    );
+    client.abort();
+
+    let drop_deadline = Instant::now() + Duration::from_secs(3);
+    while Instant::now() < drop_deadline {
         if probe.was_dropped() {
             handle.abort();
             return;
