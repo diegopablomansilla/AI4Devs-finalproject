@@ -15,5 +15,8 @@ pub use producto::{
     PatchProducto, ProductGateway, ProductService, product_id_after,
     product_matches_categoria_branch,
 };
-pub use seed::{SeedIssue, SeedProductSummary, import_masters, import_products, validate_dir};
+pub use seed::{
+    RelationSeedGateway, SeedIssue, SeedProductSummary, SeedRelationSummary, import_masters,
+    import_products, import_relations, validate_dir,
+};
 pub use stock::{StockGateway, StockService};

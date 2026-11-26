@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Define el formato JSONL del dataset semilla en `seed/` (claves naturales: slug, clave, SKU), un validador de directorio que informa archivo, línea y campo sin importar, y el dataset de desarrollo de ferretería y repuestos (~200 SKUs). Tickets: T-02-40, T-02-41, T-02-42, T-02-43. HU: HU-02-11.
+Define el formato JSONL del dataset semilla en `seed/` (claves naturales: slug, clave, SKU), un validador de directorio que informa archivo, línea y campo sin importar, y el dataset de desarrollo de ferretería y repuestos (~200 SKUs). Tickets: T-02-40, T-02-41, T-02-42, T-02-43, T-04-11. HU: HU-02-11.
 
 ## Requirements
 
@@ -22,7 +22,7 @@ El repositorio MUST contener el directorio `seed/` en la raíz con:
 
 Cada JSONL MUST ser UTF-8, un objeto JSON por línea; las líneas en blanco MUST ignorarse. MUST NOT usar IDs ULID ni nombres de API en inglés (`name`, `brandId`, `categoryId`, `price` como clave). Los campos MUST usar nombres del modelo en español ([4.4](../../../docs/4-modelo.md#44-catálogo)). `seed/` MUST ser el dataset de desarrollo de T-02-41 (ferretería y repuestos, ~200 SKUs), no el catálogo del comercio piloto.
 
-`README.md` MUST documentar que `vortex seed [DIR]` importa **maestros y productos** (categorías, marcas, atributos y `productos.jsonl` con movimiento `inicial`) con `--config` o `VORTEX_CONFIG` y el servidor detenido, y que imágenes, relaciones, sinónimos y notas quedan para tickets posteriores. El árbol `seed/` MUST NOT ejecutar importación por sí mismo.
+`README.md` MUST documentar que `vortex seed [DIR]` importa **maestros, productos y relaciones** (categorías, marcas, atributos, `productos.jsonl` con movimiento `inicial` y `relaciones.jsonl`) con `--config` o `VORTEX_CONFIG` y el servidor detenido, y que imágenes, sinónimos y notas quedan para tickets posteriores. El árbol `seed/` MUST NOT ejecutar importación por sí mismo.
 
 Un directorio semilla **arbitrario** (fixtures de test) MAY omitir `relaciones.jsonl`, `sinonimos.jsonl`, `notas.jsonl` e `imagenes/`; si existen, MUST validarse (esquema de registros JSONL). El validador MUST NOT exigir esos archivos para considerar válido un directorio mínimo.
 
@@ -33,7 +33,8 @@ Un directorio semilla **arbitrario** (fixtures de test) MAY omitir `relaciones.j
 - **AND** existen `relaciones.jsonl`, `sinonimos.jsonl`, `notas.jsonl` y el directorio `imagenes/`
 - **AND** `README.md` describe el esquema y las referencias por slug, clave y SKU
 - **AND** `README.md` no afirma que el dataset de ~200 SKUs «llegará» en T-02-41
-- **AND** `README.md` menciona `vortex seed` y que la importación actual cubre categorías, marcas, atributos y productos
+- **AND** `README.md` menciona `vortex seed` y que la importación actual cubre categorías, marcas, atributos, productos y relaciones
+- **AND** `README.md` no afirma que las relaciones quedan para un ticket posterior
 
 #### Scenario: el ejemplo mínimo es un perno válido (happy)
 

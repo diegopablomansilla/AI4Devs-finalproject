@@ -4,13 +4,16 @@
 
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fs;
+use std::future::Future;
 use std::path::Path;
+use std::pin::Pin;
 use std::str::FromStr as _;
 
 use domain::{
     AtributoDef, AtributoValor, Codigo, ConflictCode, Decimal, DomainError, FiltroProducto, Id,
-    NewAtributoDef, NewCategoria, NewMarca, NewProducto, Producto, Sku, Slug, TipoAtributo,
-    TipoCodigo, Ubicacion, UnidadMedida, UpdateAtributoDef, ValorAtributo,
+    InvalidInputCode, NewAtributoDef, NewCategoria, NewMarca, NewProducto, NewRelacion, Producto,
+    Sku, Slug, TipoAtributo, TipoCodigo, TipoRelacion, Ubicacion, UnidadMedida, UpdateAtributoDef,
+    ValorAtributo,
 };
 use serde_json::Value;
 
@@ -31,6 +34,23 @@ pub struct SeedProductSummary {
     pub importados: u32,
     pub rechazados: u32,
     pub issues: Vec<SeedIssue>,
+}
+
+/// Outcome of `import_relations`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SeedRelationSummary {
+    pub importados: u32,
+    pub omitidas: u32,
+    pub rechazados: u32,
+    pub issues: Vec<SeedIssue>,
+}
+
+/// Fine-grained port for seeding relations (T-04-11); ABM lives in `recommend`.
+pub trait RelationSeedGateway: Send + Sync {
+    fn create(
+        &self,
+        input: NewRelacion,
+    ) -> Pin<Box<dyn Future<Output = Result<(), DomainError>> + Send + '_>>;
 }
 
 /// Single validation finding with location in the seed tree.
@@ -737,6 +757,222 @@ pub async fn import_products(
     }
 
     summary
+}
+
+/// Imports product relations from `relaciones.jsonl` using products already in storage.
+pub async fn import_relations(
+    path: &Path,
+    products: &dyn ProductGateway,
+    relations: &dyn RelationSeedGateway,
+) -> SeedRelationSummary {
+    let mut summary = SeedRelationSummary {
+        importados: 0,
+        omitidas: 0,
+        rechazados: 0,
+        issues: Vec::new(),
+    };
+
+    let relaciones_path = path.join("relaciones.jsonl");
+    if !relaciones_path.is_file() {
+        return summary;
+    }
+
+    let sku_map = match collect_existing_skus(products).await {
+        Ok(m) => m,
+        Err(e) => {
+            summary
+                .issues
+                .push(domain_to_issue("relaciones.jsonl", 0, "", &e));
+            summary.rechazados += 1;
+            return summary;
+        }
+    };
+
+    let mut rows: Vec<(u32, RelacionRow)> = Vec::new();
+    let parse_issues = read_jsonl(
+        &relaciones_path,
+        "relaciones.jsonl",
+        parse_relacion_row,
+        &mut rows,
+    );
+    for issue in parse_issues {
+        summary.rechazados += 1;
+        summary.issues.push(issue);
+    }
+
+    for (linea, row) in rows {
+        if row.origen.trim() == row.destino.trim() {
+            summary.rechazados += 1;
+            summary.issues.push(SeedIssue::new(
+                "relaciones.jsonl",
+                linea,
+                "destino",
+                "product cannot relate to itself",
+            ));
+            continue;
+        }
+
+        let Some(origen_id) = sku_map.get(row.origen.trim()) else {
+            summary.rechazados += 1;
+            summary.issues.push(SeedIssue::new(
+                "relaciones.jsonl",
+                linea,
+                "origen",
+                "unknown sku",
+            ));
+            continue;
+        };
+        let Some(destino_id) = sku_map.get(row.destino.trim()) else {
+            summary.rechazados += 1;
+            summary.issues.push(SeedIssue::new(
+                "relaciones.jsonl",
+                linea,
+                "destino",
+                "unknown sku",
+            ));
+            continue;
+        };
+
+        let tipo = match TipoRelacion::parse_wire(&row.tipo) {
+            Ok(t) => t,
+            Err(e) => {
+                summary.rechazados += 1;
+                summary
+                    .issues
+                    .push(domain_to_issue("relaciones.jsonl", linea, "tipo", &e));
+                continue;
+            }
+        };
+
+        let prioridad = row.prioridad.unwrap_or(1);
+        if prioridad < 1 {
+            summary.rechazados += 1;
+            summary.issues.push(SeedIssue::new(
+                "relaciones.jsonl",
+                linea,
+                "prioridad",
+                "must be >= 1",
+            ));
+            continue;
+        }
+
+        let input = NewRelacion {
+            origen: origen_id.clone(),
+            destino: destino_id.clone(),
+            tipo,
+            prioridad,
+            nota: row.nota.clone(),
+            bidireccional: row.bidireccional,
+        };
+
+        match relations.create(input).await {
+            Ok(()) => summary.importados += 1,
+            Err(e) if duplicate_relation_conflict(&e) => summary.omitidas += 1,
+            Err(e) => {
+                summary.rechazados += 1;
+                summary
+                    .issues
+                    .push(domain_issue_for_relation_row(linea, &e));
+            }
+        }
+    }
+
+    summary
+}
+
+#[derive(Clone)]
+struct RelacionRow {
+    origen: String,
+    destino: String,
+    tipo: String,
+    prioridad: Option<i32>,
+    nota: Option<String>,
+    bidireccional: Option<bool>,
+}
+
+fn parse_relacion_row(linea: u32, value: &Value) -> Result<RelacionRow, SeedIssue> {
+    let archivo = "relaciones.jsonl";
+    let origen = require_str(value, "origen", archivo, linea)?;
+    let destino = require_str(value, "destino", archivo, linea)?;
+    let tipo = require_str(value, "tipo", archivo, linea)?;
+    if !matches!(tipo, "similar_a" | "sustituible_por" | "complementa") {
+        return Err(SeedIssue::new(
+            archivo,
+            linea,
+            "tipo",
+            "invalid relation tipo",
+        ));
+    }
+    let prioridad = match value.get("prioridad") {
+        None => None,
+        Some(Value::Number(n)) => {
+            let p = n
+                .as_i64()
+                .ok_or_else(|| SeedIssue::new(archivo, linea, "prioridad", "expected integer"))?;
+            Some(p as i32)
+        }
+        Some(_) => {
+            return Err(SeedIssue::new(
+                archivo,
+                linea,
+                "prioridad",
+                "expected integer",
+            ));
+        }
+    };
+    let nota = match value.get("nota") {
+        None => None,
+        Some(v) => Some(match v {
+            Value::String(s) => s.clone(),
+            _ => return Err(SeedIssue::new(archivo, linea, "nota", "expected string")),
+        }),
+    };
+    let bidireccional = match value.get("bidireccional") {
+        None => None,
+        Some(v) => Some(match v {
+            Value::Bool(b) => *b,
+            _ => {
+                return Err(SeedIssue::new(
+                    archivo,
+                    linea,
+                    "bidireccional",
+                    "expected boolean",
+                ));
+            }
+        }),
+    };
+    Ok(RelacionRow {
+        origen: origen.to_string(),
+        destino: destino.to_string(),
+        tipo: tipo.to_string(),
+        prioridad,
+        nota,
+        bidireccional,
+    })
+}
+
+fn duplicate_relation_conflict(err: &DomainError) -> bool {
+    matches!(
+        err,
+        DomainError::Conflict {
+            code: ConflictCode::DuplicateRelation,
+            ..
+        }
+    )
+}
+
+fn domain_issue_for_relation_row(linea: u32, err: &DomainError) -> SeedIssue {
+    let campo = match err {
+        DomainError::InvalidInput {
+            code: InvalidInputCode::SelfRelation,
+            ..
+        } => "destino".to_string(),
+        DomainError::InvalidInput { errors, .. } => {
+            errors.first().map(|f| f.field.clone()).unwrap_or_default()
+        }
+        _ => String::new(),
+    };
+    domain_to_issue("relaciones.jsonl", linea, campo.as_str(), err)
 }
 
 fn duplicate_sku_conflict(err: &DomainError) -> bool {
@@ -2634,6 +2870,367 @@ mod tests {
                 .any(|i| i.archivo == "marcas.jsonl" && i.linea == 0)
         );
         assert!(cats.list_all().await.unwrap().is_empty());
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    use std::sync::Mutex;
+
+    use domain::TipoRelacion;
+
+    #[derive(Default)]
+    struct InMemoryRelationSeed {
+        edges: Arc<Mutex<Vec<(Id<Producto>, Id<Producto>, TipoRelacion)>>>,
+    }
+
+    impl InMemoryRelationSeed {
+        fn edge_count(&self) -> usize {
+            self.edges.lock().expect("lock").len()
+        }
+
+        fn has_directed(&self, from: &Id<Producto>, to: &Id<Producto>, tipo: TipoRelacion) -> bool {
+            self.edges
+                .lock()
+                .expect("lock")
+                .iter()
+                .any(|(a, b, t)| a == from && b == to && *t == tipo)
+        }
+    }
+
+    impl RelationSeedGateway for InMemoryRelationSeed {
+        fn create(
+            &self,
+            input: NewRelacion,
+        ) -> Pin<Box<dyn Future<Output = Result<(), DomainError>> + Send + '_>> {
+            let edges = Arc::clone(&self.edges);
+            Box::pin(async move {
+                let mut guard = edges.lock().expect("lock");
+                let key = (input.origen.clone(), input.destino.clone(), input.tipo);
+                if guard
+                    .iter()
+                    .any(|(a, b, t)| *a == key.0 && *b == key.1 && *t == key.2)
+                {
+                    return Err(DomainError::conflict(ConflictCode::DuplicateRelation));
+                }
+                guard.push(key);
+                if input.resolved_bidireccional() {
+                    let rev = (input.destino.clone(), input.origen.clone(), input.tipo);
+                    if guard
+                        .iter()
+                        .any(|(a, b, t)| *a == rev.0 && *b == rev.1 && *t == rev.2)
+                    {
+                        return Err(DomainError::conflict(ConflictCode::DuplicateRelation));
+                    }
+                    guard.push(rev);
+                }
+                Ok(())
+            })
+        }
+    }
+
+    fn write_two_product_fixture(dir: &Path) {
+        write_master_import_fixture(dir, "Fixser");
+        fs::write(
+            dir.join("productos.jsonl"),
+            r#"{"sku":"PER-M8X40-ZN","nombre":"Perno hexagonal M8 x 40","tipo":"Perno","categoria":"pernos","marca":"fixser","precio":"120.50","stock_inicial":"0","atributos":[{"clave":"medida","valor":"M8"}]}
+{"sku":"ARA-PERNO-01","nombre":"Arandela para Perno","tipo":"Arandela","categoria":"pernos","marca":"fixser","precio":"12.00","stock_inicial":"0","atributos":[{"clave":"medida","valor":"M8"}]}
+"#,
+        )
+        .expect("productos");
+    }
+
+    async fn product_id_by_sku(products: &dyn ProductGateway, sku: &str) -> Id<Producto> {
+        for activo in [true, false] {
+            let mut after = None;
+            loop {
+                let batch = products
+                    .list(
+                        FiltroProducto {
+                            categoria: None,
+                            marca: None,
+                            activo,
+                        },
+                        after,
+                        500,
+                    )
+                    .await
+                    .expect("list");
+                if batch.is_empty() {
+                    break;
+                }
+                if let Some(p) = batch.iter().find(|p| p.sku == sku) {
+                    return p.id.clone();
+                }
+                if batch.len() < 500 {
+                    break;
+                }
+                after = batch.last().map(|p| p.id.clone());
+            }
+        }
+        panic!("sku {sku} not found");
+    }
+
+    async fn import_all_products(
+        dir: &Path,
+        cats: &dyn CategoryGateway,
+        brands: &dyn BrandGateway,
+        attrs: &dyn AttributeDefGateway,
+        products: &dyn ProductGateway,
+    ) {
+        import_masters(dir, cats, brands, attrs)
+            .await
+            .expect("masters");
+        let summary = import_products(dir, cats, brands, attrs, products).await;
+        assert_eq!(summary.rechazados, 0, "{:?}", summary.issues);
+    }
+
+    #[tokio::test]
+    async fn seed_import_relations_creates_complement_edge() {
+        let dir = unique_temp_dir();
+        write_two_product_fixture(&dir);
+        fs::write(
+            dir.join("relaciones.jsonl"),
+            r#"{"origen":"PER-M8X40-ZN","destino":"ARA-PERNO-01","tipo":"complementa","nota":"Kit fijación"}
+"#,
+        )
+        .expect("relaciones");
+        let (cats, brands, attrs, products) = seed_product_gateways();
+        import_all_products(
+            &dir,
+            cats.as_ref(),
+            brands.as_ref(),
+            attrs.as_ref(),
+            products.as_ref(),
+        )
+        .await;
+        let rels = InMemoryRelationSeed::default();
+        let summary = import_relations(&dir, products.as_ref(), &rels).await;
+        assert_eq!(summary.importados, 1);
+        assert_eq!(summary.omitidas, 0);
+        assert_eq!(summary.rechazados, 0);
+        let perno = product_id_by_sku(products.as_ref(), "PER-M8X40-ZN").await;
+        let arandela = product_id_by_sku(products.as_ref(), "ARA-PERNO-01").await;
+        assert!(rels.has_directed(&perno, &arandela, TipoRelacion::Complementa));
+        assert!(!rels.has_directed(&arandela, &perno, TipoRelacion::Complementa));
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn seed_import_relations_similar_creates_bidirectional_pair() {
+        let dir = unique_temp_dir();
+        write_two_product_fixture(&dir);
+        fs::write(
+            dir.join("relaciones.jsonl"),
+            r#"{"origen":"PER-M8X40-ZN","destino":"ARA-PERNO-01","tipo":"similar_a"}
+"#,
+        )
+        .expect("relaciones");
+        let (cats, brands, attrs, products) = seed_product_gateways();
+        import_all_products(
+            &dir,
+            cats.as_ref(),
+            brands.as_ref(),
+            attrs.as_ref(),
+            products.as_ref(),
+        )
+        .await;
+        let rels = InMemoryRelationSeed::default();
+        let summary = import_relations(&dir, products.as_ref(), &rels).await;
+        assert_eq!(summary.importados, 1);
+        assert_eq!(rels.edge_count(), 2);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn seed_import_relations_second_run_omits_existing() {
+        let dir = unique_temp_dir();
+        write_two_product_fixture(&dir);
+        fs::write(
+            dir.join("relaciones.jsonl"),
+            r#"{"origen":"PER-M8X40-ZN","destino":"ARA-PERNO-01","tipo":"complementa"}
+"#,
+        )
+        .expect("relaciones");
+        let (cats, brands, attrs, products) = seed_product_gateways();
+        import_all_products(
+            &dir,
+            cats.as_ref(),
+            brands.as_ref(),
+            attrs.as_ref(),
+            products.as_ref(),
+        )
+        .await;
+        let rels = InMemoryRelationSeed::default();
+        let first = import_relations(&dir, products.as_ref(), &rels).await;
+        assert_eq!(first.importados, 1);
+        let second = import_relations(&dir, products.as_ref(), &rels).await;
+        assert_eq!(second.importados, 0);
+        assert_eq!(second.omitidas, 1);
+        assert_eq!(second.rechazados, 0);
+        assert_eq!(rels.edge_count(), 1);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn seed_import_relations_dev_dataset_seeds_panel_edges() {
+        let src = repo_seed_dir();
+        let dir = unique_temp_dir();
+        copy_dir_all(&src, &dir).expect("copy");
+        let (cats, brands, attrs, products) = seed_product_gateways();
+        import_all_products(
+            &dir,
+            cats.as_ref(),
+            brands.as_ref(),
+            attrs.as_ref(),
+            products.as_ref(),
+        )
+        .await;
+        let rels = InMemoryRelationSeed::default();
+        let summary = import_relations(&dir, products.as_ref(), &rels).await;
+        assert_eq!(summary.rechazados, 0);
+        assert!(summary.importados >= 3);
+        let perno = product_id_by_sku(products.as_ref(), "PER-M8X40-ZN").await;
+        let arandela = product_id_by_sku(products.as_ref(), "ARA-PERNO-01").await;
+        assert!(rels.has_directed(&perno, &arandela, TipoRelacion::Complementa));
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn seed_import_relations_missing_file_is_ok() {
+        let dir = unique_temp_dir();
+        write_two_product_fixture(&dir);
+        let (cats, brands, attrs, products) = seed_product_gateways();
+        import_all_products(
+            &dir,
+            cats.as_ref(),
+            brands.as_ref(),
+            attrs.as_ref(),
+            products.as_ref(),
+        )
+        .await;
+        let rels = InMemoryRelationSeed::default();
+        let summary = import_relations(&dir, products.as_ref(), &rels).await;
+        assert_eq!(summary.importados, 0);
+        assert_eq!(summary.omitidas, 0);
+        assert_eq!(summary.rechazados, 0);
+        assert!(summary.issues.is_empty());
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn seed_import_relations_rejects_unknown_sku_only() {
+        let dir = unique_temp_dir();
+        write_two_product_fixture(&dir);
+        fs::write(
+            dir.join("relaciones.jsonl"),
+            r#"{"origen":"PER-M8X40-ZN","destino":"ARA-PERNO-01","tipo":"complementa"}
+{"origen":"PER-M8X40-ZN","destino":"NO-EXISTE","tipo":"complementa"}
+"#,
+        )
+        .expect("relaciones");
+        let (cats, brands, attrs, products) = seed_product_gateways();
+        import_all_products(
+            &dir,
+            cats.as_ref(),
+            brands.as_ref(),
+            attrs.as_ref(),
+            products.as_ref(),
+        )
+        .await;
+        let rels = InMemoryRelationSeed::default();
+        let summary = import_relations(&dir, products.as_ref(), &rels).await;
+        assert_eq!(summary.importados, 1);
+        assert_eq!(summary.rechazados, 1);
+        assert!(
+            summary
+                .issues
+                .iter()
+                .any(|i| i.archivo == "relaciones.jsonl" && i.campo == "destino")
+        );
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn seed_import_relations_rejects_malformed_line_only() {
+        let dir = unique_temp_dir();
+        write_two_product_fixture(&dir);
+        fs::write(
+            dir.join("relaciones.jsonl"),
+            "{\"origen\":\"PER-M8X40-ZN\",\"destino\":\"ARA-PERNO-01\",\"tipo\":\"complementa\"}\nNOT JSON\n",
+        )
+        .expect("relaciones");
+        let (cats, brands, attrs, products) = seed_product_gateways();
+        import_all_products(
+            &dir,
+            cats.as_ref(),
+            brands.as_ref(),
+            attrs.as_ref(),
+            products.as_ref(),
+        )
+        .await;
+        let rels = InMemoryRelationSeed::default();
+        let summary = import_relations(&dir, products.as_ref(), &rels).await;
+        assert_eq!(summary.importados, 1);
+        assert_eq!(summary.rechazados, 1);
+        assert!(
+            summary
+                .issues
+                .iter()
+                .any(|i| i.archivo == "relaciones.jsonl" && i.linea == 2)
+        );
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn seed_import_relations_rejects_self_relation_only() {
+        let dir = unique_temp_dir();
+        write_two_product_fixture(&dir);
+        fs::write(
+            dir.join("relaciones.jsonl"),
+            r#"{"origen":"PER-M8X40-ZN","destino":"ARA-PERNO-01","tipo":"complementa"}
+{"origen":"PER-M8X40-ZN","destino":"PER-M8X40-ZN","tipo":"complementa"}
+"#,
+        )
+        .expect("relaciones");
+        let (cats, brands, attrs, products) = seed_product_gateways();
+        import_all_products(
+            &dir,
+            cats.as_ref(),
+            brands.as_ref(),
+            attrs.as_ref(),
+            products.as_ref(),
+        )
+        .await;
+        let rels = InMemoryRelationSeed::default();
+        let summary = import_relations(&dir, products.as_ref(), &rels).await;
+        assert_eq!(summary.importados, 1);
+        assert_eq!(summary.rechazados, 1);
+        assert!(
+            summary
+                .issues
+                .iter()
+                .any(|i| i.archivo == "relaciones.jsonl" && i.campo == "destino")
+        );
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn seed_import_relations_does_not_persist_synonyms_notes_images() {
+        let src = repo_seed_dir();
+        let dir = unique_temp_dir();
+        copy_dir_all(&src, &dir).expect("copy");
+        let (cats, brands, attrs, products) = seed_product_gateways();
+        import_all_products(
+            &dir,
+            cats.as_ref(),
+            brands.as_ref(),
+            attrs.as_ref(),
+            products.as_ref(),
+        )
+        .await;
+        let rels = InMemoryRelationSeed::default();
+        let summary = import_relations(&dir, products.as_ref(), &rels).await;
+        assert_eq!(summary.rechazados, 0);
+        assert!(dir.join("sinonimos.jsonl").is_file());
         let _ = fs::remove_dir_all(&dir);
     }
 }
