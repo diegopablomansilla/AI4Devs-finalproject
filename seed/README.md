@@ -50,6 +50,8 @@ Cada línea es un objeto JSON UTF-8. Las líneas en blanco se ignoran. Los nombr
 
 ### Importación (`vortex seed`)
 
+Para evaluar el MVP, `./scripts/up.sh` importa este directorio si no existe `data/db` y reindexa Meilisearch si el índice está vacío. A mano:
+
 Con el **servidor detenido** (no puede haber otro proceso con la base abierta):
 
 ```bash

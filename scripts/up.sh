@@ -1,7 +1,8 @@
 #!/usr/bin/env sh
 # Levanta el MVP local: compila vortex, descarga Meilisearch (pin de
 # scripts/meilisearch-version), escribe vortex.toml si falta, importa el seed
-# cuando todavía no hay base y deja `vortex serve` en primer plano.
+# cuando todavía no hay base, reindexa Meilisearch si el índice `productos`
+# está vacío y deja `vortex serve` en primer plano.
 # Vortex no supervisa el sidecar: este script arranca Meilisearch y lo mata
 # al salir, solo si lo inició él.
 set -eu
@@ -173,6 +174,27 @@ seed_if_needed() {
   "$VORTEX" --config "$CONFIG" seed "${ROOT}/seed"
 }
 
+meili_document_count() {
+  stats=$(curl -fsS --max-time 5 "${MEILI_URL}/indexes/productos/stats" 2>/dev/null) || {
+    printf '0'
+    return 0
+  }
+  printf '%s' "$stats" | tr -d ' \n' | sed -n 's/.*"numberOfDocuments":\([0-9][0-9]*\).*/\1/p'
+}
+
+reindex_if_needed() {
+  docs=$(meili_document_count)
+  if [ -z "$docs" ]; then
+    docs=0
+  fi
+  if [ "$docs" -gt 0 ]; then
+    say "índice Meilisearch ya tiene ${docs} documentos; no corro reindex"
+    return 0
+  fi
+  say "reindexando Meilisearch desde SurrealDB (índice productos vacío)"
+  "$VORTEX" --config "$CONFIG" reindex
+}
+
 require_darwin_arm64
 require_cargo
 if [ ! -d "${ROOT}/vectra-web" ]; then
@@ -201,6 +223,7 @@ if port_busy "$http_port"; then
 fi
 
 seed_if_needed
+reindex_if_needed
 
 say "API y PWA en http://127.0.0.1:${http_port}/  (Ctrl+C detiene vortex y el Meilisearch que inició este script)"
 set +e
