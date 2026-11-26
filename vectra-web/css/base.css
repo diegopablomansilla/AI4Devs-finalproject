@@ -619,3 +619,17 @@ textarea:focus-visible {
   font-weight: 600;
   color: var(--vx-color-text-muted);
 }
+
+.vx-recs-heading {
+  margin: var(--vx-space-2) 0 var(--vx-space-1);
+  padding: var(--vx-space-1);
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--vx-color-text);
+}
+
+.vx-recs-heading[data-highlight-substitutes] {
+  color: var(--vx-color-on-accent);
+  background-color: var(--vx-color-accent);
+  border-radius: var(--vx-radius-sm);
+}

@@ -45,6 +45,9 @@ class EventTargetStub {
   }
 
   dispatchEvent(event) {
+    if (event.target == null) {
+      event.target = this;
+    }
     this._fireListeners(this, event);
     if (!event.bubbles) {
       return !event.defaultPrevented;
