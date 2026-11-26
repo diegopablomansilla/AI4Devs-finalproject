@@ -171,6 +171,10 @@ pub(crate) fn map_surreal_message(msg: &str, statements: &[String]) -> DomainErr
         return DomainError::not_found();
     }
 
+    if relate_missing_producto(&lower, statements) {
+        return DomainError::not_found();
+    }
+
     if lower.contains("unique")
         || lower.contains("already exists")
         || lower.contains("already contains")
@@ -180,7 +184,7 @@ pub(crate) fn map_surreal_message(msg: &str, statements: &[String]) -> DomainErr
             ConflictCode::DuplicateSku
         } else if lower.contains("slug") {
             ConflictCode::DuplicateSlug
-        } else if lower.contains("relation") {
+        } else if is_relation_conflict(&lower, statements) || lower.contains("relation") {
             ConflictCode::DuplicateRelation
         } else {
             ConflictCode::Conflict
@@ -189,4 +193,43 @@ pub(crate) fn map_surreal_message(msg: &str, statements: &[String]) -> DomainErr
     }
 
     DomainError::unavailable(UnavailableCode::Unavailable)
+}
+
+fn is_relation_table_token(lower: &str) -> bool {
+    lower.contains("similar_a")
+        || lower.contains("sustituible_por")
+        || lower.contains("complementa")
+        || lower.contains("uq_similar_a")
+        || lower.contains("uq_sustituible_por")
+        || lower.contains("uq_complementa")
+}
+
+fn statement_is_relate_to_product_graph(stmt: &str) -> bool {
+    stmt.contains("RELATE")
+        && (stmt.contains("similar_a")
+            || stmt.contains("sustituible_por")
+            || stmt.contains("complementa"))
+}
+
+fn is_relation_conflict(lower: &str, statements: &[String]) -> bool {
+    is_relation_table_token(lower)
+        || statements
+            .iter()
+            .any(|s| statement_is_relate_to_product_graph(s))
+}
+
+fn relate_missing_producto(lower: &str, statements: &[String]) -> bool {
+    if !statements
+        .iter()
+        .any(|s| statement_is_relate_to_product_graph(s))
+    {
+        return false;
+    }
+    lower.contains("does not exist")
+        || lower.contains("doesn't exist")
+        || lower.contains("not exist")
+        || lower.contains("no record")
+        || lower.contains("found record")
+        || lower.contains("found matching")
+        || lower.contains("relate target")
 }

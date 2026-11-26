@@ -170,6 +170,55 @@ async fn tx_unique_sku_is_duplicate_sku() {
     assert_eq!(db.record_count("outbox").await.expect("count"), 0);
 }
 
+async fn seed_two_productos_for_relate(db: &storage::Db) {
+    db.query(
+        "CREATE categoria:cat1 CONTENT { nombre: 'Fijaciones', slug: 'fijaciones', ruta: ['Fijaciones'] };",
+    )
+    .await
+    .expect("categoria");
+    db.query(
+        "CREATE producto:prdA CONTENT { \
+            sku: 'PER-M8X40-ZN', \
+            nombre: 'Perno hexagonal M8 x 40 zincado', \
+            tipo: 'Perno', \
+            categoria: categoria:cat1, \
+            precio: 120.50dec \
+        };",
+    )
+    .await
+    .expect("prdA");
+    db.query(
+        "CREATE producto:prdB CONTENT { \
+            sku: 'ARA-M8-ZN', \
+            nombre: 'Arandela M8 zincada', \
+            tipo: 'Arandela', \
+            categoria: categoria:cat1, \
+            precio: 5.00dec \
+        };",
+    )
+    .await
+    .expect("prdB");
+}
+
+#[tokio::test]
+async fn tx_unique_relation_is_duplicate_relation() {
+    let db = test_db().await;
+    seed_two_productos_for_relate(&db).await;
+    db.query("RELATE producto:prdA -> sustituible_por -> producto:prdB;")
+        .await
+        .expect("first edge");
+
+    let mut tx = db.tx();
+    tx.run("RELATE producto:prdA -> sustituible_por -> producto:prdB;");
+    let err = tx.commit().await.expect_err("duplicate relation");
+    assert!(matches!(
+        err,
+        DomainError::Conflict {
+            code: ConflictCode::DuplicateRelation,
+        }
+    ));
+}
+
 #[tokio::test]
 async fn tx_unclassified_error_is_unavailable() {
     let db = test_db().await;
