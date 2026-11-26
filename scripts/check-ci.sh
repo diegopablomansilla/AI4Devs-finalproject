@@ -133,4 +133,13 @@ else
   fi
 fi
 
+# --- job e2e (T-09-09) ---
+if ! grep -Eq '^[[:space:]]{2}e2e:' "${WORKFLOW}"; then
+  fail 'falta el job: e2e'
+fi
+
+if ! grep -qi 'playwright' "${WORKFLOW}"; then
+  fail 'el job e2e debe invocar Playwright'
+fi
+
 exit 0
